@@ -1,0 +1,274 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { InjectConnection } from '@nestjs/mongoose';
+import { Connection } from 'mongoose';
+import { PurchasesRepository } from './purchases.repository.js';
+import { BatchesRepository } from '../batches/batches.repository.js';
+import { InventoryService } from '../inventory/inventory.service.js';
+import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto.js';
+import { ReceivePurchaseOrderDto } from './dto/receive-purchase-order.dto.js';
+import { PurchaseOrderFilterDto } from './dto/purchase-order-filter.dto.js';
+import {
+  PurchaseOrderDocument,
+  PurchaseOrderStatus,
+} from './schemas/purchase-order.schema.js';
+
+/**
+ * Result of receiving a purchase order
+ */
+export interface ReceiveResult {
+  purchaseOrder: PurchaseOrderDocument;
+  batchesCreated: number;
+  movementsCreated: number;
+  isPartialReceipt: boolean;
+}
+
+/**
+ * PurchaseService
+ * Handles purchase order creation, receiving, and batch creation
+ * Requirements: 19.1, 19.2, 19.4
+ * Properties: 71, 72, 73, 74
+ */
+@Injectable()
+export class PurchasesService {
+  constructor(
+    private readonly purchasesRepository: PurchasesRepository,
+    private readonly batchesRepository: BatchesRepository,
+    private readonly inventoryService: InventoryService,
+    @InjectConnection() private readonly connection: Connection,
+  ) {}
+
+  /**
+   * Create a new purchase order
+   * Property 71: Purchase order structure
+   * Requirements: 19.1
+   */
+  async create(
+    createPurchaseOrderDto: CreatePurchaseOrderDto,
+  ): Promise<PurchaseOrderDocument> {
+    // Validate items array is not empty
+    if (
+      !createPurchaseOrderDto.items ||
+      createPurchaseOrderDto.items.length === 0
+    ) {
+      throw new BadRequestException(
+        'Purchase order must contain at least one item',
+      );
+    }
+
+    return this.purchasesRepository.create(createPurchaseOrderDto);
+  }
+
+  async findAll(): Promise<PurchaseOrderDocument[]> {
+    return this.purchasesRepository.findAll();
+  }
+
+  async findById(id: string): Promise<PurchaseOrderDocument> {
+    const purchaseOrder = await this.purchasesRepository.findById(id);
+    if (!purchaseOrder) {
+      throw new NotFoundException(`Purchase order with ID ${id} not found`);
+    }
+    return purchaseOrder;
+  }
+
+  async findByOrderNumber(orderNumber: string): Promise<PurchaseOrderDocument> {
+    const purchaseOrder =
+      await this.purchasesRepository.findByOrderNumber(orderNumber);
+    if (!purchaseOrder) {
+      throw new NotFoundException(
+        `Purchase order with order number ${orderNumber} not found`,
+      );
+    }
+    return purchaseOrder;
+  }
+
+  async findByFilter(
+    filter: PurchaseOrderFilterDto,
+  ): Promise<PurchaseOrderDocument[]> {
+    return this.purchasesRepository.findByFilter(filter);
+  }
+
+  async findByBranch(branchId: string): Promise<PurchaseOrderDocument[]> {
+    return this.purchasesRepository.findByBranch(branchId);
+  }
+
+  async findBySupplier(supplierId: string): Promise<PurchaseOrderDocument[]> {
+    return this.purchasesRepository.findBySupplier(supplierId);
+  }
+
+  async findPending(): Promise<PurchaseOrderDocument[]> {
+    return this.purchasesRepository.findPending();
+  }
+
+  /**
+   * Receive items from a purchase order
+   * Creates batches and stock movements for received items
+   * Supports partial receipt
+   *
+   * Property 72: PO receiving creates batches
+   * Property 73: PO status tracking
+   * Property 74: Partial PO receipt
+   * Requirements: 19.2, 19.4
+   */
+  async receivePurchaseOrder(
+    id: string,
+    receiveDto: ReceivePurchaseOrderDto,
+  ): Promise<ReceiveResult> {
+    const purchaseOrder = await this.findById(id);
+
+    // Validate PO status
+    if (purchaseOrder.status === PurchaseOrderStatus.COMPLETED) {
+      throw new BadRequestException(
+        'Purchase order has already been fully received',
+      );
+    }
+
+    if (purchaseOrder.status === PurchaseOrderStatus.CANCELLED) {
+      throw new BadRequestException(
+        'Cannot receive a cancelled purchase order',
+      );
+    }
+
+    // Validate received items match PO items
+    for (const receivedItem of receiveDto.receivedItems) {
+      const poItem = purchaseOrder.items.find(
+        (item) => item.productId.toString() === receivedItem.productId,
+      );
+
+      if (!poItem) {
+        throw new BadRequestException(
+          `Product ${receivedItem.productId} is not in this purchase order`,
+        );
+      }
+
+      const remainingQuantity = poItem.quantity - poItem.receivedQuantity;
+      if (receivedItem.receivedQuantity > remainingQuantity) {
+        throw new BadRequestException(
+          `Cannot receive more than ordered. Product ${receivedItem.productId}: ordered ${poItem.quantity}, already received ${poItem.receivedQuantity}, trying to receive ${receivedItem.receivedQuantity}`,
+        );
+      }
+    }
+
+    // Start transaction
+    const session = await this.connection.startSession();
+    session.startTransaction();
+
+    let batchesCreated = 0;
+    let movementsCreated = 0;
+
+    try {
+      // Process each received item
+      for (const receivedItem of receiveDto.receivedItems) {
+        // Find the PO item to get the purchase price
+        const poItem = purchaseOrder.items.find(
+          (item) => item.productId.toString() === receivedItem.productId,
+        );
+
+        // Create batch for received item
+        const batch = await this.batchesRepository.create({
+          productId: receivedItem.productId,
+          branchId: purchaseOrder.branchId.toString(),
+          lotNumber: receivedItem.lotNumber,
+          expiryDate: receivedItem.expiryDate,
+          quantity: receivedItem.receivedQuantity,
+          purchasePrice: receivedItem.purchasePrice ?? poItem!.unitPrice,
+          sellingPrice: receivedItem.sellingPrice,
+          supplierId: purchaseOrder.supplierId.toString(),
+        }, session);
+        batchesCreated++;
+
+        // Create stock movement for the purchase
+        await this.inventoryService.recordPurchaseMovement(
+          purchaseOrder.branchId.toString(),
+          receivedItem.productId,
+          batch._id.toString(),
+          receivedItem.receivedQuantity,
+          receiveDto.receivedBy,
+          id,
+          session,
+        );
+        movementsCreated++;
+
+        // Update received quantity in PO
+        const newReceivedQuantity =
+          poItem!.receivedQuantity + receivedItem.receivedQuantity;
+        await this.purchasesRepository.updateItemReceivedQuantity(
+          id,
+          receivedItem.productId,
+          newReceivedQuantity,
+          session,
+        );
+      }
+
+      // Determine new status
+      const updatedPO = await this.purchasesRepository.findById(id, session);
+      const isFullyReceived = updatedPO!.items.every(
+        (item) => item.receivedQuantity >= item.quantity,
+      );
+
+      const newStatus = isFullyReceived
+        ? PurchaseOrderStatus.COMPLETED
+        : PurchaseOrderStatus.PARTIALLY_RECEIVED;
+
+      await this.purchasesRepository.updateStatus(id, newStatus, session);
+
+      await session.commitTransaction();
+
+      // Fetch final state
+      const finalPO = await this.findById(id);
+
+      return {
+        purchaseOrder: finalPO,
+        batchesCreated,
+        movementsCreated,
+        isPartialReceipt: !isFullyReceived,
+      };
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  /**
+   * Cancel a purchase order
+   * Property 73: PO status tracking
+   */
+  async cancel(id: string): Promise<PurchaseOrderDocument> {
+    const purchaseOrder = await this.findById(id);
+
+    if (purchaseOrder.status === PurchaseOrderStatus.COMPLETED) {
+      throw new BadRequestException('Cannot cancel a completed purchase order');
+    }
+
+    if (purchaseOrder.status === PurchaseOrderStatus.PARTIALLY_RECEIVED) {
+      throw new BadRequestException(
+        'Cannot cancel a partially received purchase order',
+      );
+    }
+
+    const cancelled = await this.purchasesRepository.cancel(id);
+    if (!cancelled) {
+      throw new NotFoundException(`Purchase order with ID ${id} not found`);
+    }
+
+    return cancelled;
+  }
+
+  /**
+   * Delete a purchase order (only if pending)
+   */
+  async delete(id: string): Promise<void> {
+    const purchaseOrder = await this.findById(id);
+
+    if (purchaseOrder.status !== PurchaseOrderStatus.PENDING) {
+      throw new BadRequestException('Can only delete pending purchase orders');
+    }
+
+    await this.purchasesRepository.delete(id);
+  }
+}

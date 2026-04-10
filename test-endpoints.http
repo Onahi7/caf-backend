@@ -1,0 +1,559 @@
+### Pharmacy POS API Endpoint Tests
+### Use REST Client extension in VS Code or import to Postman
+
+@baseUrl = http://localhost:3000/api
+@token = YOUR_JWT_TOKEN_HERE
+
+### ============================================
+### 1. AUTHENTICATION ENDPOINTS
+### ============================================
+
+### 1.1 Login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+### 1.2 Refresh Token
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "YOUR_REFRESH_TOKEN"
+}
+
+### 1.3 Logout
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{token}}
+
+### ============================================
+### 2. USER MANAGEMENT ENDPOINTS
+### ============================================
+
+### 2.1 Get All Users
+GET {{baseUrl}}/users
+Authorization: Bearer {{token}}
+
+### 2.2 Get User by ID
+GET {{baseUrl}}/users/USER_ID_HERE
+Authorization: Bearer {{token}}
+
+### 2.3 Create User
+POST {{baseUrl}}/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "password": "password123",
+  "email": "test@example.com",
+  "firstName": "Test",
+  "lastName": "User",
+  "role": "cashier",
+  "branchId": "BRANCH_ID_HERE"
+}
+
+### 2.4 Update User
+PATCH {{baseUrl}}/users/USER_ID_HERE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "firstName": "Updated",
+  "lastName": "Name"
+}
+
+### 2.5 Delete User
+DELETE {{baseUrl}}/users/USER_ID_HERE
+Authorization: Bearer {{token}}
+
+### ============================================
+### 3. BRANCH MANAGEMENT ENDPOINTS
+### ============================================
+
+### 3.1 Get All Branches
+GET {{baseUrl}}/branches
+Authorization: Bearer {{token}}
+
+### 3.2 Get Branch by ID
+GET {{baseUrl}}/branches/BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 3.3 Create Branch
+POST {{baseUrl}}/branches
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Test Branch",
+  "code": "TB001",
+  "address": "123 Test St",
+  "phone": "+1234567890",
+  "email": "branch@test.com"
+}
+
+### 3.4 Update Branch
+PATCH {{baseUrl}}/branches/BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Updated Branch Name"
+}
+
+### ============================================
+### 4. PRODUCT MANAGEMENT ENDPOINTS
+### ============================================
+
+### 4.1 Get All Products
+GET {{baseUrl}}/products?branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 4.2 Search Products
+GET {{baseUrl}}/products?search=paracetamol&branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 4.3 Get Product by ID
+GET {{baseUrl}}/products/PRODUCT_ID_HERE
+Authorization: Bearer {{token}}
+
+### 4.4 Create Product
+POST {{baseUrl}}/products
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Test Medicine",
+  "sku": "MED001",
+  "barcode": "1234567890123",
+  "category": "Analgesics",
+  "brand": "Test Brand",
+  "unit": "tablets",
+  "basePrice": 10.00,
+  "costPrice": 5.00,
+  "suggestedRetailPrice": 12.00,
+  "markupPercentage": 100,
+  "reorderLevel": 50,
+  "requiresPrescription": false,
+  "isControlled": false,
+  "branchId": "BRANCH_ID_HERE",
+  "initialStock": 100
+}
+
+### 4.5 Update Product
+PATCH {{baseUrl}}/products/PRODUCT_ID_HERE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "basePrice": 15.00,
+  "reorderLevel": 75
+}
+
+### 4.6 Delete Product
+DELETE {{baseUrl}}/products/PRODUCT_ID_HERE
+Authorization: Bearer {{token}}
+
+### ============================================
+### 5. INVENTORY MANAGEMENT ENDPOINTS
+### ============================================
+
+### 5.1 Get Inventory by Branch
+GET {{baseUrl}}/inventory?branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 5.2 Get Low Stock Items
+GET {{baseUrl}}/inventory/low-stock?branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 5.3 Adjust Stock
+POST {{baseUrl}}/inventory/adjust
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "branchId": "BRANCH_ID_HERE",
+  "productId": "PRODUCT_ID_HERE",
+  "quantity": 50,
+  "type": "addition",
+  "reason": "Stock replenishment",
+  "notes": "Received from supplier"
+}
+
+### ============================================
+### 6. SALES ENDPOINTS
+### ============================================
+
+### 6.1 Get All Sales
+GET {{baseUrl}}/sales?branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 6.2 Get Sales by Date Range
+GET {{baseUrl}}/sales?startDate=2024-01-01&endDate=2024-12-31&branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 6.3 Get Sale by ID
+GET {{baseUrl}}/sales/SALE_ID_HERE
+Authorization: Bearer {{token}}
+
+### 6.4 Create Sale (Checkout)
+POST {{baseUrl}}/sales/checkout
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "branchId": "BRANCH_ID_HERE",
+  "shiftId": "SHIFT_ID_HERE",
+  "items": [
+    {
+      "productId": "PRODUCT_ID_HERE",
+      "quantity": 2,
+      "unitPrice": 10.00
+    }
+  ],
+  "paymentMethod": "cash",
+  "amountReceived": 25.00,
+  "discount": 0,
+  "customerId": "CUSTOMER_ID_HERE"
+}
+
+### 6.5 Process Return
+POST {{baseUrl}}/sales/SALE_ID_HERE/return
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "productId": "PRODUCT_ID_HERE",
+      "quantity": 1,
+      "reason": "Defective product"
+    }
+  ],
+  "refundMethod": "cash"
+}
+
+### 6.6 Email Receipt
+POST {{baseUrl}}/sales/SALE_ID_HERE/email
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "email": "customer@example.com"
+}
+
+### 6.7 Get Receipt (HTML)
+GET {{baseUrl}}/sales/SALE_ID_HERE/receipt
+Authorization: Bearer {{token}}
+
+### 6.8 Get Thermal Receipt
+GET {{baseUrl}}/sales/SALE_ID_HERE/thermal-receipt?width=80
+Authorization: Bearer {{token}}
+
+### ============================================
+### 7. SHIFT MANAGEMENT ENDPOINTS
+### ============================================
+
+### 7.1 Get Current Shift
+GET {{baseUrl}}/shifts/current?branchId=BRANCH_ID_HERE&cashierId=USER_ID_HERE&terminalId=TERMINAL-01
+Authorization: Bearer {{token}}
+
+### 7.2 Get All Shifts
+GET {{baseUrl}}/shifts?branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 7.3 Get Shift by ID
+GET {{baseUrl}}/shifts/SHIFT_ID_HERE
+Authorization: Bearer {{token}}
+
+### 7.4 Open Shift
+POST {{baseUrl}}/shifts/open
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "branchId": "BRANCH_ID_HERE",
+  "terminalId": "TERMINAL-01",
+  "cashierId": "USER_ID_HERE",
+  "openingCash": 1000.00
+}
+
+### 7.5 Close Shift
+POST {{baseUrl}}/shifts/SHIFT_ID_HERE/close
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "closingCash": 5000.00,
+  "notes": "End of day shift",
+  "totalSales": 4000.00
+}
+
+### ============================================
+### 8. CUSTOMER MANAGEMENT ENDPOINTS
+### ============================================
+
+### 8.1 Get All Customers
+GET {{baseUrl}}/customers?branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 8.2 Search Customers
+GET {{baseUrl}}/customers?search=john&branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 8.3 Get Customer by ID
+GET {{baseUrl}}/customers/CUSTOMER_ID_HERE
+Authorization: Bearer {{token}}
+
+### 8.4 Create Customer
+POST {{baseUrl}}/customers
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "phone": "+1234567890",
+  "email": "john@example.com",
+  "address": "123 Main St",
+  "branchId": "BRANCH_ID_HERE"
+}
+
+### 8.5 Update Customer
+PATCH {{baseUrl}}/customers/CUSTOMER_ID_HERE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "phone": "+0987654321"
+}
+
+### ============================================
+### 9. SUPPLIER MANAGEMENT ENDPOINTS
+### ============================================
+
+### 9.1 Get All Suppliers
+GET {{baseUrl}}/suppliers
+Authorization: Bearer {{token}}
+
+### 9.2 Get Supplier by ID
+GET {{baseUrl}}/suppliers/SUPPLIER_ID_HERE
+Authorization: Bearer {{token}}
+
+### 9.3 Create Supplier
+POST {{baseUrl}}/suppliers
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Test Supplier",
+  "contactPerson": "Jane Smith",
+  "phone": "+1234567890",
+  "email": "supplier@test.com",
+  "address": "456 Supplier Ave"
+}
+
+### 9.4 Update Supplier
+PATCH {{baseUrl}}/suppliers/SUPPLIER_ID_HERE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "phone": "+0987654321"
+}
+
+### ============================================
+### 10. PURCHASE ORDER ENDPOINTS
+### ============================================
+
+### 10.1 Get All Purchase Orders
+GET {{baseUrl}}/purchase-orders?branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 10.2 Get Purchase Order by ID
+GET {{baseUrl}}/purchase-orders/PO_ID_HERE
+Authorization: Bearer {{token}}
+
+### 10.3 Create Purchase Order
+POST {{baseUrl}}/purchase-orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "branchId": "BRANCH_ID_HERE",
+  "supplierId": "SUPPLIER_ID_HERE",
+  "items": [
+    {
+      "productId": "PRODUCT_ID_HERE",
+      "quantity": 100,
+      "unitCost": 5.00
+    }
+  ],
+  "expectedDeliveryDate": "2024-12-31"
+}
+
+### 10.4 Receive Purchase Order
+POST {{baseUrl}}/purchase-orders/PO_ID_HERE/receive
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "productId": "PRODUCT_ID_HERE",
+      "quantityReceived": 100,
+      "batchNumber": "BATCH001",
+      "expiryDate": "2025-12-31"
+    }
+  ]
+}
+
+### ============================================
+### 11. TRANSFER MANAGEMENT ENDPOINTS
+### ============================================
+
+### 11.1 Get All Transfers
+GET {{baseUrl}}/transfers?branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 11.2 Get Transfer by ID
+GET {{baseUrl}}/transfers/TRANSFER_ID_HERE
+Authorization: Bearer {{token}}
+
+### 11.3 Create Transfer
+POST {{baseUrl}}/transfers
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "fromBranchId": "BRANCH_ID_1",
+  "toBranchId": "BRANCH_ID_2",
+  "items": [
+    {
+      "productId": "PRODUCT_ID_HERE",
+      "quantity": 50
+    }
+  ],
+  "notes": "Stock transfer"
+}
+
+### 11.4 Approve Transfer
+POST {{baseUrl}}/transfers/TRANSFER_ID_HERE/approve
+Authorization: Bearer {{token}}
+
+### 11.5 Reject Transfer
+POST {{baseUrl}}/transfers/TRANSFER_ID_HERE/reject
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "reason": "Insufficient stock"
+}
+
+### ============================================
+### 12. EXPENSE MANAGEMENT ENDPOINTS
+### ============================================
+
+### 12.1 Get Expenses by Shift
+GET {{baseUrl}}/expenses/shift/SHIFT_ID_HERE
+Authorization: Bearer {{token}}
+
+### 12.2 Create Expense
+POST {{baseUrl}}/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "branchId": "BRANCH_ID_HERE",
+  "shiftId": "SHIFT_ID_HERE",
+  "recordedBy": "USER_ID_HERE",
+  "amount": 50.00,
+  "category": "supplies",
+  "description": "Office supplies",
+  "notes": "Pens and paper"
+}
+
+### ============================================
+### 13. REPORTS ENDPOINTS
+### ============================================
+
+### 13.1 Sales Report
+GET {{baseUrl}}/reports/sales?branchId=BRANCH_ID_HERE&startDate=2024-01-01&endDate=2024-12-31
+Authorization: Bearer {{token}}
+
+### 13.2 Inventory Report
+GET {{baseUrl}}/reports/inventory?branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 13.3 Expiry Report
+GET {{baseUrl}}/reports/expiry?branchId=BRANCH_ID_HERE&daysUntilExpiry=90
+Authorization: Bearer {{token}}
+
+### 13.4 Transfer Report
+GET {{baseUrl}}/reports/transfers?branchId=BRANCH_ID_HERE&startDate=2024-01-01&endDate=2024-12-31
+Authorization: Bearer {{token}}
+
+### 13.5 Purchase Report
+GET {{baseUrl}}/reports/purchases?branchId=BRANCH_ID_HERE&startDate=2024-01-01&endDate=2024-12-31
+Authorization: Bearer {{token}}
+
+### ============================================
+### 14. AUDIT LOG ENDPOINTS
+### ============================================
+
+### 14.1 Get Audit Logs
+GET {{baseUrl}}/audit?action=CREATE&entity=Product&startDate=2024-01-01&endDate=2024-12-31
+Authorization: Bearer {{token}}
+
+### 14.2 Get Audit Log by ID
+GET {{baseUrl}}/audit/AUDIT_ID_HERE
+Authorization: Bearer {{token}}
+
+### ============================================
+### 15. BATCH MANAGEMENT ENDPOINTS
+### ============================================
+
+### 15.1 Get Batches by Product
+GET {{baseUrl}}/batches?productId=PRODUCT_ID_HERE&branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 15.2 Get Batch by ID
+GET {{baseUrl}}/batches/BATCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### ============================================
+### 16. PROMOTIONS ENDPOINTS
+### ============================================
+
+### 16.1 Get All Promotions
+GET {{baseUrl}}/promotions?branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 16.2 Get Active Promotions
+GET {{baseUrl}}/promotions?isActive=true&branchId=BRANCH_ID_HERE
+Authorization: Bearer {{token}}
+
+### 16.3 Create Promotion
+POST {{baseUrl}}/promotions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Holiday Sale",
+  "description": "20% off all items",
+  "type": "percentage",
+  "value": 20,
+  "startDate": "2024-12-01",
+  "endDate": "2024-12-31",
+  "branchId": "BRANCH_ID_HERE"
+}
+
+### ============================================
+### 17. HEALTH CHECK
+### ============================================
+
+### 17.1 Health Check
+GET {{baseUrl}}/health

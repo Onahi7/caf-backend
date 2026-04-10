@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # MongoDB Replica Set - Primary Node
+  mongo1:
+    image: mongo:6.0
+    container_name: pharmacy-mongo1
+    command: mongod --replSet rs0 --port 27017 --bind_ip_all
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo1-data:/data/db
+    networks:
+      - pharmacy-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB Replica Set - Secondary Node 1
+  mongo2:
+    image: mongo:6.0
+    container_name: pharmacy-mongo2
+    command: mongod --replSet rs0 --port 27018 --bind_ip_all
+    ports:
+      - "27018:27018"
+    volumes:
+      - mongo2-data:/data/db
+    networks:
+      - pharmacy-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27018/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB Replica Set - Secondary Node 2
+  mongo3:
+    image: mongo:6.0
+    container_name: pharmacy-mongo3
+    command: mongod --replSet rs0 --port 27019 --bind_ip_all
+    ports:
+      - "27019:27019"
+    volumes:
+      - mongo3-data:/data/db
+    networks:
+      - pharmacy-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27019/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB Replica Set Initialization
+  mongo-init:
+    image: mongo:6.0
+    container_name: pharmacy-mongo-init
+    depends_on:
+      mongo1:
+        condition: service_healthy
+      mongo2:
+        condition: service_healthy
+      mongo3:
+        condition: service_healthy
+    networks:
+      - pharmacy-network
+    restart: "no"
+    entrypoint: >
+      bash -c "
+        echo 'Waiting for MongoDB instances to be ready...';
+        sleep 5;
+        echo 'Initiating replica set...';
+        mongosh --host mongo1:27017 --eval '
+          rs.initiate({
+            _id: \"rs0\",
+            members: [
+              { _id: 0, host: \"mongo1:27017\", priority: 2 },
+              { _id: 1, host: \"mongo2:27018\", priority: 1 },
+              { _id: 2, host: \"mongo3:27019\", priority: 1 }
+            ]
+          })
+        ';
+        echo 'Waiting for replica set to stabilize...';
+        sleep 10;
+        echo 'Checking replica set status...';
+        mongosh --host mongo1:27017 --eval 'rs.status()';
+        echo 'Replica set initialization complete!';
+      "
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: pharmacy-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - pharmacy-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo1-data:
+  mongo2-data:
+  mongo3-data:
+  redis-data:
+
+networks:
+  pharmacy-network:
+    driver: bridge
