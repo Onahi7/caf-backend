@@ -33,6 +33,14 @@ async function bootstrap() {
   );
   const allowedOrigins = corsOrigin.split(',').map((origin) => origin.trim());
 
+  // Always-allowed frontend origins (hardcoded fallback)
+  const hardcodedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://caf-frontend.dicksonhardy7.workers.dev',
+  ];
+  const allAllowedOrigins = [...new Set([...allowedOrigins, ...hardcodedOrigins])];
+
   // Enable CORS
   app.enableCors({
     origin: (
@@ -43,7 +51,7 @@ async function bootstrap() {
       if (!origin) return callback(null, true);
 
       // Check if origin is in allowed list
-      if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      if (allAllowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
         callback(null, true);
       } else {
         logger.warn(`CORS blocked origin: ${origin}`);
@@ -89,7 +97,7 @@ async function bootstrap() {
   await app.listen(port);
 
   logger.log(`🚀 Application is running on: http://localhost:${port}`);
-  logger.log(`🌐 CORS enabled for: ${allowedOrigins.join(', ')}`);
+  logger.log(`🌐 CORS enabled for: ${allAllowedOrigins.join(', ')}`);
   logger.log(`📡 API endpoint: http://localhost:${port}/api`);
 }
 bootstrap();
