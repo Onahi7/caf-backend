@@ -22,7 +22,7 @@ import { Sale, SaleDocument } from '../sales/schemas/sale.schema';
 import { BranchDocument } from '../branches/schemas/branch.schema';
 import { UserDocument } from '../users/schemas/user.schema';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';

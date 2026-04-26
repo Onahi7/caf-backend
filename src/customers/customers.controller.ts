@@ -9,13 +9,14 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../users/schemas/user.schema';
-import { CustomersService } from './customers.service';
-import { CreateCustomerDto } from './dto/create-customer.dto';
-import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { RolesGuard } from '../auth/guards/roles.guard.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
+import { UserRole } from '../users/schemas/user.schema.js';
+import { CustomersService } from './customers.service.js';
+import { CreateCustomerDto } from './dto/create-customer.dto.js';
+import { UpdateCustomerDto } from './dto/update-customer.dto.js';
+import { apiResponse, apiMessageResponse } from '../common/utils/api-response.util.js';
 
 @Controller('customers')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -37,7 +38,7 @@ export class CustomersController {
   create(@Body() createCustomerDto: CreateCustomerDto) {
     return this.customersService
       .create(createCustomerDto)
-      .then((customer) => this.toResponse(customer));
+      .then((customer) => apiResponse(this.toResponse(customer)));
   }
 
   @Get()
@@ -51,12 +52,30 @@ export class CustomersController {
   async findAll(
     @Query('search') search?: string,
     @Query('includeInactive') includeInactive?: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
   ) {
-    const customers = await this.customersService.findAll(
+    const p = parseInt(page, 10);
+    const l = parseInt(limit, 10);
+    const { data, total } = await this.customersService.findAll(
       search,
       includeInactive === 'true',
+      p,
+      l,
     );
-    return customers.map((customer) => this.toResponse(customer));
+    return {
+      success: true,
+      data: data.map((customer) => this.toResponse(customer)),
+      count: total,
+      pagination: {
+        page: p,
+        limit: l,
+        total,
+        pages: Math.ceil(total / l),
+        hasNext: p < Math.ceil(total / l),
+        hasPrev: p > 1,
+      },
+    };
   }
 
   @Get(':id')
@@ -69,7 +88,7 @@ export class CustomersController {
   )
   async findOne(@Param('id') id: string) {
     const customer = await this.customersService.findOne(id);
-    return this.toResponse(customer);
+    return apiResponse(this.toResponse(customer));
   }
 
   @Patch(':id')
@@ -80,20 +99,21 @@ export class CustomersController {
   ) {
     return this.customersService
       .update(id, updateCustomerDto)
-      .then((customer) => this.toResponse(customer));
+      .then((customer) => apiResponse(this.toResponse(customer)));
   }
 
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
-  remove(@Param('id') id: string) {
-    return this.customersService.remove(id);
+  async remove(@Param('id') id: string) {
+    await this.customersService.remove(id);
+    return apiMessageResponse('Customer deleted');
   }
 
   @Patch(':id/toggle-status')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async toggleStatus(@Param('id') id: string) {
     const customer = await this.customersService.toggleStatus(id);
-    return this.toResponse(customer);
+    return apiResponse(this.toResponse(customer));
   }
 
   @Post(':id/loyalty-points')
@@ -101,6 +121,6 @@ export class CustomersController {
   addLoyaltyPoints(@Param('id') id: string, @Body('points') points: number) {
     return this.customersService
       .addLoyaltyPoints(id, points)
-      .then((customer) => this.toResponse(customer));
+      .then((customer) => apiResponse(this.toResponse(customer)));
   }
 }

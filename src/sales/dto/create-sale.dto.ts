@@ -7,6 +7,7 @@ import {
   ValidateNested,
   Min,
   IsMongoId,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PaymentMethod } from '../schemas/sale.schema.js';
@@ -80,13 +81,16 @@ export class CreateSaleDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(120)
   customerName?: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(30)
   customerPhone?: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(500)
   notes?: string;
 }

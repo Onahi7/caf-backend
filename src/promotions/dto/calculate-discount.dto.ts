@@ -6,12 +6,13 @@ import {
   IsNumber,
   Min,
   IsOptional,
+  IsMongoId,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class CalculateDiscountItemDto {
   @IsNotEmpty()
-  @IsString()
+  @IsMongoId()
   productId!: string;
 
   @IsNotEmpty()
@@ -31,7 +32,7 @@ class CalculateDiscountItemDto {
 
 export class CalculateDiscountDto {
   @IsNotEmpty()
-  @IsString()
+  @IsMongoId()
   promotionId!: string;
 
   @IsArray()

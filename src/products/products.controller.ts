@@ -27,8 +27,8 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import {
   CurrentUser,
-  CurrentUserData,
 } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 
 @Controller('products')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -60,12 +60,61 @@ export class ProductsController {
     @Query('search') search?: string,
     @Query('category') category?: string,
     @Query('barcode') barcode?: string,
-  ): Promise<Array<Record<string, unknown>>> {
-    return this.productsService.findCatalog(branchId, {
-      search,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder: string = 'asc',
+  ): Promise<any> {
+    const p = parseInt(page, 10);
+    const l = parseInt(limit, 10);
+
+    if (barcode) {
+      const product = await this.productsService.findByBarcode(barcode);
+      const catalogItems = await this.productsService.attachSellingPriceAndStock(
+        product ? [product] : [],
+        branchId,
+      );
+      return {
+        success: true,
+        data: catalogItems,
+        pagination: {
+          page: p,
+          limit: l,
+          total: catalogItems.length,
+          pages: 1,
+          hasNext: false,
+          hasPrev: false,
+        },
+      };
+    }
+
+    const searchDto = {
+      query: search || '',
       category,
-      barcode,
-    });
+      brand: undefined,
+    };
+
+    const { data, total } = await this.productsService.search(
+      searchDto,
+      branchId,
+      p,
+      l,
+      sortBy,
+      sortOrder,
+    );
+
+    return {
+      success: true,
+      data,
+      pagination: {
+        page: p,
+        limit: l,
+        total,
+        pages: Math.ceil(total / l),
+        hasNext: p < Math.ceil(total / l),
+        hasPrev: p > 1,
+      },
+    };
   }
 
   @Get('active')
@@ -78,7 +127,7 @@ export class ProductsController {
   )
   async findActive(
     @Query('branchId') branchId?: string,
-  ): Promise<ProductDocument[]> {
+  ): Promise<Array<Record<string, unknown>>> {
     return this.productsService.findActive(branchId);
   }
 
@@ -93,8 +142,9 @@ export class ProductsController {
   async search(
     @Query() searchDto: ProductSearchDto,
     @Query('branchId') branchId?: string,
-  ): Promise<ProductDocument[]> {
-    return this.productsService.search(searchDto, branchId);
+  ): Promise<Array<Record<string, unknown>>> {
+    const { data } = await this.productsService.search(searchDto, branchId);
+    return data;
   }
 
   @Get('category/:category')
@@ -108,8 +158,9 @@ export class ProductsController {
   async findByCategory(
     @Param('category') category: string,
     @Query('branchId') branchId?: string,
-  ): Promise<ProductDocument[]> {
-    return this.productsService.findByCategory(category, branchId);
+  ): Promise<Array<Record<string, unknown>>> {
+    const products = await this.productsService.findByCategory(category, branchId);
+    return this.productsService.attachSellingPriceAndStock(products, branchId);
   }
 
   @Get('brand/:brand')
@@ -123,8 +174,9 @@ export class ProductsController {
   async findByBrand(
     @Param('brand') brand: string,
     @Query('branchId') branchId?: string,
-  ): Promise<ProductDocument[]> {
-    return this.productsService.findByBrand(brand, branchId);
+  ): Promise<Array<Record<string, unknown>>> {
+    const products = await this.productsService.findByBrand(brand, branchId);
+    return this.productsService.attachSellingPriceAndStock(products, branchId);
   }
 
   @Get('sku/:sku')

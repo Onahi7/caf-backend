@@ -39,6 +39,7 @@ export class BranchesController {
     UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
+    UserRole.MARKETER,
   )
   async findAll(): Promise<BranchDocument[]> {
     return this.branchesService.findAll();
@@ -51,6 +52,7 @@ export class BranchesController {
     UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
+    UserRole.MARKETER,
   )
   async findActive(): Promise<BranchDocument[]> {
     return this.branchesService.findActive();
@@ -69,6 +71,7 @@ export class BranchesController {
     UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
+    UserRole.MARKETER,
   )
   async findById(@Param('id') id: string): Promise<BranchDocument> {
     return this.branchesService.findById(id);

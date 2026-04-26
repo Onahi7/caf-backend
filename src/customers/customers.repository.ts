@@ -16,7 +16,12 @@ export class CustomersRepository {
     return customer.save();
   }
 
-  async findAll(search?: string, includeInactive = false): Promise<Customer[]> {
+  async findAll(
+    search?: string,
+    includeInactive = false,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: Customer[]; total: number }> {
     const query: Record<string, unknown> = {};
 
     if (!includeInactive) {
@@ -32,7 +37,13 @@ export class CustomersRepository {
       ];
     }
 
-    return this.customerModel.find(query).sort({ createdAt: -1 }).exec();
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.customerModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      this.customerModel.countDocuments(query).exec(),
+    ]);
+
+    return { data, total };
   }
 
   async findById(id: string): Promise<Customer | null> {

@@ -1,11 +1,12 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
   Body,
   Query,
   UseGuards,
-  Request,
+  UseInterceptors,
 } from '@nestjs/common';
 import { InventoryService } from './inventory.service.js';
 import { StockMovementFilterDto } from './dto/stock-movement-filter.dto.js';
@@ -13,7 +14,11 @@ import { InventoryAdjustmentDto } from './dto/inventory-adjustment.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
+import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
+import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
 
 /**
  * Inventory Controller
@@ -56,11 +61,13 @@ export class InventoryController {
    */
   @Post('adjust')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   async adjustInventory(
     @Body() dto: InventoryAdjustmentDto,
-    @Request() req: { user: { userId: string } },
+    @CurrentUser() user: CurrentUserData,
   ) {
-    const userId = req.user?.userId;
+    const userId = user.userId;
     const result = await this.inventoryService.adjustInventory(dto, userId);
     return {
       success: true,
@@ -81,10 +88,7 @@ export class InventoryController {
   )
   async getStockSummary(@Query('branchId') branchId: string) {
     if (!branchId) {
-      return {
-        success: false,
-        error: 'branchId is required',
-      };
+      throw new BadRequestException('branchId is required');
     }
     const summary =
       await this.inventoryService.getStockSummaryByBranch(branchId);
@@ -104,10 +108,7 @@ export class InventoryController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
   async getLowStockAlerts(@Query('branchId') branchId: string) {
     if (!branchId) {
-      return {
-        success: false,
-        error: 'branchId is required',
-      };
+      throw new BadRequestException('branchId is required');
     }
     const alerts = await this.inventoryService.generateLowStockAlerts(branchId);
     return {
@@ -131,10 +132,7 @@ export class InventoryController {
   )
   async getBatchStock(@Query('batchId') batchId: string) {
     if (!batchId) {
-      return {
-        success: false,
-        error: 'batchId is required',
-      };
+      throw new BadRequestException('batchId is required');
     }
     const stock = await this.inventoryService.calculateBatchStock(batchId);
     return {
@@ -159,10 +157,7 @@ export class InventoryController {
     @Query('productId') productId: string,
   ) {
     if (!branchId || !productId) {
-      return {
-        success: false,
-        error: 'branchId and productId are required',
-      };
+      throw new BadRequestException('branchId and productId are required');
     }
     const stock = await this.inventoryService.calculateProductStockAtBranch(
       branchId,

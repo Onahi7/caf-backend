@@ -27,10 +27,6 @@ import { PAYMENT_METHOD_LABELS } from '../common/constants/payment-methods.const
  * Implements branch-based rooms for filtered broadcasting
  */
 @WSGateway({
-  cors: {
-    origin: '*', // Configure based on environment
-    credentials: true,
-  },
   namespace: '/inventory',
 })
 export class WebSocketGateway
@@ -48,11 +44,67 @@ export class WebSocketGateway
     private readonly jwtService: JwtService,
   ) {}
 
+  private isOriginAllowed(origin: string | undefined): boolean {
+    if (!origin) {
+      return true;
+    }
+
+    const corsOrigin = this.configService.get<string>(
+      'CORS_ORIGIN',
+      'http://localhost:5173',
+    );
+    const allowedOrigins = corsOrigin.split(',').map((value) => value.trim());
+
+    return allowedOrigins.includes('*') || allowedOrigins.includes(origin);
+  }
+
   /**
    * Initialize WebSocket gateway with Redis adapter
    */
   async afterInit(server: Server) {
     this.logger.log('WebSocket Gateway initialized');
+
+    type EngineLike = {
+      on: (
+        event: 'headers',
+        listener: (
+          headers: Record<string, string>,
+          request: { headers: { origin?: string } },
+        ) => void,
+      ) => void;
+    };
+
+    const serverLike = server as unknown as {
+      engine?: EngineLike;
+      server?: { engine?: EngineLike };
+    };
+    const engine = serverLike.engine ?? serverLike.server?.engine;
+
+    if (engine) {
+      engine.on('headers', (headers, request) => {
+        const origin = request.headers.origin;
+
+        if (this.isOriginAllowed(origin)) {
+          headers['Access-Control-Allow-Origin'] = origin || '*';
+          headers['Access-Control-Allow-Credentials'] = 'true';
+        }
+      });
+    } else {
+      this.logger.warn(
+        'Socket engine unavailable during afterInit; skipping headers hook',
+      );
+    }
+
+    server.use((socket, next) => {
+      const origin = socket.handshake.headers.origin;
+
+      if (!this.isOriginAllowed(origin)) {
+        this.logger.warn(`WebSocket blocked origin: ${origin}`);
+        return next(new Error('Not allowed by CORS'));
+      }
+
+      next();
+    });
 
     // Check if Redis is enabled
     const enableRedis = this.configService.get<string>('ENABLE_REDIS', 'true');

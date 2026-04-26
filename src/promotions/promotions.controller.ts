@@ -9,15 +9,16 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { PromotionsService } from './promotions.service';
-import { CreatePromotionDto } from './dto/create-promotion.dto';
-import { UpdatePromotionDto } from './dto/update-promotion.dto';
+import { PromotionsService } from './promotions.service.js';
+import { CreatePromotionDto } from './dto/create-promotion.dto.js';
+import { UpdatePromotionDto } from './dto/update-promotion.dto.js';
 import { CalculateDiscountDto } from './dto/calculate-discount.dto.js';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { UserRole } from '../users/schemas/user.schema';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { RolesGuard } from '../auth/guards/roles.guard.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
+import { UserRole } from '../users/schemas/user.schema.js';
 
 @Controller('promotions')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -28,7 +29,7 @@ export class PromotionsController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   create(
     @Body() createPromotionDto: CreatePromotionDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserData,
   ) {
     return this.promotionsService.create(createPromotionDto, user.userId);
   }

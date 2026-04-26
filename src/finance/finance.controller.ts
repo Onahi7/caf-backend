@@ -1,22 +1,26 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { Body, Controller, Get, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import { CreateFinanceTransactionDto } from './dto/create-finance-transaction.dto.js';
 import { FinanceTransactionFilterDto } from './dto/finance-transaction-filter.dto.js';
 import { FinanceService } from './finance.service.js';
+import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
+import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
 import type { FinanceTransactionDocument } from './schemas/finance-transaction.schema.js';
 
 @Controller('finance/transactions')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.MARKETER)
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   async create(
     @Body() createDto: CreateFinanceTransactionDto,
     @CurrentUser() user: CurrentUserData,

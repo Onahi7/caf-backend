@@ -6,12 +6,17 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsNotEmpty,
+  IsMongoId,
   Min,
+  MaxLength,
 } from 'class-validator';
-import { PromotionType, PromotionScope } from '../schemas/promotion.schema';
+import { PromotionType, PromotionScope } from '../schemas/promotion.schema.js';
 
 export class CreatePromotionDto {
+  @IsNotEmpty()
   @IsString()
+  @MaxLength(120)
   name!: string;
 
   @IsOptional()
@@ -40,16 +45,17 @@ export class CreatePromotionDto {
 
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @IsMongoId({ each: true })
   applicableProducts?: string[];
 
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  @MaxLength(60, { each: true })
   applicableCategories?: string[];
 
   @IsOptional()
-  @IsString()
+  @IsMongoId()
   branchId?: string;
 
   @IsDateString()

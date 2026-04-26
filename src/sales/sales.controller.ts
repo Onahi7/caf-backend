@@ -17,7 +17,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
+import { resolveBranchId } from '../common/utils/branch-scope.util.js';
 import { SalesService } from './sales.service.js';
 import { CheckoutService } from './checkout.service.js';
 import { ReceiptService } from './receipt.service.js';
@@ -85,11 +87,11 @@ export class SalesController {
   @HttpCode(HttpStatus.CREATED)
   async checkout(
     @Body() createSaleDto: CreateSaleDto,
-    @CurrentUser() user: Record<string, unknown>,
+    @CurrentUser() user: CurrentUserData,
   ) {
     const result = await this.checkoutService.processCheckout(
       createSaleDto,
-      user.userId as string,
+      user.userId,
     );
 
     return {
@@ -119,15 +121,17 @@ export class SalesController {
    */
   @Post(':id/return')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @HttpCode(HttpStatus.OK)
   async processReturn(
     @Param('id') saleId: string,
     @Body() processReturnDto: Omit<ProcessReturnDto, 'saleId'>,
-    @CurrentUser() user: Record<string, unknown>,
+    @CurrentUser() user: CurrentUserData,
   ) {
     const result = await this.salesService.processReturn(
       { ...processReturnDto, saleId },
-      user.userId as string,
+      user.userId,
     );
 
     return {
@@ -236,7 +240,11 @@ export class SalesController {
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
-  async findAll(@Query() filter: SaleFilterDto) {
+  async findAll(
+    @CurrentUser() user: CurrentUserData,
+    @Query() filter: SaleFilterDto,
+  ) {
+    filter.branchId = resolveBranchId(user, filter.branchId) as string;
     const sales = await this.salesService.findAll(filter);
 
     return {
@@ -324,11 +332,11 @@ export class SalesController {
   async verifyPrescription(
     @Param('id') saleId: string,
     @Body() verifyDto: Omit<VerifyPrescriptionDto, 'saleId'>,
-    @CurrentUser() user: Record<string, unknown>,
+    @CurrentUser() user: CurrentUserData,
   ) {
     const sale = await this.salesService.verifyPrescription(
       { saleId, ...verifyDto },
-      user.userId as string,
+      user.userId,
     );
 
     return {

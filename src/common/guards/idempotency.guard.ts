@@ -6,7 +6,6 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
 import type { Request, Response } from 'express';
 import { RedisService } from '../../redis/redis.service.js';
 
@@ -34,10 +33,7 @@ export interface IdempotencyRecord {
 export class IdempotencyGuard implements CanActivate {
   private readonly logger = new Logger(IdempotencyGuard.name);
 
-  constructor(
-    private readonly redis: RedisService,
-    private readonly reflector: Reflector,
-  ) {}
+  constructor(private readonly redis: RedisService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>();

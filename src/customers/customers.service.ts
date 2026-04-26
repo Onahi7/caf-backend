@@ -71,8 +71,13 @@ export class CustomersService {
     return this.customersRepository.create(normalizedDto);
   }
 
-  async findAll(search?: string, includeInactive = false): Promise<Customer[]> {
-    return this.customersRepository.findAll(search, includeInactive);
+  async findAll(
+    search?: string,
+    includeInactive = false,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: Customer[]; total: number }> {
+    return this.customersRepository.findAll(search, includeInactive, page, limit);
   }
 
   async findOne(id: string): Promise<Customer> {

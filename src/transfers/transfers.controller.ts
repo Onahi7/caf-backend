@@ -7,8 +7,8 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { TransfersService } from './transfers.service.js';
 import { CreateTransferDto } from './dto/create-transfer.dto.js';
 import {
@@ -18,10 +18,13 @@ import {
 import { TransferFilterDto } from './dto/transfer-filter.dto.js';
 import { TransferDocument } from './schemas/transfer.schema.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
+import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
+import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
 
 /**
  * TransfersController
@@ -29,7 +32,7 @@ import { UserRole } from '../users/schemas/user.schema.js';
  * Requirements: 4.1, 4.5, 10.4
  */
 @Controller('transfers')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class TransfersController {
   constructor(private readonly transfersService: TransfersService) {}
 
@@ -40,6 +43,8 @@ export class TransfersController {
    */
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   async create(
     @Body() createTransferDto: CreateTransferDto,
     @CurrentUser() user: CurrentUserData,
@@ -130,6 +135,8 @@ export class TransfersController {
    */
   @Patch(':id/approve')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   async approve(
     @Param('id') id: string,
     @Body() approveTransferDto: ApproveTransferDto,

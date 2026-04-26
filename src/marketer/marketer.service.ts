@@ -120,13 +120,29 @@ export class MarketerService {
       query.isActive = true;
     }
 
-    return this.assignmentModel
-      .find(query)
-      .populate('marketerId', 'firstName lastName username branchId')
-      .populate('productId', 'name sku branchId')
-      .populate('branchId', 'name code')
-      .sort({ createdAt: -1 })
-      .exec();
+    const page = filter.page ?? 1;
+    const limit = filter.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.assignmentModel
+        .find(query)
+        .populate('marketerId', 'firstName lastName username branchId')
+        .populate('productId', 'name sku branchId')
+        .populate('branchId', 'name code')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.assignmentModel.countDocuments(query).exec(),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+    };
   }
 
   async acceptAssignment(id: string, actor: CurrentUserData) {
@@ -270,15 +286,28 @@ export class MarketerService {
       query.marketerId = filter.marketerId;
     }
 
-    const limit = filter.limit ?? 100;
+    const page = filter.page ?? 1;
+    const limit = filter.limit ?? 20;
+    const skip = (page - 1) * limit;
 
-    return this.saleModel
-      .find(query)
-      .populate('productId', 'name sku')
-      .populate('marketerId', 'firstName lastName username')
-      .sort({ soldAt: -1, createdAt: -1 })
-      .limit(limit)
-      .exec();
+    const [data, total] = await Promise.all([
+      this.saleModel
+        .find(query)
+        .populate('productId', 'name sku')
+        .populate('marketerId', 'firstName lastName username')
+        .sort({ soldAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.saleModel.countDocuments(query).exec(),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+    };
   }
 
   async getSummary(filter: MarketerSalesQueryDto, actor: CurrentUserData) {

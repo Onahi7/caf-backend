@@ -23,7 +23,9 @@ export class ExpensesRepository {
       .exec();
   }
 
-  async findAll(filter: ExpenseFilterDto): Promise<ExpenseDocument[]> {
+  async findAll(
+    filter: ExpenseFilterDto & { page?: number; limit?: number },
+  ): Promise<{ data: ExpenseDocument[]; total: number }> {
     const query: any = { isDeleted: false };
 
     if (filter.branchId) {
@@ -52,11 +54,22 @@ export class ExpensesRepository {
       }
     }
 
-    return this.expenseModel
-      .find(query)
-      .populate('recordedBy', 'firstName lastName email')
-      .sort({ createdAt: -1 })
-      .exec();
+    const page = filter.page || 1;
+    const limit = filter.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.expenseModel
+        .find(query)
+        .populate('recordedBy', 'firstName lastName email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.expenseModel.countDocuments(query).exec(),
+    ]);
+
+    return { data, total };
   }
 
   async findByShift(shiftId: string): Promise<ExpenseDocument[]> {

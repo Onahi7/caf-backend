@@ -6,21 +6,28 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { ShiftsService } from './shifts.service.js';
 import { SalesService } from '../sales/sales.service.js';
 import { CloseShiftRequestDto } from './dto/close-shift-request.dto.js';
 import { CloseShiftDto } from './dto/close-shift.dto.js';
 import { OpenShiftDto } from './dto/open-shift.dto.js';
 import { ShiftFilterDto } from './dto/shift-filter.dto.js';
-import { ShiftDocument } from './schemas/shift.schema.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
+import { resolveBranchId } from '../common/utils/branch-scope.util.js';
+import { apiResponse, apiListResponse } from '../common/utils/api-response.util.js';
+import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
+import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
 
 @Controller('shifts')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ShiftsController {
   constructor(
     private readonly shiftsService: ShiftsService,
@@ -34,8 +41,11 @@ export class ShiftsController {
    */
   @Post('open')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
-  async openShift(@Body() openShiftDto: OpenShiftDto): Promise<ShiftDocument> {
-    return this.shiftsService.openShift(openShiftDto);
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
+  async openShift(@Body() openShiftDto: OpenShiftDto) {
+    const shift = await this.shiftsService.openShift(openShiftDto);
+    return apiResponse(shift);
   }
 
   /**
@@ -45,10 +55,12 @@ export class ShiftsController {
    */
   @Post(':id/close')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   async closeShift(
     @Param('id') id: string,
     @Body() closeShiftRequestDto: CloseShiftRequestDto,
-  ): Promise<ShiftDocument> {
+  ) {
     const closeShiftDto: CloseShiftDto = {
       shiftId: id,
       closingCash: closeShiftRequestDto.closingCash,
@@ -56,7 +68,8 @@ export class ShiftsController {
     };
     // Calculate total sales from actual sales records
     const totalSales = await this.salesService.calculateShiftTotal(id);
-    return this.shiftsService.closeShift(closeShiftDto, totalSales);
+    const shift = await this.shiftsService.closeShift(closeShiftDto, totalSales);
+    return apiResponse(shift);
   }
 
   /**
@@ -75,8 +88,13 @@ export class ShiftsController {
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
-  async findAll(@Query() filter: ShiftFilterDto): Promise<ShiftDocument[]> {
-    return this.shiftsService.findAll(filter);
+  async findAll(
+    @Query() filter: ShiftFilterDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    filter.branchId = resolveBranchId(user, filter.branchId) as string;
+    const shifts = await this.shiftsService.findAll(filter);
+    return apiListResponse(shifts);
   }
 
   /**
@@ -94,8 +112,11 @@ export class ShiftsController {
   )
   async findByBranch(
     @Param('branchId') branchId: string,
-  ): Promise<ShiftDocument[]> {
-    return this.shiftsService.findByBranch(branchId);
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    const resolvedBranchId = resolveBranchId(user, branchId) as string;
+    const shifts = await this.shiftsService.findByBranch(resolvedBranchId);
+    return apiListResponse(shifts);
   }
 
   /**
@@ -111,10 +132,28 @@ export class ShiftsController {
   )
   async getCurrentShift(
     @Query('branchId') branchId: string,
+    @CurrentUser() user: CurrentUserData,
     @Query('cashierId') cashierId: string,
     @Query('terminalId') terminalId?: string,
-  ): Promise<ShiftDocument | null> {
-    return this.shiftsService.getCurrentShift(branchId, cashierId, terminalId);
+  ) {
+    // Non-admin users are always scoped to their assigned branch regardless of incoming query params.
+    const requestedBranchId = user.role === UserRole.SUPER_ADMIN ? branchId : undefined;
+    const resolvedBranchId = resolveBranchId(user, requestedBranchId) as string;
+
+    // Cashiers can only query their own shift; managers/admins can provide cashierId explicitly.
+    const effectiveCashierId =
+      user.role === UserRole.CASHIER ? user.userId : cashierId;
+
+    if (!effectiveCashierId) {
+      throw new BadRequestException('cashierId is required');
+    }
+
+    const shift = await this.shiftsService.getCurrentShift(
+      resolvedBranchId,
+      effectiveCashierId,
+      terminalId,
+    );
+    return apiResponse(shift);
   }
 
   /**
@@ -126,8 +165,9 @@ export class ShiftsController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
   async getOpenShiftForCashier(
     @Param('cashierId') cashierId: string,
-  ): Promise<ShiftDocument | null> {
-    return this.shiftsService.getOpenShiftForCashier(cashierId);
+  ) {
+    const shift = await this.shiftsService.getOpenShiftForCashier(cashierId);
+    return apiResponse(shift);
   }
 
   /**
@@ -143,7 +183,8 @@ export class ShiftsController {
     UserRole.AUDITOR,
   )
   async getShiftReport(@Param('id') id: string) {
-    return this.shiftsService.getShiftReport(id);
+    const report = await this.shiftsService.getShiftReport(id);
+    return apiResponse(report);
   }
 
   /**
@@ -158,7 +199,8 @@ export class ShiftsController {
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
-  async findById(@Param('id') id: string): Promise<ShiftDocument> {
-    return this.shiftsService.findById(id);
+  async findById(@Param('id') id: string) {
+    const shift = await this.shiftsService.findById(id);
+    return apiResponse(shift);
   }
 }

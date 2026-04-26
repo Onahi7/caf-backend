@@ -21,7 +21,10 @@ export class ExpensesService {
    * Create a new expense
    * Validates that the shift is open and belongs to the branch
    */
-  async create(createExpenseDto: CreateExpenseDto): Promise<ExpenseDocument> {
+  async create(createExpenseDto: CreateExpenseDto, userId: string): Promise<ExpenseDocument> {
+    // Override recordedBy with the authenticated user's ID
+    createExpenseDto.recordedBy = userId as any;
+
     // Validate shift exists and is open
     const shift = await this.shiftsRepository.findById(
       createExpenseDto.shiftId,
@@ -63,7 +66,9 @@ export class ExpensesService {
   /**
    * Get all expenses with filtering
    */
-  async findAll(filter: ExpenseFilterDto): Promise<ExpenseDocument[]> {
+  async findAll(
+    filter: ExpenseFilterDto & { page?: number; limit?: number },
+  ): Promise<{ data: ExpenseDocument[]; total: number }> {
     return this.expensesRepository.findAll(filter);
   }
 

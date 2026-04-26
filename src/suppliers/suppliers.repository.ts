@@ -18,12 +18,29 @@ export class SuppliersRepository {
     return supplier.save();
   }
 
-  async findAll(): Promise<SupplierDocument[]> {
-    return this.supplierModel.find().exec();
-  }
+  async findAll(
+    search?: string,
+    activeOnly = true,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: SupplierDocument[]; total: number }> {
+    const query: Record<string, unknown> = {};
 
-  async findActive(): Promise<SupplierDocument[]> {
-    return this.supplierModel.find({ isActive: true }).exec();
+    if (activeOnly) {
+      query.isActive = true;
+    }
+
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.supplierModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      this.supplierModel.countDocuments(query).exec(),
+    ]);
+
+    return { data, total };
   }
 
   async findById(id: string): Promise<SupplierDocument | null> {
@@ -34,6 +51,10 @@ export class SuppliersRepository {
     return this.supplierModel
       .find({ name: { $regex: name, $options: 'i' } })
       .exec();
+  }
+
+  async findActive(): Promise<SupplierDocument[]> {
+    return this.supplierModel.find({ isActive: true }).exec();
   }
 
   async update(

@@ -14,8 +14,13 @@ export class SuppliersService {
     return this.suppliersRepository.create(createSupplierDto);
   }
 
-  async findAll(): Promise<SupplierDocument[]> {
-    return this.suppliersRepository.findAll();
+  async findAll(
+    search?: string,
+    activeOnly = true,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: SupplierDocument[]; total: number }> {
+    return this.suppliersRepository.findAll(search, activeOnly, page, limit);
   }
 
   async findActive(): Promise<SupplierDocument[]> {

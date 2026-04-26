@@ -9,17 +9,17 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { SuppliersService } from './suppliers.service.js';
 import { CreateSupplierDto } from './dto/create-supplier.dto.js';
 import { UpdateSupplierDto } from './dto/update-supplier.dto.js';
 import { SupplierDocument } from './schemas/supplier.schema.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 
 @Controller('suppliers')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class SuppliersController {
   constructor(private readonly suppliersService: SuppliersService) {}
 
@@ -49,11 +49,33 @@ export class SuppliersController {
     UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
-  async findAll(@Query('active') active?: string): Promise<SupplierDocument[]> {
-    if (active === 'true') {
-      return this.suppliersService.findActive();
-    }
-    return this.suppliersService.findAll();
+  async findAll(
+    @Query('active') active?: string,
+    @Query('search') search?: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+  ) {
+    const p = parseInt(page, 10);
+    const l = parseInt(limit, 10);
+    const { data, total } = await this.suppliersService.findAll(
+      search,
+      active !== 'false',
+      p,
+      l,
+    );
+    return {
+      success: true,
+      data,
+      count: total,
+      pagination: {
+        page: p,
+        limit: l,
+        total,
+        pages: Math.ceil(total / l),
+        hasNext: p < Math.ceil(total / l),
+        hasPrev: p > 1,
+      },
+    };
   }
 
   /**

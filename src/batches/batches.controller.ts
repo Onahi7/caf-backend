@@ -8,17 +8,20 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { BatchesService } from './batches.service.js';
 import { CreateBatchDto } from './dto/create-batch.dto.js';
 import { UpdateBatchDto } from './dto/update-batch.dto.js';
-import { BatchDocument } from './schemas/batch.schema.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
+import { resolveBranchId } from '../common/utils/branch-scope.util.js';
+import { apiResponse, apiListResponse } from '../common/utils/api-response.util.js';
 
 @Controller('batches')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class BatchesController {
   constructor(private readonly batchesService: BatchesService) {}
 
@@ -29,8 +32,9 @@ export class BatchesController {
    */
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
-  async create(@Body() createBatchDto: CreateBatchDto): Promise<BatchDocument> {
-    return this.batchesService.create(createBatchDto);
+  async create(@Body() createBatchDto: CreateBatchDto) {
+    const batch = await this.batchesService.create(createBatchDto);
+    return apiResponse(batch);
   }
 
   /**
@@ -48,19 +52,25 @@ export class BatchesController {
     UserRole.AUDITOR,
   )
   async findAll(
+    @CurrentUser() user: CurrentUserData,
     @Query('branchId') branchId?: string,
     @Query('productId') productId?: string,
-  ): Promise<BatchDocument[]> {
-    if (branchId && productId) {
-      return this.batchesService.findByBranchAndProduct(branchId, productId);
+  ) {
+    const resolvedBranchId = resolveBranchId(user, branchId);
+    if (resolvedBranchId && productId) {
+      const batches = await this.batchesService.findByBranchAndProduct(resolvedBranchId, productId);
+      return apiListResponse(batches);
     }
-    if (branchId) {
-      return this.batchesService.findByBranch(branchId);
+    if (resolvedBranchId) {
+      const batches = await this.batchesService.findByBranch(resolvedBranchId);
+      return apiListResponse(batches);
     }
     if (productId) {
-      return this.batchesService.findByProduct(productId);
+      const batches = await this.batchesService.findByProduct(productId);
+      return apiListResponse(batches);
     }
-    return this.batchesService.findAll();
+    const batches = await this.batchesService.findAll();
+    return apiListResponse(batches);
   }
 
   /**
@@ -77,8 +87,9 @@ export class BatchesController {
   )
   async findByProduct(
     @Param('productId') productId: string,
-  ): Promise<BatchDocument[]> {
-    return this.batchesService.findByProduct(productId);
+  ) {
+    const batches = await this.batchesService.findByProduct(productId);
+    return apiListResponse(batches);
   }
 
   /**
@@ -95,9 +106,12 @@ export class BatchesController {
   )
   async findByBranchAndProduct(
     @Param('branchId') branchId: string,
+    @CurrentUser() user: CurrentUserData,
     @Param('productId') productId: string,
-  ): Promise<BatchDocument[]> {
-    return this.batchesService.findByBranchAndProduct(branchId, productId);
+  ) {
+    const resolvedBranchId = resolveBranchId(user, branchId) as string;
+    const batches = await this.batchesService.findByBranchAndProduct(resolvedBranchId, productId);
+    return apiListResponse(batches);
   }
 
   /**
@@ -113,10 +127,13 @@ export class BatchesController {
   )
   async findExpiring(
     @Param('branchId') branchId: string,
+    @CurrentUser() user: CurrentUserData,
     @Query('days') days?: string,
-  ): Promise<BatchDocument[]> {
+  ) {
+    const resolvedBranchId = resolveBranchId(user, branchId) as string;
     const daysUntilExpiry = days ? parseInt(days, 10) : 30;
-    return this.batchesService.findExpiring(branchId, daysUntilExpiry);
+    const batches = await this.batchesService.findExpiring(resolvedBranchId, daysUntilExpiry);
+    return apiListResponse(batches);
   }
 
   /**
@@ -132,9 +149,12 @@ export class BatchesController {
     UserRole.AUDITOR,
   )
   async findExpired(
+    @CurrentUser() user: CurrentUserData,
     @Query('branchId') branchId?: string,
-  ): Promise<BatchDocument[]> {
-    return this.batchesService.findExpired(branchId);
+  ) {
+    const resolvedBranchId = resolveBranchId(user, branchId);
+    const batches = await this.batchesService.findExpired(resolvedBranchId);
+    return apiListResponse(batches);
   }
 
   /**
@@ -149,8 +169,9 @@ export class BatchesController {
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
-  async findById(@Param('id') id: string): Promise<BatchDocument> {
-    return this.batchesService.findById(id);
+  async findById(@Param('id') id: string) {
+    const batch = await this.batchesService.findById(id);
+    return apiResponse(batch);
   }
 
   /**
@@ -163,7 +184,8 @@ export class BatchesController {
   async update(
     @Param('id') id: string,
     @Body() updateBatchDto: UpdateBatchDto,
-  ): Promise<BatchDocument> {
-    return this.batchesService.update(id, updateBatchDto);
+  ) {
+    const batch = await this.batchesService.update(id, updateBatchDto);
+    return apiResponse(batch);
   }
 }

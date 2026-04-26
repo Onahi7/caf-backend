@@ -20,8 +20,29 @@ export class UsersRepository {
     return user.save();
   }
 
-  async findAll(): Promise<UserDocument[]> {
-    return this.userModel.find().exec();
+  async findAll(
+    role?: string,
+    branchId?: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: UserDocument[]; total: number }> {
+    const query: Record<string, unknown> = {};
+
+    if (role) {
+      query.role = role;
+    }
+
+    if (branchId) {
+      query.branchId = new Types.ObjectId(branchId);
+    }
+
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.userModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      this.userModel.countDocuments(query).exec(),
+    ]);
+
+    return { data, total };
   }
 
   async findById(id: string): Promise<UserDocument | null> {

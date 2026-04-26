@@ -48,8 +48,25 @@ export class UsersController {
   async findAll(
     @CurrentUser() user: CurrentUserData,
     @Query('role') role?: UserRole,
-  ): Promise<UserDocument[]> {
-    return this.usersService.findAll(user, role);
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+  ) {
+    const p = parseInt(page, 10);
+    const l = parseInt(limit, 10);
+    const { data, total } = await this.usersService.findAll(user, role, p, l);
+    return {
+      success: true,
+      data,
+      count: total,
+      pagination: {
+        page: p,
+        limit: l,
+        total,
+        pages: Math.ceil(total / l),
+        hasNext: p < Math.ceil(total / l),
+        hasPrev: p > 1,
+      },
+    };
   }
 
   /**

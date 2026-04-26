@@ -1,6 +1,5 @@
 import {
   Controller,
-  ForbiddenException,
   Get,
   Query,
   Res,
@@ -14,9 +13,10 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import {
   CurrentUser,
-  CurrentUserData,
 } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
+import { resolveBranchId } from '../common/utils/branch-scope.util.js';
 import { ReportsService } from './reports.service.js';
 import { ValuationService } from './valuation.service.js';
 import { ExportService, ExportFormat } from './export.service.js';
@@ -56,34 +56,6 @@ export class ReportsController {
     }
   }
 
-  /**
-   * Enforces branch scoping by role.
-   * - SUPER_ADMIN: unrestricted — can request any branchId or none (cross-branch).
-   * - Everyone else: if they supply a branchId it must match their assigned branch;
-   *   if they omit it their own branchId is used automatically.
-   */
-  private resolveBranchId(
-    user: CurrentUserData,
-    requestedBranchId?: string,
-  ): string | undefined {
-    if (user.role === UserRole.SUPER_ADMIN) {
-      return requestedBranchId; // unrestricted
-    }
-
-    if (!user.branchId) {
-      throw new ForbiddenException(
-        'Your account is not assigned to a branch. Contact an administrator.',
-      );
-    }
-
-    if (requestedBranchId && requestedBranchId !== String(user.branchId)) {
-      throw new ForbiddenException(
-        'You can only view reports for your own branch.',
-      );
-    }
-
-    return String(user.branchId);
-  }
 
   /**
    * GET /reports/dashboard-stats
@@ -102,7 +74,7 @@ export class ReportsController {
     @CurrentUser() user: CurrentUserData,
     @Query('branchId') branchId: string,
   ) {
-    const resolvedBranchId = this.resolveBranchId(user, branchId);
+    const resolvedBranchId = resolveBranchId(user, branchId);
     this.logger.log(`Getting dashboard stats for branch: ${resolvedBranchId}`);
     return this.reportsService.getDashboardStats(resolvedBranchId as string);
   }
@@ -117,7 +89,7 @@ export class ReportsController {
     @CurrentUser() user: CurrentUserData,
     @Query() dto: SalesReportDto,
   ) {
-    dto.branchId = this.resolveBranchId(user, dto.branchId) as string;
+    dto.branchId = resolveBranchId(user, dto.branchId) as string;
     return this.reportsService.generateSalesReport(dto);
   }
 
@@ -131,7 +103,7 @@ export class ReportsController {
     @CurrentUser() user: CurrentUserData,
     @Query() dto: InventoryReportDto,
   ) {
-    dto.branchId = this.resolveBranchId(user, dto.branchId) as string;
+    dto.branchId = resolveBranchId(user, dto.branchId) as string;
     return this.reportsService.generateInventoryReport(dto);
   }
 
@@ -150,7 +122,7 @@ export class ReportsController {
     @CurrentUser() user: CurrentUserData,
     @Query() dto: ExpiryReportDto,
   ) {
-    dto.branchId = this.resolveBranchId(user, dto.branchId) as string;
+    dto.branchId = resolveBranchId(user, dto.branchId) as string;
     return this.reportsService.generateExpiryReport(dto);
   }
 
@@ -164,7 +136,7 @@ export class ReportsController {
     @CurrentUser() user: CurrentUserData,
     @Query() dto: InventoryReportDto,
   ) {
-    dto.branchId = this.resolveBranchId(user, dto.branchId) as string;
+    dto.branchId = resolveBranchId(user, dto.branchId) as string;
     return this.reportsService.generateInventoryReport({
       ...dto,
       lowStockOnly: true,
@@ -187,7 +159,7 @@ export class ReportsController {
     @Res() res: Response,
   ) {
     this.logger.log('Generating sales report');
-    dto.branchId = this.resolveBranchId(user, dto.branchId) as string;
+    dto.branchId = resolveBranchId(user, dto.branchId) as string;
 
     const report = await this.reportsService.generateSalesReport(dto);
 
@@ -249,7 +221,7 @@ export class ReportsController {
     @Res() res: Response,
   ) {
     this.logger.log('Generating inventory report');
-    dto.branchId = this.resolveBranchId(user, dto.branchId) as string;
+    dto.branchId = resolveBranchId(user, dto.branchId) as string;
 
     const report = await this.reportsService.generateInventoryReport(dto);
 
@@ -322,7 +294,7 @@ export class ReportsController {
     @Res() res: Response,
   ) {
     this.logger.log('Generating expiry report');
-    dto.branchId = this.resolveBranchId(user, dto.branchId) as string;
+    dto.branchId = resolveBranchId(user, dto.branchId) as string;
 
     const report = await this.reportsService.generateExpiryReport(dto);
 
@@ -389,7 +361,7 @@ export class ReportsController {
     @Res() res: Response,
   ) {
     this.logger.log('Generating transfer report');
-    dto.branchId = this.resolveBranchId(user, dto.branchId) as string;
+    dto.branchId = resolveBranchId(user, dto.branchId) as string;
 
     const report = await this.reportsService.generateTransferReport(dto);
 
@@ -454,7 +426,7 @@ export class ReportsController {
     @Query('branchId') branchId: string,
     @Query('method') method: ValuationMethod = ValuationMethod.FIFO,
   ) {
-    const resolvedBranchId = this.resolveBranchId(user, branchId);
+    const resolvedBranchId = resolveBranchId(user, branchId);
     this.logger.log(`Getting valuation for branch ${resolvedBranchId} using ${method}`);
 
     if (!resolvedBranchId) {
@@ -510,7 +482,7 @@ export class ReportsController {
     @Query('groupBy') _groupBy: string = 'day',
   ) {
     // Enforce branch scoping
-    this.resolveBranchId(user, branchId);
+    resolveBranchId(user, branchId);
     this.logger.log(`Generating customer report from ${from} to ${to}`);
 
     // Return mock data for now - implement actual logic later
@@ -545,7 +517,7 @@ export class ReportsController {
     @Query('format') _format: string = 'csv',
     @Res() res: Response,
   ) {
-    this.resolveBranchId(user, branchId);
+    resolveBranchId(user, branchId);
     this.logger.log(`Exporting customer report from ${from} to ${to}`);
 
     // Return empty CSV for now
@@ -572,7 +544,7 @@ export class ReportsController {
     @Query('groupBy') _groupBy: string = 'day',
     @Query('branchId') branchId?: string,
   ) {
-    const resolvedBranchId = this.resolveBranchId(user, branchId);
+    const resolvedBranchId = resolveBranchId(user, branchId);
     this.logger.log(`Generating purchase report from ${from} to ${to} for branch ${resolvedBranchId}`);
 
     // Return mock data for now
@@ -601,7 +573,7 @@ export class ReportsController {
     @Query('format') _format: string = 'csv',
     @Res() res: Response,
   ) {
-    this.resolveBranchId(user, branchId);
+    resolveBranchId(user, branchId);
     this.logger.log(`Exporting purchase report from ${from} to ${to}`);
 
     const csv = 'Supplier,Purchase Count,Total Amount\n';

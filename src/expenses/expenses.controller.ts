@@ -2,24 +2,32 @@ import {
   Controller,
   Get,
   Post,
-  Delete,
+  Patch,
   Body,
   Param,
   Query,
   UseGuards,
-  Request,
+  UseInterceptors,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { ExpensesService } from './expenses.service.js';
 import { CreateExpenseDto } from './dto/create-expense.dto.js';
 import { ExpenseFilterDto } from './dto/expense-filter.dto.js';
 import { ExpenseDocument } from './schemas/expense.schema.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
+import { resolveBranchId } from '../common/utils/branch-scope.util.js';
+import { apiResponse, apiListResponse, apiMessageResponse } from '../common/utils/api-response.util.js';
+import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
+import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
 
 @Controller('expenses')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}
 
@@ -34,10 +42,15 @@ export class ExpensesController {
     UserRole.CASHIER,
     UserRole.PHARMACIST,
   )
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
+  @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createExpenseDto: CreateExpenseDto,
-  ): Promise<ExpenseDocument> {
-    return this.expensesService.create(createExpenseDto);
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<{ success: true; data: ExpenseDocument }> {
+    const expense = await this.expensesService.create(createExpenseDto, user.userId);
+    return apiResponse(expense);
   }
 
   /**
@@ -56,8 +69,31 @@ export class ExpensesController {
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
-  async findAll(@Query() filter: ExpenseFilterDto): Promise<ExpenseDocument[]> {
-    return this.expensesService.findAll(filter);
+  async findAll(
+    @Query() filter: ExpenseFilterDto & { page?: string; limit?: string },
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    filter.branchId = resolveBranchId(user, filter.branchId) as string;
+    const p = parseInt(filter.page || '1', 10);
+    const l = parseInt(filter.limit || '20', 10);
+    const { data, total } = await this.expensesService.findAll({
+      ...filter,
+      page: p,
+      limit: l,
+    });
+    return {
+      success: true,
+      data,
+      count: total,
+      pagination: {
+        page: p,
+        limit: l,
+        total,
+        pages: Math.ceil(total / l),
+        hasNext: p < Math.ceil(total / l),
+        hasPrev: p > 1,
+      },
+    };
   }
 
   /**
@@ -72,8 +108,9 @@ export class ExpensesController {
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
-  async findById(@Param('id') id: string): Promise<ExpenseDocument> {
-    return this.expensesService.findById(id);
+  async findById(@Param('id') id: string): Promise<{ success: true; data: ExpenseDocument }> {
+    const expense = await this.expensesService.findById(id);
+    return apiResponse(expense);
   }
 
   /**
@@ -90,8 +127,9 @@ export class ExpensesController {
   )
   async findByShift(
     @Param('shiftId') shiftId: string,
-  ): Promise<ExpenseDocument[]> {
-    return this.expensesService.findByShift(shiftId);
+  ): Promise<{ success: true; data: ExpenseDocument[]; count: number }> {
+    const expenses = await this.expensesService.findByShift(shiftId);
+    return apiListResponse(expenses);
   }
 
   /**
@@ -108,9 +146,12 @@ export class ExpensesController {
   )
   async findByBranch(
     @Param('branchId') branchId: string,
+    @CurrentUser() user: CurrentUserData,
     @Query('limit') limit?: number,
-  ): Promise<ExpenseDocument[]> {
-    return this.expensesService.findByBranch(branchId, limit);
+  ): Promise<{ success: true; data: ExpenseDocument[]; count: number }> {
+    const resolvedBranchId = resolveBranchId(user, branchId) as string;
+    const expenses = await this.expensesService.findByBranch(resolvedBranchId, limit);
+    return apiListResponse(expenses);
   }
 
   /**
@@ -140,24 +181,27 @@ export class ExpensesController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
   async getTotalByCategory(
     @Param('branchId') branchId: string,
+    @CurrentUser() user: CurrentUserData,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ): Promise<{ category: string; total: number; count: number }[]> {
+    const resolvedBranchId = resolveBranchId(user, branchId) as string;
     const start = startDate ? new Date(startDate) : undefined;
     const end = endDate ? new Date(endDate) : undefined;
-    return this.expensesService.getTotalByCategory(branchId, start, end);
+    return this.expensesService.getTotalByCategory(resolvedBranchId, start, end);
   }
 
   /**
    * Soft delete an expense
-   * DELETE /expenses/:id
+   * PATCH /expenses/:id/soft-delete
    */
-  @Delete(':id')
+  @Patch(':id/soft-delete')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async softDelete(
     @Param('id') id: string,
-    @Request() req: any,
-  ): Promise<ExpenseDocument> {
-    return this.expensesService.softDelete(id, req.user.id);
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<{ success: true; message: string }> {
+    await this.expensesService.softDelete(id, user.userId);
+    return apiMessageResponse('Expense deleted');
   }
 }

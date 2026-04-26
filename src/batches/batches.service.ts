@@ -140,6 +140,14 @@ export class BatchesService {
     const selectedBatches: SelectedBatch[] = [];
     let remainingQuantity = quantityNeeded;
 
+    // Business rule: newest available batch sets current selling price.
+    const latestBatchForPrice = [...availableBatches].sort((a, b) => {
+      const aTime = new Date(a.createdAt ?? 0).getTime();
+      const bTime = new Date(b.createdAt ?? 0).getTime();
+      return bTime - aTime;
+    })[0];
+    const currentSellingPrice = latestBatchForPrice?.sellingPrice ?? 0;
+
     // Select batches in FEFO order
     for (const batch of availableBatches) {
       if (remainingQuantity <= 0) {
@@ -154,7 +162,7 @@ export class BatchesService {
       selectedBatches.push({
         batchId: batch._id.toString(),
         quantity: quantityFromBatch,
-        sellingPrice: batch.sellingPrice,
+        sellingPrice: currentSellingPrice,
         lotNumber: batch.lotNumber,
         expiryDate: batch.expiryDate,
       });

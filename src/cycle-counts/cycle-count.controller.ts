@@ -13,8 +13,8 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import {
   CurrentUser,
-  CurrentUserData,
 } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import { CycleCountService } from './cycle-count.service.js';
 import { CreateCycleCountDto } from './dto/create-cycle-count.dto.js';

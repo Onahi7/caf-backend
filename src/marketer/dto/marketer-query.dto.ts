@@ -23,6 +23,19 @@ export class MarketerAssignmentQueryDto {
   @IsOptional()
   @IsEnum(MarketerAssignmentStatus)
   status?: MarketerAssignmentStatus;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  limit?: number;
 }
 
 export class MarketerSalesQueryDto {
@@ -33,6 +46,12 @@ export class MarketerSalesQueryDto {
   @IsOptional()
   @IsMongoId()
   marketerId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
 
   @IsOptional()
   @Type(() => Number)

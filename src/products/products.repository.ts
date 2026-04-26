@@ -62,7 +62,11 @@ export class ProductsRepository {
     branchId?: string,
     category?: string,
     brand?: string,
-  ): Promise<ProductDocument[]> {
+    page: number = 1,
+    limit: number = 20,
+    sortBy?: string,
+    sortOrder: 'asc' | 'desc' = 'asc',
+  ): Promise<{ data: ProductDocument[]; total: number }> {
     const filter: Record<string, unknown> = {
       $or: [
         { name: { $regex: query, $options: 'i' } },
@@ -83,7 +87,21 @@ export class ProductsRepository {
       filter.brand = brand;
     }
 
-    return this.productModel.find(filter).exec();
+    const skip = (page - 1) * limit;
+    const sortField = sortBy || 'createdAt';
+    const sortDirection = sortOrder === 'asc' ? 1 : -1;
+
+    const [data, total] = await Promise.all([
+      this.productModel
+        .find(filter)
+        .sort({ [sortField]: sortDirection })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.productModel.countDocuments(filter).exec(),
+    ]);
+
+    return { data, total };
   }
 
   async findByCategory(

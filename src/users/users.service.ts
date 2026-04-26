@@ -33,25 +33,20 @@ export class UsersService {
     return this.usersRepository.create(createUserDto);
   }
 
-  async findAll(user?: {
-    role: string;
-    branchId?: string;
-  }, role?: UserRole): Promise<UserDocument[]> {
-    let users: UserDocument[];
+  async findAll(
+    user?: { role: string; branchId?: string },
+    role?: UserRole,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: UserDocument[]; total: number }> {
+    const branchId = user?.role === UserRole.BRANCH_MANAGER ? user.branchId : undefined;
 
-    if (!user || user.role === UserRole.SUPER_ADMIN) {
-      users = await this.usersRepository.findAll();
-      return role ? users.filter((u) => u.role === role) : users;
+    if (!user || user.role === UserRole.SUPER_ADMIN || user.role === UserRole.BRANCH_MANAGER) {
+      return this.usersRepository.findAll(role, branchId, page, limit);
     }
 
-    if (user.role === UserRole.BRANCH_MANAGER && user.branchId) {
-      users = await this.usersRepository.findByBranch(user.branchId);
-      return role ? users.filter((u) => u.role === role) : users;
-    }
-
-    // For other roles, return empty array or throw forbidden
-    // Since the guard already checks roles, this shouldn't happen
-    return [];
+    // For other roles, return empty
+    return { data: [], total: 0 };
   }
 
   async findById(id: string): Promise<UserDocument> {

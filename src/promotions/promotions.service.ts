@@ -3,14 +3,14 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { PromotionsRepository } from './promotions.repository';
-import { CreatePromotionDto } from './dto/create-promotion.dto';
-import { UpdatePromotionDto } from './dto/update-promotion.dto';
+import { PromotionsRepository } from './promotions.repository.js';
+import { CreatePromotionDto } from './dto/create-promotion.dto.js';
+import { UpdatePromotionDto } from './dto/update-promotion.dto.js';
 import {
   Promotion,
   PromotionScope,
   PromotionType,
-} from './schemas/promotion.schema';
+} from './schemas/promotion.schema.js';
 
 interface CartItem {
   productId: string;

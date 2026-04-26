@@ -8,7 +8,6 @@ import {
   NotFoundException,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -20,6 +19,7 @@ import { BiometricVerifyDto } from './dto/biometric-verify.dto.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import type { CurrentUserData } from './decorators/current-user.decorator.js';
 import { UsersService } from '../users/users.service.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 
 @Controller('auth')
 @SkipThrottle() // individual routes opt-in or override below
@@ -45,7 +45,7 @@ export class AuthController {
   }
 
   @Get('me')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   async getCurrentUser(@CurrentUser() currentUser: CurrentUserData) {
     const user = await this.usersService.findById(currentUser.userId);
 
@@ -66,14 +66,14 @@ export class AuthController {
   }
 
   @Post('logout')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@CurrentUser() user: CurrentUserData): Promise<void> {
     await this.authService.logout(user.userId, user.username);
   }
 
   @Post('change-password')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async changePassword(
     @CurrentUser() user: CurrentUserData,
@@ -91,7 +91,7 @@ export class AuthController {
   // ── Biometric endpoints ────────────────────────────────────────────────────
 
   @Post('biometric/register')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async biometricRegister(
     @CurrentUser() user: CurrentUserData,
