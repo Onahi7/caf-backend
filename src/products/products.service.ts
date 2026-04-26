@@ -33,17 +33,7 @@ export class ProductsService {
     return parts.slice(0, 3).join('-') + '-' + suffix;
   }
 
-  private calculateEffectivePrice(product: ProductDocument): number {
-    if (product.suggestedRetailPrice > 0) {
-      return product.suggestedRetailPrice;
-    }
 
-    if (product.markupPercentage > 0) {
-      return product.costPrice * (1 + product.markupPercentage / 100);
-    }
-
-    return product.basePrice;
-  }
 
   async attachSellingPriceAndStock(
     products: ProductDocument[],
@@ -274,8 +264,7 @@ export class ProductsService {
       throw new NotFoundException(`Product with ID ${id} not found`);
     }
 
-    const targetBranchId =
-      updateProductDto.branchId || existingProduct.branchId.toString();
+    const targetBranchId = existingProduct.branchId.toString();
 
     if (updateProductDto.sku && updateProductDto.sku !== existingProduct.sku) {
       const existingBySku = await this.productsRepository.findBySkuAndBranch(
