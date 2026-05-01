@@ -17,31 +17,29 @@ import { SaleFilterDto } from './dto/sale-filter.dto.js';
  */
 @Injectable()
 export class SalesRepository {
-  constructor(@InjectModel(Sale.name) private saleModel: Model<SaleDocument>) {}
+  constructor(
+    @InjectModel(Sale.name) private saleModel: Model<SaleDocument>,
+    @InjectModel('Counter') private counterModel: Model<any>,
+  ) {}
 
   /**
-   * Generate a unique receipt number
+   * Generate a unique receipt number using atomic counter
    * Format: RCP-YYYYMMDD-{XXXXX} (where XXXXX is a sequential number padded to 5 digits)
+   * Uses MongoDB's atomic $inc to prevent race conditions
    */
   async generateReceiptNumber(_branchId: string): Promise<string> {
     const today = new Date();
     const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
     const prefix = `RCP-${dateStr}`;
 
-    // Find the last receipt number for today
-    const lastSale = await this.saleModel
-      .findOne({
-        receiptNumber: { $regex: `^${prefix}` },
-      })
-      .sort({ receiptNumber: -1 })
-      .exec();
+    // Use atomic findOneAndUpdate with $inc to prevent race conditions
+    const result = await this.counterModel.findOneAndUpdate(
+      { _id: prefix },
+      { $inc: { sequence: 1 } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
-    let sequence = 1;
-    if (lastSale) {
-      const lastSequence = parseInt(lastSale.receiptNumber.split('-')[2], 10);
-      sequence = lastSequence + 1;
-    }
-
+    const sequence = result.sequence;
     return `${prefix}-${sequence.toString().padStart(5, '0')}`;
   }
 

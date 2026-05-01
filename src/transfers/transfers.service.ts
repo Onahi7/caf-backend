@@ -90,6 +90,8 @@ export class TransfersService {
     }
 
     // Validate sufficient quantity
+    // Note: This is a pre-check; final availability is verified at approval time
+    // to prevent TOCTOU race conditions (see approveTransfer method, lines 187-198)
     if (batch.quantityAvailable < dto.quantity) {
       throw new BadRequestException(
         `Insufficient quantity. Available: ${batch.quantityAvailable}, Requested: ${dto.quantity}`,

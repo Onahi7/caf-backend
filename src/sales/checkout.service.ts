@@ -89,23 +89,8 @@ export class CheckoutService {
     // Check prescription requirements (Property 79)
     await this.validatePrescriptionRequirements(dto.items, dto.prescriptionUrl);
 
-    // Select batches for all items using FEFO
-    const batchSelections = await this.selectBatchesForItems(
-      dto.branchId,
-      dto.items,
-    );
-
-    // Calculate totals
-    const subtotal = batchSelections.reduce(
-      (sum, selection) => sum + selection.totalAmount,
-      0,
-    );
+    // Calculate totals (will be recalculated after FEFO selection inside transaction)
     const discount = dto.discount || 0;
-    const total = subtotal - discount;
-
-    if (total < 0) {
-      throw new BadRequestException('Discount cannot exceed subtotal');
-    }
 
     // Generate receipt number
     const receiptNumber = await this.salesRepository.generateReceiptNumber(
@@ -117,6 +102,24 @@ export class CheckoutService {
     session.startTransaction();
 
     try {
+      // Select batches for all items using FEFO INSIDE the transaction
+      // This prevents race conditions where batches are selected outside and modified before transaction commits
+      const batchSelections = await this.selectBatchesForItems(
+        dto.branchId,
+        dto.items,
+      );
+
+      // Calculate totals based on selected batches
+      const subtotal = batchSelections.reduce(
+        (sum, selection) => sum + selection.totalAmount,
+        0,
+      );
+      const total = subtotal - discount;
+
+      if (total < 0) {
+        throw new BadRequestException('Discount cannot exceed subtotal');
+      }
+
       // Build sale items from batch selections
       const saleItems = this.buildSaleItems(batchSelections);
 

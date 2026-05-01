@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, Types, ClientSession } from 'mongoose';
 import { Shift, ShiftDocument, ShiftStatus } from './schemas/shift.schema.js';
 import { OpenShiftDto } from './dto/open-shift.dto.js';
 import { ShiftFilterDto } from './dto/shift-filter.dto.js';
@@ -11,7 +11,7 @@ export class ShiftsRepository {
     @InjectModel(Shift.name) private shiftModel: Model<ShiftDocument>,
   ) {}
 
-  async create(openShiftDto: OpenShiftDto): Promise<ShiftDocument> {
+  async create(openShiftDto: OpenShiftDto, session?: ClientSession): Promise<ShiftDocument> {
     const shift = new this.shiftModel({
       branchId: new Types.ObjectId(openShiftDto.branchId),
       terminalId: openShiftDto.terminalId,
@@ -20,6 +20,10 @@ export class ShiftsRepository {
       status: ShiftStatus.OPEN,
       openedAt: new Date(),
     });
+
+    if (session) {
+      return shift.save({ session });
+    }
     return shift.save();
   }
 
@@ -78,16 +82,23 @@ export class ShiftsRepository {
 
   /**
    * Find any open shift for a cashier (across all branches)
+   * Optional session parameter for transaction consistency
    */
   async findOpenShiftForCashier(
     cashierId: string,
+    session?: ClientSession,
   ): Promise<ShiftDocument | null> {
-    return this.shiftModel
+    const query = this.shiftModel
       .findOne({
         cashierId: new Types.ObjectId(cashierId),
         status: ShiftStatus.OPEN,
-      })
-      .exec();
+      });
+
+    if (session) {
+      query.session(session);
+    }
+
+    return query.exec();
   }
 
   /**

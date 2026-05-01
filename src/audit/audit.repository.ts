@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { AuditLog, AuditLogDocument } from './schemas/audit-log.schema.js';
+import { AuditLog, AuditLogDocument, AuditResource } from './schemas/audit-log.schema.js';
 import { AuditFilterDto, CreateAuditLogDto } from './dto/audit-filter.dto.js';
 
 @Injectable()
@@ -95,7 +95,7 @@ export class AuditRepository {
   }
 
   async findByResourceId(
-    resource: string,
+    resource: AuditResource,
     resourceId: string,
   ): Promise<AuditLogDocument[]> {
     return this.auditLogModel

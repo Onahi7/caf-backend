@@ -156,6 +156,8 @@ export class TransfersController {
    */
   @Patch(':id/reject')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   async reject(
     @Param('id') id: string,
     @Body() rejectTransferDto: RejectTransferDto,

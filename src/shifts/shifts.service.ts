@@ -6,6 +6,7 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import { InjectConnection } from '@nestjs/mongoose';
 import { ShiftsRepository } from './shifts.repository.js';
 import { OpenShiftDto } from './dto/open-shift.dto.js';
 import { CloseShiftDto } from './dto/close-shift.dto.js';
@@ -13,6 +14,7 @@ import { ShiftFilterDto } from './dto/shift-filter.dto.js';
 import { ShiftDocument, ShiftStatus } from './schemas/shift.schema.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { SalesService } from '../sales/sales.service.js';
+import { Connection } from 'mongoose';
 
 @Injectable()
 export class ShiftsService {
@@ -20,6 +22,7 @@ export class ShiftsService {
     private readonly shiftsRepository: ShiftsRepository,
     @Inject(forwardRef(() => SalesService))
     private readonly salesService: SalesService,
+    @InjectConnection() private readonly connection: Connection,
   ) {}
 
   /**
@@ -42,6 +45,7 @@ export class ShiftsService {
    * Open a new shift for a cashier
    * Requirements: 7.1
    * Properties: 26 (Shift opening completeness)
+   * Uses transaction to prevent race conditions on concurrent open requests
    */
   async openShift(openShiftDto: OpenShiftDto): Promise<ShiftDocument> {
     // Validate required fields
@@ -64,19 +68,34 @@ export class ShiftsService {
     // Validate opening cash amount
     this.validateCashAmount(openShiftDto.openingCash, 'openingCash');
 
-    // Check if cashier already has an open shift
-    const existingOpenShift =
-      await this.shiftsRepository.findOpenShiftForCashier(
-        openShiftDto.cashierId,
-      );
+    // Use transaction to prevent race conditions on concurrent open requests
+    const session = await this.connection.startSession();
+    session.startTransaction();
 
-    if (existingOpenShift) {
-      throw new ConflictException(
-        'Cashier already has an open shift. Please close the existing shift first.',
-      );
+    try {
+      // Check if cashier already has an open shift (inside transaction)
+      const existingOpenShift =
+        await this.shiftsRepository.findOpenShiftForCashier(
+          openShiftDto.cashierId,
+          session, // Pass session for consistency
+        );
+
+      if (existingOpenShift) {
+        await session.abortTransaction();
+        throw new ConflictException(
+          'Cashier already has an open shift. Please close the existing shift first.',
+        );
+      }
+
+      const shift = await this.shiftsRepository.create(openShiftDto, session);
+      await session.commitTransaction();
+      return shift;
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      await session.endSession();
     }
-
-    return this.shiftsRepository.create(openShiftDto);
   }
 
   /**
