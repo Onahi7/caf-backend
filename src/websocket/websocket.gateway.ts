@@ -54,8 +54,21 @@ export class WebSocketGateway
       'http://localhost:5173',
     );
     const allowedOrigins = corsOrigin.split(',').map((value) => value.trim());
+    const mobileOrigins = [
+      'http://localhost',
+      'https://localhost',
+      'capacitor://localhost',
+    ];
+    const frontendOrigins = [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'https://caf-frontend.dicksonhardy7.workers.dev',
+    ];
+    const allAllowedOrigins = [
+      ...new Set([...allowedOrigins, ...mobileOrigins, ...frontendOrigins]),
+    ];
 
-    return allowedOrigins.includes('*') || allowedOrigins.includes(origin);
+    return allowedOrigins.includes('*') || allAllowedOrigins.includes(origin);
   }
 
   /**

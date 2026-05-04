@@ -37,6 +37,9 @@ async function bootstrap() {
   const hardcodedOrigins = [
     'http://localhost:5173',
     'http://localhost:3000',
+    'http://localhost',
+    'https://localhost',
+    'capacitor://localhost',
     'https://caf-frontend.dicksonhardy7.workers.dev',
   ];
   const allAllowedOrigins = [...new Set([...allowedOrigins, ...hardcodedOrigins])];
