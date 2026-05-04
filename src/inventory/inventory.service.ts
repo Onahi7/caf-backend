@@ -19,6 +19,9 @@ import {
   MovementType,
 } from './schemas/stock-movement.schema.js';
 import { EventsService } from '../websocket/events.service.js';
+import { AuditService } from '../audit/audit.service.js';
+import { UsersService } from '../users/users.service.js';
+import { AuditResource } from '../audit/schemas/audit-log.schema.js';
 
 /**
  * Low stock alert interface
@@ -59,6 +62,8 @@ export class InventoryService {
     private readonly stockMovementRepository: StockMovementRepository,
     private readonly batchesRepository: BatchesRepository,
     private readonly eventsService: EventsService,
+    private readonly auditService: AuditService,
+    private readonly usersService: UsersService,
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
   ) {}
@@ -228,6 +233,25 @@ export class InventoryService {
       );
 
       await session.commitTransaction();
+
+      // Audit log: inventory adjustment
+      const actingUser = await this.usersService.findById(userId).catch(() => null);
+      await this.auditService.logUpdate(
+        userId,
+        actingUser?.username ?? userId,
+        AuditResource.INVENTORY,
+        batch.productId.toString(),
+        { previousQuantity },
+        { newQuantity, quantityAvailable: updatedBatch?.quantityAvailable },
+        dto.branchId,
+        {
+          batchId: dto.batchId,
+          reason: dto.reason,
+          adjustmentAmount: dto.quantityChange,
+          movementId: movement._id.toString(),
+          approvedBy: dto.approvedBy,
+        },
+      );
 
       // Emit inventory update event after successful transaction
       if (updatedBatch) {

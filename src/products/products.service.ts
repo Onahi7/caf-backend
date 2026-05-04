@@ -13,6 +13,9 @@ import { ProductSearchDto } from './dto/product-search.dto.js';
 import { ProductDocument } from './schemas/product.schema.js';
 import { Batch, BatchDocument } from '../batches/schemas/batch.schema.js';
 import { InventoryService } from '../inventory/inventory.service.js';
+import { AuditService } from '../audit/audit.service.js';
+import { UsersService } from '../users/users.service.js';
+import { AuditResource } from '../audit/schemas/audit-log.schema.js';
 
 @Injectable()
 export class ProductsService {
@@ -21,6 +24,8 @@ export class ProductsService {
     @InjectModel(Batch.name)
     private readonly batchModel: Model<BatchDocument>,
     private readonly inventoryService: InventoryService,
+    private readonly auditService: AuditService,
+    private readonly usersService: UsersService,
   ) {}
 
   private generateSku(name: string): string {
@@ -180,6 +185,20 @@ export class ProductsService {
         'opening-stock',
       );
     }
+
+    // Audit log: product creation
+    const actingUser = userId
+      ? await this.usersService.findById(userId).catch(() => null)
+      : null;
+    await this.auditService.logCreate(
+      userId ?? 'system',
+      actingUser?.username ?? userId ?? 'system',
+      AuditResource.PRODUCT,
+      product._id.toString(),
+      product.toObject(),
+      product.branchId.toString(),
+      { initialStock: initialStock ?? 0 },
+    );
 
     return product;
   }

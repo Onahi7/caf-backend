@@ -10,6 +10,8 @@ import {
 import { Product, ProductSchema } from '../products/schemas/product.schema.js';
 import { BatchesModule } from '../batches/batches.module.js';
 import { WebSocketModule } from '../websocket/websocket.module.js';
+import { AuditModule } from '../audit/audit.module.js';
+import { UsersModule } from '../users/users.module.js';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { WebSocketModule } from '../websocket/websocket.module.js';
     ]),
     BatchesModule,
     WebSocketModule,
+    AuditModule,
+    UsersModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService, StockMovementRepository],

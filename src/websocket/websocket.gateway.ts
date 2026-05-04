@@ -26,7 +26,7 @@ import { PAYMENT_METHOD_LABELS } from '../common/constants/payment-methods.const
  * WebSocket Gateway for real-time inventory updates
  * Implements branch-based rooms for filtered broadcasting
  */
-@WSGateway({
+@WSGateway(3001, {
   namespace: '/inventory',
 })
 export class WebSocketGateway

@@ -7,6 +7,8 @@ import { ProductsService } from './products.service.js';
 import { ProductsController } from './products.controller.js';
 import { PricingService } from './pricing.service.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
+import { AuditModule } from '../audit/audit.module.js';
+import { UsersModule } from '../users/users.module.js';
 
 @Module({
   imports: [
@@ -15,6 +17,8 @@ import { InventoryModule } from '../inventory/inventory.module.js';
       { name: Batch.name, schema: BatchSchema },
     ]),
     InventoryModule,
+    AuditModule,
+    UsersModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsRepository, ProductsService, PricingService],
