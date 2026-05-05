@@ -160,22 +160,31 @@ export class CheckoutService {
       await session.commitTransaction();
       this.logger.log(`Checkout completed: ${receiptNumber}`);
 
-      // Emit sale completed event after successful transaction
-      this.eventsService.emitSaleUpdate({
-        saleId: sale._id.toString(),
-        branchId: dto.branchId,
-        shiftId: dto.shiftId,
-        total,
-        paymentMethod: dto.paymentMethod,
-        paymentReference: dto.paymentReference,
-        items: saleItems.map((item) => ({
-          productId: item.productId.toString(),
-          batchId: item.batchId.toString(),
-          quantity: item.quantity,
-        })),
-        updateType: 'completed',
-        timestamp: new Date(),
-      });
+      // Emit sale event as a non-blocking side-effect. If websocket/redis is
+      // temporarily unavailable, checkout must still succeed.
+      try {
+        this.eventsService.emitSaleUpdate({
+          saleId: sale._id.toString(),
+          branchId: dto.branchId,
+          shiftId: dto.shiftId,
+          total,
+          paymentMethod: dto.paymentMethod,
+          paymentReference: dto.paymentReference,
+          items: saleItems.map((item) => ({
+            productId: item.productId.toString(),
+            batchId: item.batchId.toString(),
+            quantity: item.quantity,
+          })),
+          updateType: 'completed',
+          timestamp: new Date(),
+        });
+      } catch (emitError) {
+        const emitMessage =
+          emitError instanceof Error ? emitError.message : 'Unknown emit error';
+        this.logger.warn(
+          `Checkout completed but sale event emit failed: ${emitMessage}`,
+        );
+      }
 
       return {
         sale,
