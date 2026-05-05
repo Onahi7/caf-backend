@@ -61,21 +61,26 @@ export class CheckoutService {
    * Properties: 19 (FEFO batch selection), 20 (Multi-batch FEFO), 21 (Expired batch exclusion)
    * Property 28: Sales require open shift
    */
-  async processCheckout(
+async processCheckout(
     dto: CreateSaleDto,
     cashierId: string,
   ): Promise<CheckoutResult> {
-    // Validate shift is open (Property 28)
-    const shift = await this.shiftsService.findById(dto.shiftId);
-    if (!shift) {
-      throw new BadRequestException(`Shift with ID ${dto.shiftId} not found`);
-    }
+    try {
+      // Validate shift is open (Property 28)
+      const shift = await this.shiftsService.findById(dto.shiftId);
+      if (!shift) {
+        throw new BadRequestException(`Shift with ID ${dto.shiftId} not found`);
+      }
 
-    const canAcceptSales = await this.shiftsService.canAcceptSales(dto.shiftId);
-    if (!canAcceptSales) {
-      throw new BadRequestException(
-        'Shift is not open. Cannot process sales on a closed shift.',
-      );
+      const canAcceptSales = await this.shiftsService.canAcceptSales(dto.shiftId);
+      if (!canAcceptSales) {
+        throw new BadRequestException(
+          'Shift is not open. Cannot process sales on a closed shift.',
+        );
+      }
+    } catch (shiftError) {
+      this.logger.error(`Shift validation failed: ${shiftError instanceof Error ? shiftError.message : 'Unknown error'}`);
+      throw shiftError;
     }
 
     // Validate items
@@ -86,16 +91,23 @@ export class CheckoutService {
     // Calculate totals (will be recalculated after FEFO selection inside transaction)
     const discount = dto.discount || 0;
 
-    // Generate receipt number
-    const receiptNumber = await this.salesRepository.generateReceiptNumber(
-      dto.branchId,
-    );
-
-    // Execute checkout in a transaction
-    const session = await this.connection.startSession();
-    session.startTransaction();
-
+    let receiptNumber: string;
     try {
+      // Generate receipt number
+      receiptNumber = await this.salesRepository.generateReceiptNumber(
+        dto.branchId,
+      );
+    } catch (receiptError) {
+      this.logger.error(`Receipt number generation failed: ${receiptError instanceof Error ? receiptError.message : 'Unknown error'}`);
+      throw new BadRequestException('Failed to generate receipt number. Please try again.');
+    }
+
+    let session;
+    try {
+      // Execute checkout in a transaction
+      session = await this.connection.startSession();
+      session.startTransaction();
+
       // Select batches for all items using FEFO INSIDE the transaction
       // This prevents race conditions where batches are selected outside and modified before transaction commits
       const batchSelections = await this.selectBatchesForItems(
@@ -193,14 +205,26 @@ export class CheckoutService {
         totalAmount: total,
       };
     } catch (error) {
-      await session.abortTransaction();
+      if (session) {
+        try {
+          await session.abortTransaction();
+        } catch (abortError) {
+          this.logger.warn(`Failed to abort transaction: ${abortError instanceof Error ? abortError.message : 'Unknown'}`);
+        }
+      }
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
       const errorStack = error instanceof Error ? error.stack : undefined;
       this.logger.error(`Checkout failed: ${errorMessage}`, errorStack);
       throw error;
     } finally {
-      await session.endSession();
+      if (session) {
+        try {
+          await session.endSession();
+        } catch (endError) {
+          this.logger.warn(`Failed to end session: ${endError instanceof Error ? endError.message : 'Unknown'}`);
+        }
+      }
     }
   }
 
