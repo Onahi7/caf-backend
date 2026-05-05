@@ -6,7 +6,6 @@ import { BatchesService } from '../batches/batches.service.js';
 import { BatchesRepository } from '../batches/batches.repository.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { ShiftsService } from '../shifts/shifts.service.js';
-import { ProductsService } from '../products/products.service.js';
 import { CreateSaleDto, SaleItemDto } from './dto/create-sale.dto.js';
 import {
   SaleDocument,
@@ -52,7 +51,6 @@ export class CheckoutService {
     private readonly batchesRepository: BatchesRepository,
     private readonly inventoryService: InventoryService,
     private readonly shiftsService: ShiftsService,
-    private readonly productsService: ProductsService,
     private readonly eventsService: EventsService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
@@ -62,7 +60,6 @@ export class CheckoutService {
    * Requirements: 5.1, 5.2, 5.3, 17.1
    * Properties: 19 (FEFO batch selection), 20 (Multi-batch FEFO), 21 (Expired batch exclusion)
    * Property 28: Sales require open shift
-   * Property 79: Prescription requirement enforcement
    */
   async processCheckout(
     dto: CreateSaleDto,
@@ -85,9 +82,6 @@ export class CheckoutService {
     if (!dto.items || dto.items.length === 0) {
       throw new BadRequestException('Sale must contain at least one item');
     }
-
-    // Check prescription requirements (Property 79)
-    await this.validatePrescriptionRequirements(dto.items, dto.prescriptionUrl);
 
     // Calculate totals (will be recalculated after FEFO selection inside transaction)
     const discount = dto.discount || 0;
@@ -198,25 +192,6 @@ export class CheckoutService {
       throw error;
     } finally {
       await session.endSession();
-    }
-  }
-
-  /**
-   * Validate prescription requirements for items
-   * Property 79: Prescription requirement enforcement
-   */
-  private async validatePrescriptionRequirements(
-    items: SaleItemDto[],
-    prescriptionUrl?: string,
-  ): Promise<void> {
-    for (const item of items) {
-      const product = await this.productsService.findById(item.productId);
-
-      if (product.requiresPrescription && !prescriptionUrl) {
-        throw new BadRequestException(
-          `Product "${product.name}" requires a prescription. Please attach a prescription to complete this sale.`,
-        );
-      }
     }
   }
 
