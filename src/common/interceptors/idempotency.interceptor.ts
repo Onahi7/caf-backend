@@ -6,7 +6,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { catchError, tap } from 'rxjs/operators';
+import { throwError } from 'rxjs';
 import type { Request, Response } from 'express';
 import { RedisService } from '../../redis/redis.service.js';
 import type { IdempotencyRecord } from '../guards/idempotency.guard.js';
@@ -54,6 +55,15 @@ export class IdempotencyInterceptor implements NestInterceptor {
             err,
           );
         }
+      }),
+      catchError((err) => {
+        void this.redis.del(redisKey).catch((deleteErr) => {
+          this.logger.error(
+            `Failed to clear idempotency record for ${redisKey}`,
+            deleteErr,
+          );
+        });
+        return throwError(() => err);
       }),
     );
   }
