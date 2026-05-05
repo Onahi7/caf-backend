@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Product, ProductDocument } from './schemas/product.schema.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
@@ -11,19 +11,33 @@ export class ProductsRepository {
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
   ) {}
 
+  private withBranchFilter(branchId?: string): Record<string, unknown> {
+    if (!branchId) {
+      return {};
+    }
+
+    return {
+      branchId: Types.ObjectId.isValid(branchId)
+        ? new Types.ObjectId(branchId)
+        : branchId,
+    };
+  }
+
   async create(createProductDto: CreateProductDto): Promise<ProductDocument> {
     const product = new this.productModel(createProductDto);
     return product.save();
   }
 
   async findAll(branchId?: string): Promise<ProductDocument[]> {
-    const filter = branchId ? { branchId } : {};
+    const filter = this.withBranchFilter(branchId);
     return this.productModel.find(filter).exec();
   }
 
   async findActive(branchId?: string): Promise<ProductDocument[]> {
-    const filter: Record<string, unknown> = { isActive: true };
-    if (branchId) filter.branchId = branchId;
+    const filter: Record<string, unknown> = {
+      isActive: true,
+      ...this.withBranchFilter(branchId),
+    };
     return this.productModel.find(filter).exec();
   }
 
@@ -35,7 +49,9 @@ export class ProductsRepository {
     sku: string,
     branchId: string,
   ): Promise<ProductDocument | null> {
-    return this.productModel.findOne({ sku, branchId }).exec();
+    return this.productModel
+      .findOne({ sku, ...this.withBranchFilter(branchId) })
+      .exec();
   }
 
   async findBySku(sku: string): Promise<ProductDocument | null> {
@@ -46,7 +62,9 @@ export class ProductsRepository {
     barcode: string,
     branchId: string,
   ): Promise<ProductDocument | null> {
-    return this.productModel.findOne({ barcode, branchId }).exec();
+    return this.productModel
+      .findOne({ barcode, ...this.withBranchFilter(branchId) })
+      .exec();
   }
 
   async findByBarcode(barcode: string): Promise<ProductDocument | null> {
@@ -75,9 +93,7 @@ export class ProductsRepository {
       ],
     };
 
-    if (branchId) {
-      filter.branchId = branchId;
-    }
+    Object.assign(filter, this.withBranchFilter(branchId));
 
     if (category) {
       filter.category = category;
@@ -108,8 +124,10 @@ export class ProductsRepository {
     category: string,
     branchId?: string,
   ): Promise<ProductDocument[]> {
-    const filter: Record<string, unknown> = { category };
-    if (branchId) filter.branchId = branchId;
+    const filter: Record<string, unknown> = {
+      category,
+      ...this.withBranchFilter(branchId),
+    };
     return this.productModel.find(filter).exec();
   }
 
@@ -117,8 +135,10 @@ export class ProductsRepository {
     brand: string,
     branchId?: string,
   ): Promise<ProductDocument[]> {
-    const filter: Record<string, unknown> = { brand };
-    if (branchId) filter.branchId = branchId;
+    const filter: Record<string, unknown> = {
+      brand,
+      ...this.withBranchFilter(branchId),
+    };
     return this.productModel.find(filter).exec();
   }
 
