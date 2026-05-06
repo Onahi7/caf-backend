@@ -87,7 +87,7 @@ export class FinanceService {
   async findAll(
     filter: FinanceTransactionFilterDto,
     user: CurrentUserData,
-  ): Promise<FinanceTransactionDocument[]> {
+  ): Promise<{ data: FinanceTransactionDocument[]; total: number }> {
     const actor = this.asActor(user);
     const scopedFilter = this.applyReadScope(filter, actor);
     return this.financeRepository.findAll(scopedFilter);

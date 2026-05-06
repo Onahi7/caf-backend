@@ -39,6 +39,7 @@ export class MarketerController {
     return {
       success: true,
       data: result.data,
+      count: result.total,
       pagination: {
         page: result.page,
         limit: result.limit,
@@ -92,6 +93,7 @@ export class MarketerController {
     return {
       success: true,
       data: result.data,
+      count: result.total,
       pagination: {
         page: result.page,
         limit: result.limit,

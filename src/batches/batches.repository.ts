@@ -150,7 +150,11 @@ export class BatchesRepository {
             },
           },
         ],
-        { new: true, ...(session ? { session } : {}) },
+        {
+          new: true,
+          updatePipeline: true,
+          ...(session ? { session } : {}),
+        },
       )
       .exec();
 

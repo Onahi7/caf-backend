@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ShiftsService } from './shifts.service.js';
 import { SalesService } from '../sales/sales.service.js';
+import { ExpensesService } from '../expenses/expenses.service.js';
 import { CloseShiftRequestDto } from './dto/close-shift-request.dto.js';
 import { CloseShiftDto } from './dto/close-shift.dto.js';
 import { OpenShiftDto } from './dto/open-shift.dto.js';
@@ -32,6 +33,7 @@ export class ShiftsController {
   constructor(
     private readonly shiftsService: ShiftsService,
     private readonly salesService: SalesService,
+    private readonly expensesService: ExpensesService,
   ) {}
 
   /**
@@ -66,9 +68,12 @@ export class ShiftsController {
       closingCash: closeShiftRequestDto.closingCash,
       notes: closeShiftRequestDto.notes,
     };
-    // Calculate total sales from actual sales records
+    // Calculate expected cash source values:
+    // expectedCash = openingCash + totalSales - totalExpenses
     const totalSales = await this.salesService.calculateShiftTotal(id);
-    const shift = await this.shiftsService.closeShift(closeShiftDto, totalSales);
+    const totalExpenses = await this.expensesService.getTotalByShift(id);
+    const netCashMovement = totalSales - totalExpenses;
+    const shift = await this.shiftsService.closeShift(closeShiftDto, netCashMovement);
     return apiResponse(shift);
   }
 

@@ -64,20 +64,21 @@ export class FinanceRepository {
 
   async findAll(
     filter: FinanceTransactionFilterDto,
-  ): Promise<FinanceTransactionDocument[]> {
+  ): Promise<{ data: FinanceTransactionDocument[]; total: number }> {
     const query = this.buildMatchQuery(filter);
 
-    const queryBuilder = this.financeTransactionModel
-      .find(query)
-      .populate('recordedBy', 'firstName lastName username role')
-      .populate('marketerId', 'firstName lastName username role')
-      .sort({ transactionDate: -1, createdAt: -1 });
+    const [data, total] = await Promise.all([
+      this.financeTransactionModel
+        .find(query)
+        .populate('recordedBy', 'firstName lastName username role')
+        .populate('marketerId', 'firstName lastName username role')
+        .sort({ transactionDate: -1, createdAt: -1 })
+        .limit(filter.limit || 50)
+        .exec(),
+      this.financeTransactionModel.countDocuments(query).exec(),
+    ]);
 
-    if (filter.limit) {
-      queryBuilder.limit(filter.limit);
-    }
-
-    return queryBuilder.exec();
+    return { data, total };
   }
 
   async getSummary(filter: FinanceTransactionFilterDto): Promise<FinanceSummaryData> {

@@ -48,11 +48,16 @@ export class CycleCountController {
     UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
-  findAll(
+  async findAll(
     @Query('branchId') branchId: string,
     @Query('status') status?: CycleCountStatus,
   ) {
-    return this.service.findAll(branchId, status);
+    const data = await this.service.findAll(branchId, status);
+    return {
+      success: true,
+      data,
+      count: data.length,
+    };
   }
 
   /** GET /cycle-counts/:id */
@@ -63,8 +68,12 @@ export class CycleCountController {
     UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  async findOne(@Param('id') id: string) {
+    const data = await this.service.findOne(id);
+    return {
+      success: true,
+      data,
+    };
   }
 
   /** PATCH /cycle-counts/:id/submit — enter counted quantities */

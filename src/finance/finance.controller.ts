@@ -52,12 +52,16 @@ export class FinanceController {
   async findAll(
     @Query() filter: FinanceTransactionFilterDto,
     @CurrentUser() user: CurrentUserData,
-  ): Promise<{ data: FinanceTransactionDocument[]; count: number }> {
-    const data = await this.financeService.findAll(filter, user);
-
+  ) {
+    const { data, total } = await this.financeService.findAll(filter, user);
     return {
       data,
-      count: data.length,
+      count: total,
+      pagination: {
+        page: filter.page || 1,
+        limit: filter.limit || 50,
+        total,
+      },
     };
   }
 }
