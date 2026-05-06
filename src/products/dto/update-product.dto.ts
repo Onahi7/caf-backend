@@ -4,7 +4,30 @@ import {
   IsBoolean,
   IsOptional,
   Min,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+class PackSizeDto {
+  @IsString()
+  name!: string;
+
+  @IsString()
+  unit!: string;
+
+  @IsNumber()
+  @Min(1)
+  quantityPerPack!: number;
+
+  @IsNumber()
+  @Min(0)
+  sellingPrice!: number;
+
+  @IsString()
+  @IsOptional()
+  barcode?: string;
+}
 
 export class UpdateProductDto {
   @IsString()
@@ -68,6 +91,12 @@ export class UpdateProductDto {
   @IsBoolean()
   @IsOptional()
   isControlled?: boolean;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PackSizeDto)
+  @IsOptional()
+  packSizes?: PackSizeDto[];
 
   @IsBoolean()
   @IsOptional()

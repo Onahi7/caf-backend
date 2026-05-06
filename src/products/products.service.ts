@@ -182,7 +182,9 @@ export class ProductsService {
         String(batch._id),
         initialStock!,
         userId ?? 'system',
-        'opening-stock',
+        undefined,
+        undefined,
+        'Opening stock from product creation',
       );
     }
 

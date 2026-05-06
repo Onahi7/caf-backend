@@ -18,7 +18,7 @@ import { AuditService } from '../audit/audit.service.js';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly ACCESS_TOKEN_EXPIRY = 8 * 60 * 60; // 8 hours in seconds
+  private readonly ACCESS_TOKEN_EXPIRY = 12 * 60 * 60; // 12 hours in seconds
   private readonly REFRESH_TOKEN_EXPIRY = 7 * 24 * 60 * 60; // 7 days in seconds
 
   constructor(

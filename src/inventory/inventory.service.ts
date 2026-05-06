@@ -454,8 +454,9 @@ export class InventoryService {
     batchId: string,
     quantity: number,
     userId: string,
-    purchaseOrderId: string,
+    purchaseOrderId?: string,
     session?: ClientSession,
+    reason = 'Purchase order receipt',
   ): Promise<StockMovementDocument> {
     this.validateQuantity(quantity);
 
@@ -466,10 +467,10 @@ export class InventoryService {
         batchId,
         quantity: quantity, // Positive for purchase
         movementType: MovementType.PURCHASE,
-        reason: 'Purchase order receipt',
+        reason,
         userId,
         referenceId: purchaseOrderId,
-        referenceType: 'PurchaseOrder',
+        referenceType: purchaseOrderId ? 'PurchaseOrder' : undefined,
       },
       session,
     );

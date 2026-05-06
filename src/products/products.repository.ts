@@ -16,10 +16,12 @@ export class ProductsRepository {
       return {};
     }
 
+    if (!Types.ObjectId.isValid(branchId)) {
+      return { branchId };
+    }
+
     return {
-      branchId: Types.ObjectId.isValid(branchId)
-        ? new Types.ObjectId(branchId)
-        : branchId,
+      branchId: { $in: [new Types.ObjectId(branchId), branchId] },
     };
   }
 
