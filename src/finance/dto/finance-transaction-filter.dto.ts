@@ -13,6 +13,12 @@ import {
 import { FinanceTransactionType } from '../schemas/finance-transaction.schema.js';
 
 export class FinanceTransactionFilterDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  page?: number;
+
   @IsMongoId()
   @IsOptional()
   branchId?: string;

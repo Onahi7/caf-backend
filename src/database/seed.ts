@@ -393,6 +393,7 @@ async function bootstrap() {
       ...productTemplates.map((product) => ({
         ...product,
         branchId: asObjectId(hq._id),
+        packSizes: [],
         isActive: true,
       })),
       ...productTemplates.slice(0, 4).map((product) => ({
@@ -402,6 +403,7 @@ async function bootstrap() {
         branchId: asObjectId(outlet._id),
         reorderLevel: Math.max(6, Math.floor(product.reorderLevel / 2)),
         maxStockLevel: Math.floor(product.maxStockLevel / 2),
+        packSizes: [],
         isActive: true,
       })),
     ];

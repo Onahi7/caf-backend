@@ -231,6 +231,7 @@ async processCheckout(
   /**
    * Select batches for all items using FEFO
    * Properties: 19, 20, 21
+   * Supports pack sizes: uses quantityInBaseUnits when provided
    */
   private async selectBatchesForItems(
     branchId: string,
@@ -239,23 +240,26 @@ async processCheckout(
     const results: BatchSelectionResult[] = [];
 
     for (const item of items) {
+      // Use quantityInBaseUnits if provided (for pack size conversions)
+      // Otherwise fall back to item.quantity (base unit quantity)
+      const quantityNeeded = item.quantityInBaseUnits ?? item.quantity;
+
       // Use FEFO batch selection from BatchesService
       const selectedBatches = await this.batchesService.selectBatchesForSale({
         branchId,
         productId: item.productId,
-        quantityNeeded: item.quantity,
+        quantityNeeded,
       });
 
       // Calculate total amount for this item
-      const totalAmount = selectedBatches.reduce(
-        (sum, batch) => sum + batch.quantity * batch.sellingPrice,
-        0,
-      );
+      // Use unitPrice from item (already accounts for pack size pricing)
+      // and multiply by item.quantity (number of packs sold)
+      const totalAmount = item.unitPrice * item.quantity;
 
       results.push({
         productId: item.productId,
         selectedBatches,
-        totalQuantity: item.quantity,
+        totalQuantity: quantityNeeded,
         totalAmount,
       });
     }

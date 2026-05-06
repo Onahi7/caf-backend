@@ -66,6 +66,9 @@ export class FinanceRepository {
     filter: FinanceTransactionFilterDto,
   ): Promise<{ data: FinanceTransactionDocument[]; total: number }> {
     const query = this.buildMatchQuery(filter);
+    const page = filter.page || 1;
+    const limit = filter.limit || 50;
+    const skip = (page - 1) * limit;
 
     const [data, total] = await Promise.all([
       this.financeTransactionModel
@@ -73,7 +76,8 @@ export class FinanceRepository {
         .populate('recordedBy', 'firstName lastName username role')
         .populate('marketerId', 'firstName lastName username role')
         .sort({ transactionDate: -1, createdAt: -1 })
-        .limit(filter.limit || 50)
+        .skip(skip)
+        .limit(limit)
         .exec(),
       this.financeTransactionModel.countDocuments(query).exec(),
     ]);

@@ -8,9 +8,26 @@ import {
   Min,
   IsMongoId,
   MaxLength,
+  IsObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PaymentMethod } from '../schemas/sale.schema.js';
+
+/**
+ * DTO for pack size info in sale items
+ * Used for unit conversion (e.g., Box of 100 tablets, Strip of 10 tablets)
+ */
+export class SaleItemPackSizeDto {
+  @IsString()
+  name!: string; // e.g., "Box", "Strip", "Tablet"
+
+  @IsString()
+  unit!: string; // e.g., "box", "strip", "tablet"
+
+  @IsNumber()
+  @Min(1)
+  quantityPerPack!: number; // e.g., 100 for box, 10 for strip
+}
 
 /**
  * DTO for individual sale items
@@ -21,11 +38,30 @@ export class SaleItemDto {
 
   @IsNumber()
   @Min(1)
-  quantity!: number;
+  quantity!: number; // Quantity in selected pack units
 
   @IsNumber()
   @Min(0)
-  unitPrice!: number;
+  unitPrice!: number; // Price per selected pack unit
+
+  /**
+   * Pack size info for unit conversion
+   * If not provided, quantity is in base units (e.g., tablets)
+   */
+  @IsObject()
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SaleItemPackSizeDto)
+  packSize?: SaleItemPackSizeDto;
+
+  /**
+   * Quantity in base units for stock deduction
+   * Calculated: quantity * quantityPerPack (or quantity if no pack size)
+   */
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  quantityInBaseUnits?: number;
 }
 
 /**
