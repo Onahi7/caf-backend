@@ -41,11 +41,15 @@ export class PurchasesRepository {
 
     const purchaseOrder = new this.purchaseOrderModel({
       ...createPurchaseOrderDto,
+      supplierId: new Types.ObjectId(createPurchaseOrderDto.supplierId),
+      branchId: new Types.ObjectId(createPurchaseOrderDto.branchId),
+      createdBy: new Types.ObjectId(createPurchaseOrderDto.createdBy),
       orderNumber: this.generateOrderNumber(),
       totalAmount,
       status: PurchaseOrderStatus.PENDING,
       items: createPurchaseOrderDto.items.map((item) => ({
         ...item,
+        productId: new Types.ObjectId(item.productId),
         receivedQuantity: 0,
       })),
     });
@@ -94,11 +98,15 @@ export class PurchasesRepository {
     const query: any = {};
 
     if (filter.supplierId) {
-      query.supplierId = new Types.ObjectId(filter.supplierId);
+      query.supplierId = {
+        $in: [filter.supplierId, new Types.ObjectId(filter.supplierId)],
+      };
     }
 
     if (filter.branchId) {
-      query.branchId = new Types.ObjectId(filter.branchId);
+      query.branchId = {
+        $in: [filter.branchId, new Types.ObjectId(filter.branchId)],
+      };
     }
 
     if (filter.status) {
@@ -125,7 +133,7 @@ export class PurchasesRepository {
 
   async findByBranch(branchId: string): Promise<PurchaseOrderDocument[]> {
     return this.purchaseOrderModel
-      .find({ branchId: new Types.ObjectId(branchId) })
+      .find({ branchId: { $in: [branchId, new Types.ObjectId(branchId)] } })
       .populate('supplierId')
       .sort({ createdAt: -1 })
       .exec();
@@ -133,7 +141,7 @@ export class PurchasesRepository {
 
   async findBySupplier(supplierId: string): Promise<PurchaseOrderDocument[]> {
     return this.purchaseOrderModel
-      .find({ supplierId: new Types.ObjectId(supplierId) })
+      .find({ supplierId: { $in: [supplierId, new Types.ObjectId(supplierId)] } })
       .populate('branchId')
       .sort({ createdAt: -1 })
       .exec();
