@@ -213,6 +213,12 @@ export class BatchesService {
     id: string,
     updateBatchDto: UpdateBatchDto,
   ): Promise<BatchDocument> {
+    if (typeof updateBatchDto.quantity !== 'undefined') {
+      throw new BadRequestException(
+        'Batch quantity cannot be edited here. Use stock adjustment for quantity corrections.',
+      );
+    }
+
     const batch = await this.batchesRepository.update(id, updateBatchDto);
     if (!batch) {
       throw new NotFoundException(`Batch with ID ${id} not found`);

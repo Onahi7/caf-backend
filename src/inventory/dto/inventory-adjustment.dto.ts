@@ -30,7 +30,7 @@ export class InventoryAdjustmentDto {
   reason!: string;
 
   @IsOptional()
-  @IsMongoId()
+  @IsString()
   approvedBy?: string;
 }
 
