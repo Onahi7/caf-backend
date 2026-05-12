@@ -22,6 +22,7 @@ export enum SaleStatus {
 export enum PaymentMethod {
   CASH = 'cash',
   CARD = 'card',
+  CREDIT = 'credit',
   ORANGE_MONEY = 'orange_money',
   AFRICELL_MONEY = 'africell_money',
   QMONEY = 'qmoney',
@@ -30,6 +31,18 @@ export enum PaymentMethod {
   MOBILE = 'mobile',
   INSURANCE = 'insurance',
   SPLIT = 'split',
+}
+
+export enum SaleType {
+  CASH = 'cash',
+  CREDIT = 'credit',
+}
+
+export enum PaymentStatus {
+  UNPAID = 'unpaid',
+  PARTIAL = 'partial',
+  PAID = 'paid',
+  OVERDUE = 'overdue',
 }
 
 /**
@@ -68,6 +81,33 @@ export class SaleItem {
 }
 
 export const SaleItemSchema = SchemaFactory.createForClass(SaleItem);
+
+@Schema({ _id: false })
+export class SalePaymentEntry {
+  @Prop({ required: true })
+  amount!: number;
+
+  @Prop({ required: true, enum: PaymentMethod, type: String })
+  paymentMethod!: PaymentMethod;
+
+  @Prop()
+  paymentReference?: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  receivedBy?: Types.ObjectId;
+
+  @Prop({ default: Date.now })
+  receivedAt!: Date;
+
+  @Prop()
+  notes?: string;
+
+  @Prop({ default: false })
+  isInitialPayment!: boolean;
+}
+
+export const SalePaymentEntrySchema =
+  SchemaFactory.createForClass(SalePaymentEntry);
 
 /**
  * Prescription verification status
@@ -119,6 +159,14 @@ export class Sale {
   @Prop({ required: true })
   total!: number;
 
+  @Prop({
+    required: true,
+    enum: SaleType,
+    type: String,
+    default: SaleType.CASH,
+  })
+  saleType!: SaleType;
+
   /**
    * Property 23: Payment method support
    */
@@ -136,6 +184,26 @@ export class Sale {
    */
   @Prop()
   paymentReference?: string;
+
+  @Prop({
+    required: true,
+    enum: PaymentStatus,
+    type: String,
+    default: PaymentStatus.PAID,
+  })
+  paymentStatus!: PaymentStatus;
+
+  @Prop({ default: 0 })
+  amountPaid!: number;
+
+  @Prop({ default: 0 })
+  balanceDue!: number;
+
+  @Prop()
+  dueDate?: Date;
+
+  @Prop({ type: [SalePaymentEntrySchema], default: [] })
+  payments!: SalePaymentEntry[];
 
   /**
    * Property 25, 80: Prescription attachment and association
@@ -204,3 +272,4 @@ SaleSchema.index({ branchId: 1, createdAt: -1 });
 SaleSchema.index({ shiftId: 1, createdAt: -1 });
 SaleSchema.index({ cashierId: 1, createdAt: -1 });
 SaleSchema.index({ branchId: 1, status: 1 });
+SaleSchema.index({ branchId: 1, saleType: 1, paymentStatus: 1 });

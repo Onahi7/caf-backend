@@ -5,16 +5,21 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
-import { Connection } from 'mongoose';
+import { Connection, Types } from 'mongoose';
 import { SalesRepository } from './sales.repository.js';
 import { BatchesRepository } from '../batches/batches.repository.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { ProcessReturnDto, ReturnItemDto } from './dto/process-return.dto.js';
+import { ReceiveSalePaymentDto } from './dto/receive-sale-payment.dto.js';
 import { SaleFilterDto } from './dto/sale-filter.dto.js';
 import { VerifyPrescriptionDto } from './dto/verify-prescription.dto.js';
 import {
+  PaymentMethod,
+  PaymentStatus,
   SaleDocument,
+  SalePaymentEntry,
   SaleStatus,
+  SaleType,
   PrescriptionStatus,
 } from './schemas/sale.schema.js';
 import { EventsService } from '../websocket/events.service.js';
@@ -97,6 +102,65 @@ export class SalesService {
    */
   async calculateShiftTotal(shiftId: string): Promise<number> {
     return this.salesRepository.calculateShiftTotal(shiftId);
+  }
+
+  async recordPayment(
+    saleId: string,
+    dto: ReceiveSalePaymentDto,
+    userId: string,
+  ): Promise<SaleDocument> {
+    const sale = await this.findById(saleId);
+
+    if (sale.saleType !== SaleType.CREDIT) {
+      throw new BadRequestException(
+        'Payments can only be recorded against credit sales',
+      );
+    }
+
+    if (sale.balanceDue <= 0) {
+      throw new BadRequestException('This sale has already been fully paid');
+    }
+
+    if (dto.paymentMethod === PaymentMethod.CREDIT) {
+      throw new BadRequestException(
+        'Recorded payments must use a real payment method',
+      );
+    }
+
+    if (dto.amount > sale.balanceDue) {
+      throw new BadRequestException(
+        `Payment exceeds outstanding balance of ${sale.balanceDue}`,
+      );
+    }
+
+    const payment: SalePaymentEntry = {
+      amount: dto.amount,
+      paymentMethod: dto.paymentMethod,
+      paymentReference: dto.paymentReference,
+      receivedBy: new Types.ObjectId(userId),
+      receivedAt: new Date(),
+      notes: dto.notes,
+      isInitialPayment: false,
+    };
+
+    const nextAmountPaid = sale.amountPaid + dto.amount;
+    const nextBalanceDue = Math.max(0, sale.balanceDue - dto.amount);
+    const nextPaymentStatus =
+      nextBalanceDue <= 0 ? PaymentStatus.PAID : PaymentStatus.PARTIAL;
+
+    const updatedSale = await this.salesRepository.recordPayment(
+      saleId,
+      payment,
+      nextAmountPaid,
+      nextBalanceDue,
+      nextPaymentStatus,
+    );
+
+    if (!updatedSale) {
+      throw new NotFoundException(`Sale with ID ${saleId} not found`);
+    }
+
+    return updatedSale;
   }
 
   /**

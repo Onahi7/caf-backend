@@ -8,8 +8,12 @@ import { InventoryService } from '../inventory/inventory.service.js';
 import { ShiftsService } from '../shifts/shifts.service.js';
 import { CreateSaleDto, SaleItemDto } from './dto/create-sale.dto.js';
 import {
+  PaymentMethod,
+  PaymentStatus,
   SaleDocument,
   SaleItem,
+  SalePaymentEntry,
+  SaleType,
   PrescriptionStatus,
 } from './schemas/sale.schema.js';
 import { SelectedBatch } from '../batches/dto/batch-selection.dto.js';
@@ -129,6 +133,24 @@ async processCheckout(
       // Build sale items from batch selections
       const saleItems = this.buildSaleItems(batchSelections);
 
+      const saleType =
+        dto.saleType ??
+        (dto.paymentMethod === PaymentMethod.CREDIT
+          ? SaleType.CREDIT
+          : SaleType.CASH);
+      const amountPaid =
+        dto.amountPaid ?? (saleType === SaleType.CASH ? total : 0);
+      const balanceDue = Math.max(0, total - amountPaid);
+      const paymentStatus =
+        balanceDue <= 0
+          ? PaymentStatus.PAID
+          : amountPaid > 0
+            ? PaymentStatus.PARTIAL
+            : PaymentStatus.UNPAID;
+
+      this.validatePaymentDetails(dto, total, saleType, amountPaid, balanceDue);
+      const payments = this.buildInitialPayments(dto, cashierId, saleType, amountPaid);
+
       // Determine prescription status
       const prescriptionStatus = dto.prescriptionUrl
         ? PrescriptionStatus.PENDING
@@ -148,7 +170,13 @@ async processCheckout(
           subtotal,
           discount,
           total,
+          saleType,
           paymentMethod: dto.paymentMethod, // Property 6: Validated and persisted
+          paymentStatus,
+          amountPaid,
+          balanceDue,
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+          payments,
           paymentReference: dto.paymentReference, // Property 13, 15: Optional mobile money reference
           prescriptionUrl: dto.prescriptionUrl,
           prescriptionStatus,
@@ -289,6 +317,91 @@ async processCheckout(
     }
 
     return saleItems;
+  }
+
+  private validatePaymentDetails(
+    dto: CreateSaleDto,
+    total: number,
+    saleType: SaleType,
+    amountPaid: number,
+    balanceDue: number,
+  ): void {
+    if (amountPaid < 0 || amountPaid > total) {
+      throw new BadRequestException('Amount paid must be between 0 and total');
+    }
+
+    if (saleType === SaleType.CREDIT) {
+      if (dto.paymentMethod !== PaymentMethod.CREDIT) {
+        throw new BadRequestException(
+          'Credit sales must use the credit payment method',
+        );
+      }
+
+      if (!dto.customerName?.trim()) {
+        throw new BadRequestException(
+          'Customer name is required for credit sales',
+        );
+      }
+
+      if (!dto.dueDate) {
+        throw new BadRequestException('Due date is required for credit sales');
+      }
+
+      if (amountPaid > 0 && !dto.initialPaymentMethod) {
+        throw new BadRequestException(
+          'Initial payment method is required when recording a deposit',
+        );
+      }
+
+      if (dto.initialPaymentMethod === PaymentMethod.CREDIT) {
+        throw new BadRequestException(
+          'Initial payment method cannot be credit',
+        );
+      }
+    } else {
+      if (dto.paymentMethod === PaymentMethod.CREDIT) {
+        throw new BadRequestException(
+          'Credit payment method can only be used for credit sales',
+        );
+      }
+
+      if (balanceDue > 0) {
+        throw new BadRequestException(
+          'Cash sales must be fully paid at checkout',
+        );
+      }
+    }
+  }
+
+  private buildInitialPayments(
+    dto: CreateSaleDto,
+    cashierId: string,
+    saleType: SaleType,
+    amountPaid: number,
+  ): SalePaymentEntry[] {
+    if (amountPaid <= 0) {
+      return [];
+    }
+
+    const paymentMethod =
+      saleType === SaleType.CREDIT
+        ? dto.initialPaymentMethod!
+        : dto.paymentMethod;
+
+    return [
+      {
+        amount: amountPaid,
+        paymentMethod,
+        paymentReference: dto.paymentReference,
+        receivedBy: new Types.ObjectId(cashierId),
+        receivedAt: new Date(),
+        notes:
+          saleType === SaleType.CREDIT
+            ? 'Initial credit-sale payment'
+            : 'Checkout payment',
+        isInitialPayment: true,
+      },
+    ];
   }
 
   /**

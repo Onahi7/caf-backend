@@ -11,6 +11,7 @@
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
   card: 'Card',
+  credit: 'Credit Sale',
   orange_money: 'Orange Money',
   africell_money: 'Africell Money',
   qmoney: 'QMoney',

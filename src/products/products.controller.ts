@@ -10,7 +10,13 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { ProductsService } from './products.service.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
@@ -29,6 +35,9 @@ import {
   CurrentUser,
 } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
+import { resolveBranchId } from '../common/utils/branch-scope.util.js';
+import { ProductExcelService } from './product-excel.service.js';
+import { RequestAnalysisService } from './request-analysis.service.js';
 
 @Controller('products')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -36,6 +45,8 @@ export class ProductsController {
   constructor(
     private readonly productsService: ProductsService,
     private readonly pricingService: PricingService,
+    private readonly productExcelService: ProductExcelService,
+    private readonly requestAnalysisService: RequestAnalysisService,
   ) {}
 
   @Post()
@@ -45,6 +56,81 @@ export class ProductsController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<ProductDocument> {
     return this.productsService.create(createProductDto, user.userId);
+  }
+
+  @Get('import-template')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  async downloadImportTemplate(
+    @CurrentUser() user: CurrentUserData,
+    @Query('branchId') branchId: string | undefined,
+    @Res() res: Response,
+  ) {
+    const resolvedBranchId = resolveBranchId(user, branchId);
+    const workbookBuffer = await this.productExcelService.buildImportTemplate({
+      resolvedBranchId,
+      user,
+    });
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=product-import-template.xlsx',
+    );
+    return res.send(workbookBuffer);
+  }
+
+  @Post('import')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @UseInterceptors(FileInterceptor('file'))
+  async importProducts(
+    @CurrentUser() user: CurrentUserData,
+    @Query('branchId') branchId: string | undefined,
+    @UploadedFile() file: { buffer: Buffer } | undefined,
+  ): Promise<{
+    createdCount: number;
+    failedCount: number;
+    errors: Array<{ row: number; productName: string; message: string }>;
+  }> {
+    if (!file?.buffer) {
+      throw new BadRequestException('Excel file is required');
+    }
+
+    const resolvedBranchId = resolveBranchId(user, branchId);
+    return this.productExcelService.importProductsFromWorkbook({
+      fileBuffer: file.buffer,
+      resolvedBranchId,
+      user,
+    });
+  }
+
+  @Post('request-analysis')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  @UseInterceptors(FileInterceptor('file'))
+  async analyzeRequestedItems(
+    @CurrentUser() user: CurrentUserData,
+    @Query('branchId') branchId: string | undefined,
+    @UploadedFile()
+    file:
+      | { buffer: Buffer; originalname: string; mimetype?: string }
+      | undefined,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Upload file is required');
+    }
+
+    const resolvedBranchId = resolveBranchId(user, branchId);
+    return {
+      success: true,
+      data: await this.requestAnalysisService.analyzeUpload({
+        branchId: resolvedBranchId as string,
+        fileBuffer: file.buffer,
+        filename: file.originalname,
+        mimeType: file.mimetype,
+      }),
+    };
   }
 
   @Get()
@@ -140,9 +226,16 @@ export class ProductsController {
     UserRole.AUDITOR,
   )
   async search(
-    @Query() searchDto: ProductSearchDto,
+    @Query('query') query: string = '',
+    @Query('category') category?: string,
+    @Query('brand') brand?: string,
     @Query('branchId') branchId?: string,
   ): Promise<Array<Record<string, unknown>>> {
+    const searchDto: ProductSearchDto = {
+      query,
+      category,
+      brand,
+    };
     const { data } = await this.productsService.search(searchDto, branchId);
     return data;
   }

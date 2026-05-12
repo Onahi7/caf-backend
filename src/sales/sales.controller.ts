@@ -26,6 +26,7 @@ import { ReceiptService } from './receipt.service.js';
 import { SaleDocument } from './schemas/sale.schema.js';
 import { CreateSaleDto } from './dto/create-sale.dto.js';
 import { ProcessReturnDto } from './dto/process-return.dto.js';
+import { ReceiveSalePaymentDto } from './dto/receive-sale-payment.dto.js';
 import { VerifyPrescriptionDto } from './dto/verify-prescription.dto.js';
 import { CheckStockDto } from './dto/check-stock.dto.js';
 import { SaleFilterDto } from './dto/sale-filter.dto.js';
@@ -63,6 +64,8 @@ export class SalesController {
       discountFormatted: CurrencyUtil.format(sale.discount),
       returnedAmountFormatted: CurrencyUtil.format(sale.returnedAmount),
       paymentMethodLabel: getPaymentMethodLabel(sale.paymentMethod),
+      amountPaidFormatted: CurrencyUtil.format(sale.amountPaid ?? 0),
+      balanceDueFormatted: CurrencyUtil.format(sale.balanceDue ?? 0),
     };
   }
 
@@ -149,6 +152,27 @@ export class SalesController {
         paymentMethod: result.sale.paymentMethod,
         paymentMethodLabel: getPaymentMethodLabel(result.sale.paymentMethod),
       },
+    };
+  }
+
+  @Post(':id/payments')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  @HttpCode(HttpStatus.OK)
+  async recordPayment(
+    @Param('id') saleId: string,
+    @Body() receivePaymentDto: ReceiveSalePaymentDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    const sale = await this.salesService.recordPayment(
+      saleId,
+      receivePaymentDto,
+      user.userId,
+    );
+
+    return {
+      success: true,
+      message: 'Payment recorded successfully',
+      data: this.formatSaleData(sale),
     };
   }
 

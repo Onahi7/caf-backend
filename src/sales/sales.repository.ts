@@ -5,6 +5,9 @@ import {
   Sale,
   SaleDocument,
   SaleItem,
+  SalePaymentEntry,
+  PaymentStatus,
+  SaleType,
   SaleStatus,
   PrescriptionStatus,
 } from './schemas/sale.schema.js';
@@ -59,6 +62,12 @@ export class SalesRepository {
       discount: number;
       total: number;
       paymentMethod: string;
+      saleType: SaleType;
+      paymentStatus: PaymentStatus;
+      amountPaid: number;
+      balanceDue: number;
+      dueDate?: Date;
+      payments: SalePaymentEntry[];
       paymentReference?: string;
       prescriptionUrl?: string;
       prescriptionStatus?: PrescriptionStatus;
@@ -78,8 +87,14 @@ export class SalesRepository {
       subtotal: saleData.subtotal,
       discount: saleData.discount,
       total: saleData.total,
+      saleType: saleData.saleType,
       paymentMethod: saleData.paymentMethod,
       paymentReference: saleData.paymentReference,
+      paymentStatus: saleData.paymentStatus,
+      amountPaid: saleData.amountPaid,
+      balanceDue: saleData.balanceDue,
+      dueDate: saleData.dueDate,
+      payments: saleData.payments,
       prescriptionUrl: saleData.prescriptionUrl,
       prescriptionStatus: saleData.prescriptionStatus,
       customerName: saleData.customerName,
@@ -145,6 +160,12 @@ export class SalesRepository {
     }
     if (filter.paymentMethod) {
       query.paymentMethod = filter.paymentMethod;
+    }
+    if (filter.saleType) {
+      query.saleType = filter.saleType;
+    }
+    if (filter.paymentStatus) {
+      query.paymentStatus = filter.paymentStatus;
     }
 
     // Date range filtering
@@ -285,6 +306,32 @@ export class SalesRepository {
           prescriptionVerifiedAt: new Date(),
         },
         { new: true },
+      )
+      .exec();
+  }
+
+  async recordPayment(
+    id: string,
+    payment: SalePaymentEntry,
+    nextAmountPaid: number,
+    nextBalanceDue: number,
+    paymentStatus: PaymentStatus,
+    session?: ClientSession,
+  ): Promise<SaleDocument | null> {
+    const options = session ? { new: true, session } : { new: true };
+
+    return this.saleModel
+      .findByIdAndUpdate(
+        id,
+        {
+          $push: { payments: payment },
+          $set: {
+            amountPaid: nextAmountPaid,
+            balanceDue: nextBalanceDue,
+            paymentStatus,
+          },
+        },
+        options,
       )
       .exec();
   }

@@ -49,13 +49,19 @@ export class ProductsService {
     }
 
     const productIds = products.map((product) => product._id);
+    const productIdValues = productIds.flatMap((productId) => {
+      const productIdString = productId.toString();
+      return Types.ObjectId.isValid(productIdString)
+        ? [productId, productIdString, new Types.ObjectId(productIdString)]
+        : [productId, productIdString];
+    });
     const match: Record<string, unknown> = {
-      productId: { $in: productIds },
+      productId: { $in: productIdValues },
       quantityAvailable: { $gt: 0 },
     };
 
     if (branchId && Types.ObjectId.isValid(branchId)) {
-      match.branchId = new Types.ObjectId(branchId);
+      match.branchId = { $in: [new Types.ObjectId(branchId), branchId] };
     }
 
     const batchRows = await this.batchModel.aggregate<{

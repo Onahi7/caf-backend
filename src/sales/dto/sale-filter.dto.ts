@@ -7,7 +7,12 @@ import {
   IsMongoId,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PaymentMethod, SaleStatus } from '../schemas/sale.schema.js';
+import {
+  PaymentMethod,
+  PaymentStatus,
+  SaleStatus,
+  SaleType,
+} from '../schemas/sale.schema.js';
 
 /**
  * DTO for filtering sales queries
@@ -44,6 +49,14 @@ export class SaleFilterDto {
   @IsEnum(PaymentMethod)
   @IsOptional()
   paymentMethod?: PaymentMethod;
+
+  @IsEnum(SaleType)
+  @IsOptional()
+  saleType?: SaleType;
+
+  @IsEnum(PaymentStatus)
+  @IsOptional()
+  paymentStatus?: PaymentStatus;
 
   @IsDate()
   @Type(() => Date)

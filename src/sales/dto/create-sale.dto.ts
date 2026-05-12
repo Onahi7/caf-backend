@@ -9,9 +9,10 @@ import {
   IsMongoId,
   MaxLength,
   IsObject,
+  IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PaymentMethod } from '../schemas/sale.schema.js';
+import { PaymentMethod, SaleType } from '../schemas/sale.schema.js';
 
 /**
  * DTO for pack size info in sale items
@@ -99,6 +100,23 @@ export class CreateSaleDto {
    */
   @IsEnum(PaymentMethod)
   paymentMethod!: PaymentMethod;
+
+  @IsEnum(SaleType)
+  @IsOptional()
+  saleType?: SaleType;
+
+  @IsEnum(PaymentMethod)
+  @IsOptional()
+  initialPaymentMethod?: PaymentMethod;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  amountPaid?: number;
+
+  @IsDateString()
+  @IsOptional()
+  dueDate?: string;
 
   /**
    * Optional payment reference for mobile money and electronic payments
