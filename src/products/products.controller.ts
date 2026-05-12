@@ -155,7 +155,10 @@ export class ProductsController {
     const l = parseInt(limit, 10);
 
     if (barcode) {
-      const product = await this.productsService.findByBarcode(barcode);
+      const product = await this.productsService.findByBarcodeForBranch(
+        barcode,
+        branchId,
+      );
       const catalogItems = await this.productsService.attachSellingPriceAndStock(
         product ? [product] : [],
         branchId,

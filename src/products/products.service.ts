@@ -245,6 +245,21 @@ export class ProductsService {
     return product;
   }
 
+  async findByBarcodeForBranch(
+    barcode: string,
+    branchId?: string,
+  ): Promise<ProductDocument> {
+    const product = branchId
+      ? await this.productsRepository.findByBarcodeAndBranch(barcode, branchId)
+      : await this.productsRepository.findByBarcode(barcode);
+
+    if (!product) {
+      throw new NotFoundException(`Product with barcode ${barcode} not found`);
+    }
+
+    return product;
+  }
+
   async search(
     searchDto: ProductSearchDto,
     branchId?: string,

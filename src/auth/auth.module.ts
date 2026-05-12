@@ -26,7 +26,7 @@ import { AuditModule } from '../audit/audit.module.js';
         return {
           secret: jwtSecret,
           signOptions: {
-            expiresIn: (configService.get<string>('JWT_EXPIRATION') || '12h') as any,
+            expiresIn: (configService.get<string>('JWT_EXPIRATION') || '14h') as any,
           },
         };
       },
