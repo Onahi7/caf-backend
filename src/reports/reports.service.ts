@@ -6,11 +6,11 @@ import {
   SaleDocument,
   PaymentMethod,
 } from '../sales/schemas/sale.schema.js';
-import { Batch, BatchDocument } from '../batches/schemas/batch.schema.js';
 import {
   Transfer,
   TransferDocument,
 } from '../transfers/schemas/transfer.schema.js';
+import { Product, ProductDocument } from '../products/schemas/product.schema.js';
 import {
   SalesReportDto,
   SalesReportResult,
@@ -43,7 +43,7 @@ export class ReportsService {
 
   constructor(
     @InjectModel(Sale.name) private saleModel: Model<SaleDocument>,
-    @InjectModel(Batch.name) private batchModel: Model<BatchDocument>,
+    @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     @InjectModel(Transfer.name) private transferModel: Model<TransferDocument>,
   ) {}
 
@@ -64,11 +64,11 @@ export class ReportsService {
       status: 'completed',
     };
 
-    const batchMatch: Record<string, unknown> = {};
+    const productMatch: Record<string, unknown> = { isActive: true };
 
     if (normalizedBranchId) {
       saleMatch.branchId = normalizedBranchId;
-      batchMatch.branchId = normalizedBranchId;
+      productMatch.branchId = normalizedBranchId;
     }
 
     const currentDate = new Date();
@@ -121,78 +121,38 @@ export class ReportsService {
       const expiringThreshold = new Date(currentDate);
       expiringThreshold.setDate(expiringThreshold.getDate() + 30);
 
-      const [
-        lowStockCount,
-        expiredCount,
-        expiringSoon,
-        stockedProducts,
-        activeCustomers,
-        lowStockItems,
-      ] = await Promise.all([
-        this.batchModel.countDocuments({
-          ...batchMatch,
-          quantityAvailable: { $gt: 0, $lt: 10 },
-        }),
-        this.batchModel.countDocuments({
-          ...batchMatch,
-          expiryDate: { $lt: currentDate },
-          quantityAvailable: { $gt: 0 },
-        }),
-        this.batchModel.countDocuments({
-          ...batchMatch,
-          expiryDate: { $gte: currentDate, $lte: expiringThreshold },
-          quantityAvailable: { $gt: 0 },
-        }),
-        this.batchModel.distinct('productId', {
-          ...batchMatch,
-          quantityAvailable: { $gt: 0 },
-        }),
+      const [products, activeCustomers] = await Promise.all([
+        this.productModel.find(productMatch).lean(),
         this.saleModel.distinct('customerPhone', {
           ...saleMatch,
           customerPhone: { $exists: true, $ne: '' },
         }),
-        this.batchModel.aggregate<{
-          _id: string;
-          productName?: string;
-          quantity: number;
-        }>([
-          {
-            $match: {
-              ...batchMatch,
-              quantityAvailable: { $gt: 0, $lt: 10 },
-            },
-          },
-          {
-            $group: {
-              _id: '$productId',
-              quantity: { $sum: '$quantityAvailable' },
-            },
-          },
-          { $sort: { quantity: 1 } },
-          { $limit: 5 },
-          {
-            $lookup: {
-              from: 'products',
-              localField: '_id',
-              foreignField: '_id',
-              as: 'product',
-            },
-          },
-          {
-            $unwind: {
-              path: '$product',
-              preserveNullAndEmptyArrays: true,
-            },
-          },
-          {
-            $project: {
-              _id: { $toString: '$_id' },
-              productName: '$product.name',
-              quantity: 1,
-            },
-          },
-        ]),
       ]);
+
+      const inStockProducts = products.filter(
+        (product) => product.quantityAvailable > 0,
+      );
+      const lowStockProducts = inStockProducts.filter(
+        (product) =>
+          product.quantityAvailable <= Math.max(1, product.reorderLevel || 10),
+      );
+      const expiredProducts = inStockProducts.filter(
+        (product) =>
+          product.expiryDate && new Date(product.expiryDate) < currentDate,
+      );
+      const expiringSoonProducts = inStockProducts.filter((product) => {
+        if (!product.expiryDate) return false;
+        const expiryDate = new Date(product.expiryDate);
+        return expiryDate >= currentDate && expiryDate <= expiringThreshold;
+      });
+      const lowStockItems = lowStockProducts
+        .sort((a, b) => a.quantityAvailable - b.quantityAvailable)
+        .slice(0, 5)
+        .map((product) => ({
+          _id: product._id.toString(),
+          productName: product.name,
+          quantity: product.quantityAvailable,
+        }));
 
       const todaySalesAmount = todaysSales[0]?.totalAmount || 0;
       const todaySalesCount = todaysSales[0]?.count || 0;
@@ -206,14 +166,14 @@ export class ReportsService {
           amount: todaysSales[0]?.totalAmount || 0,
           count: todaysSales[0]?.count || 0,
         },
-        lowStockCount,
-        expiredCount,
+        lowStockCount: lowStockProducts.length,
+        expiredCount: expiredProducts.length,
         todaySales: todaySalesAmount,
         todaySalesCount,
-        totalProducts: stockedProducts.length,
+        totalProducts: inStockProducts.length,
         totalCustomers: activeCustomers.length,
-        expiringSoon,
-        lowStockProducts: lowStockCount,
+        expiringSoon: expiringSoonProducts.length,
+        lowStockProducts: lowStockProducts.length,
         lowStockItems,
       };
     } catch (error) {
@@ -495,111 +455,84 @@ export class ReportsService {
     dto: InventoryReportDto,
   ): Promise<InventoryReportResult> {
     this.logger.log('Generating inventory report');
-
-    // Build match stage for batches
-    const matchStage: Record<string, unknown> = {};
+    const matchStage: Record<string, unknown> = { isActive: true };
     if (dto.branchId) {
-      matchStage.branchId = dto.branchId;
+      matchStage.branchId = new Types.ObjectId(dto.branchId);
     }
-    if (!dto.includeExpired) {
-      matchStage.isExpired = false;
-    }
-    // Always exclude depleted batches
-    matchStage.isDepleted = false;
 
-    // Get all batches with product and branch details
-    const batches = await this.batchModel
+    const now = new Date();
+    const products = await this.productModel
       .find(matchStage)
-      .populate('productId')
       .populate('branchId')
       .lean();
 
-    // Group by product and branch
-    const itemsMap = new Map<string, any>();
+    const items = products
+      .filter((product: any) => {
+        if (product.quantityAvailable <= 0) return false;
+        if (!dto.includeExpired && product.expiryDate && new Date(product.expiryDate) < now) {
+          return false;
+        }
+        return true;
+      })
+      .map((product: any) => {
+        const totalValue = product.quantityAvailable * product.costPrice;
+        const isLowStock =
+          product.quantityAvailable <= Math.max(1, product.reorderLevel || 10);
 
-    for (const batch of batches) {
-      const productId = batch.productId as any;
-      const branchId = batch.branchId as any;
-      const key = `${productId._id}-${branchId._id}`;
-
-      if (!itemsMap.has(key)) {
-        itemsMap.set(key, {
-          productId: productId._id.toString(),
-          productName: productId.name,
-          branchId: branchId._id.toString(),
-          branchName: branchId.name,
-          totalQuantity: 0,
-          batchCount: 0,
-          totalValue: 0,
-          averageCost: 0,
-          isLowStock: false,
-          batches: [],
-        });
-      }
-
-      const item = itemsMap.get(key);
-      const batchValue = batch.quantityAvailable * batch.purchasePrice;
-
-      item.totalQuantity += batch.quantityAvailable;
-      item.batchCount += 1;
-      item.totalValue += batchValue;
-      item.batches.push({
-        batchId: batch._id.toString(),
-        lotNumber: batch.lotNumber,
-        quantity: batch.quantityAvailable,
-        expiryDate: batch.expiryDate,
-        purchasePrice: batch.purchasePrice,
-        sellingPrice: batch.sellingPrice,
-        value: batchValue,
-        isExpired: batch.isExpired,
+        return {
+          productId: product._id.toString(),
+          productName: product.name,
+          branchId: product.branchId?._id?.toString?.() || product.branchId?.toString?.() || '',
+          branchName: product.branchId?.name,
+          totalQuantity: product.quantityAvailable,
+          batchCount: 1,
+          totalValue,
+          totalValueFormatted: CurrencyUtil.format(totalValue),
+          averageCost: product.costPrice,
+          averageCostFormatted: CurrencyUtil.format(product.costPrice),
+          isLowStock,
+          reorderLevel: product.reorderLevel,
+          batches: [
+            {
+              batchId: product._id.toString(),
+              lotNumber: 'N/A',
+              quantity: product.quantityAvailable,
+              expiryDate: product.expiryDate,
+              purchasePrice: product.costPrice,
+              purchasePriceFormatted: CurrencyUtil.format(product.costPrice),
+              sellingPrice: product.suggestedRetailPrice || product.basePrice,
+              sellingPriceFormatted: CurrencyUtil.format(
+                product.suggestedRetailPrice || product.basePrice,
+              ),
+              value: totalValue,
+              valueFormatted: CurrencyUtil.format(totalValue),
+              isExpired:
+                !!product.expiryDate && new Date(product.expiryDate) < now,
+            },
+          ],
+        };
       });
 
-      // Check if low stock (using product reorder level)
-      if (item.totalQuantity <= productId.reorderLevel) {
-        item.isLowStock = true;
-      }
-    }
-
-    // Convert map to array and calculate averages
-    const items = Array.from(itemsMap.values()).map((item) => {
-      const averageCost =
-        item.totalQuantity > 0 ? item.totalValue / item.totalQuantity : 0;
-      return {
-        ...item,
-        averageCost,
-        averageCostFormatted: CurrencyUtil.format(averageCost),
-        totalValueFormatted: CurrencyUtil.format(item.totalValue),
-        batches: item.batches.map((batch: any) => ({
-          ...batch,
-          purchasePriceFormatted: CurrencyUtil.format(batch.purchasePrice),
-          sellingPriceFormatted: CurrencyUtil.format(batch.sellingPrice),
-          valueFormatted: CurrencyUtil.format(batch.value),
-        })),
-      };
-    });
-
-    // Filter for low stock only if requested
     const filteredItems = dto.lowStockOnly
       ? items.filter((item) => item.isLowStock)
       : items;
 
-    // Calculate summary
-    const totalValue = filteredItems.reduce((sum, i) => sum + i.totalValue, 0);
-    const summary = {
-      totalProducts: new Set(filteredItems.map((i) => i.productId)).size,
-      totalBatches: filteredItems.reduce((sum, i) => sum + i.batchCount, 0),
-      totalQuantity: filteredItems.reduce((sum, i) => sum + i.totalQuantity, 0),
-      totalValue,
-      totalValueFormatted: CurrencyUtil.format(totalValue),
-      lowStockItems: filteredItems.filter((i) => i.isLowStock).length,
-      expiredItems: filteredItems.reduce(
-        (sum, i) => sum + i.batches.filter((b: any) => b.isExpired).length,
-        0,
-      ),
-    };
-
+    const totalValue = filteredItems.reduce((sum, item) => sum + item.totalValue, 0);
     return {
-      summary,
+      summary: {
+        totalProducts: filteredItems.length,
+        totalBatches: filteredItems.length,
+        totalQuantity: filteredItems.reduce(
+          (sum, item) => sum + item.totalQuantity,
+          0,
+        ),
+        totalValue,
+        totalValueFormatted: CurrencyUtil.format(totalValue),
+        lowStockItems: filteredItems.filter((item) => item.isLowStock).length,
+        expiredItems: filteredItems.filter(
+          (item) => item.batches[0]?.isExpired,
+        ).length,
+      },
       items: filteredItems,
     };
   }
@@ -619,45 +552,43 @@ export class ReportsService {
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + (dto.daysUntilExpiry || 90));
 
-    // Build match stage
     const matchStage: Record<string, unknown> = {
-      isDepleted: false,
-      expiryDate: { $lte: futureDate },
+      isActive: true,
+      quantityAvailable: { $gt: 0 },
+      expiryDate: { $exists: true, $ne: null, $lte: futureDate },
     };
-
     if (dto.branchId) {
-      matchStage.branchId = dto.branchId;
+      matchStage.branchId = new Types.ObjectId(dto.branchId);
     }
 
-    // Get expiring batches
-    const batches = await this.batchModel
+    const products = await this.productModel
       .find(matchStage)
-      .populate('productId')
       .populate('branchId')
       .sort({ expiryDate: 1 })
       .lean();
 
-    // Process batches
-    const expiringBatches = batches.map((batch: any) => {
+    const expiringBatches = products.map((product: any) => {
+      const expiryDate = new Date(product.expiryDate);
       const daysUntilExpiry = Math.ceil(
-        (batch.expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+        (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
-      const potentialLoss = batch.quantityAvailable * batch.purchasePrice;
+      const sellingPrice = product.suggestedRetailPrice || product.basePrice;
+      const potentialLoss = product.quantityAvailable * product.costPrice;
 
       return {
-        batchId: batch._id.toString(),
-        productId: batch.productId._id.toString(),
-        productName: batch.productId.name,
-        branchId: batch.branchId._id.toString(),
-        branchName: batch.branchId.name,
-        lotNumber: batch.lotNumber,
-        quantity: batch.quantityAvailable,
-        expiryDate: batch.expiryDate,
+        batchId: product._id.toString(),
+        productId: product._id.toString(),
+        productName: product.name,
+        branchId: product.branchId?._id?.toString?.() || product.branchId?.toString?.() || '',
+        branchName: product.branchId?.name,
+        lotNumber: 'N/A',
+        quantity: product.quantityAvailable,
+        expiryDate,
         daysUntilExpiry,
-        purchasePrice: batch.purchasePrice,
-        purchasePriceFormatted: CurrencyUtil.format(batch.purchasePrice),
-        sellingPrice: batch.sellingPrice,
-        sellingPriceFormatted: CurrencyUtil.format(batch.sellingPrice),
+        purchasePrice: product.costPrice,
+        purchasePriceFormatted: CurrencyUtil.format(product.costPrice),
+        sellingPrice,
+        sellingPriceFormatted: CurrencyUtil.format(sellingPrice),
         potentialLoss,
         potentialLossFormatted: CurrencyUtil.format(potentialLoss),
         isExpired: daysUntilExpiry < 0,

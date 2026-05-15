@@ -4,14 +4,12 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { ProductsRepository } from './products.repository.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { ProductSearchDto } from './dto/product-search.dto.js';
 import { ProductDocument } from './schemas/product.schema.js';
-import { Batch, BatchDocument } from '../batches/schemas/batch.schema.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { UsersService } from '../users/users.service.js';
@@ -21,8 +19,6 @@ import { AuditResource } from '../audit/schemas/audit-log.schema.js';
 export class ProductsService {
   constructor(
     private readonly productsRepository: ProductsRepository,
-    @InjectModel(Batch.name)
-    private readonly batchModel: Model<BatchDocument>,
     private readonly inventoryService: InventoryService,
     private readonly auditService: AuditService,
     private readonly usersService: UsersService,
@@ -42,58 +38,16 @@ export class ProductsService {
 
   async attachSellingPriceAndStock(
     products: ProductDocument[],
-    branchId?: string,
+    _branchId?: string,
   ): Promise<Array<Record<string, unknown>>> {
-    if (products.length === 0) {
-      return [];
-    }
-
-    const productIds = products.map((product) => product._id);
-    const productIdValues = productIds.flatMap((productId) => {
-      const productIdString = productId.toString();
-      return Types.ObjectId.isValid(productIdString)
-        ? [productId, productIdString, new Types.ObjectId(productIdString)]
-        : [productId, productIdString];
-    });
-    const match: Record<string, unknown> = {
-      productId: { $in: productIdValues },
-      quantityAvailable: { $gt: 0 },
-    };
-
-    if (branchId && Types.ObjectId.isValid(branchId)) {
-      match.branchId = { $in: [new Types.ObjectId(branchId), branchId] };
-    }
-
-    const batchRows = await this.batchModel.aggregate<{
-      _id: Types.ObjectId;
-      stock: number;
-      sellingPrice: number;
-    }>([
-      { $match: match },
-      // Business rule: the latest created available batch defines current price.
-      { $sort: { createdAt: -1, _id: -1 } },
-      {
-        $group: {
-          _id: '$productId',
-          stock: { $sum: '$quantityAvailable' },
-          sellingPrice: { $first: '$sellingPrice' },
-        },
-      },
-    ]);
-
-    const batchMap = new Map(
-      batchRows.map((row) => [row._id.toString(), row]),
-    );
-
     return products.map((product) => {
-      const batchInfo = batchMap.get(product._id.toString());
-      const sellingPrice = batchInfo?.sellingPrice ?? 0;
-      const stock = batchInfo?.stock ?? 0;
-
       return {
         ...product.toObject(),
-        price: sellingPrice,
-        stock,
+        price:
+          product.suggestedRetailPrice > 0
+            ? product.suggestedRetailPrice
+            : product.basePrice,
+        stock: product.quantityAvailable ?? 0,
       };
     });
   }
@@ -134,9 +88,9 @@ export class ProductsService {
       initialStock,
       initialPurchasePrice,
       initialSellingPrice,
-      initialLotNumber,
       initialExpiryDate,
       initialSupplierId,
+      initialSupplyDate,
       ...productPayload
     } = createProductDto;
 
@@ -146,46 +100,28 @@ export class ProductsService {
           'Initial supplier is required when initial stock is provided',
         );
       }
-      if (!initialExpiryDate) {
-        throw new BadRequestException(
-          'Initial expiry date is required when initial stock is provided',
-        );
-      }
     }
 
-    const product = await this.productsRepository.create(productPayload);
+    const product = await this.productsRepository.create({
+      ...productPayload,
+      costPrice: initialPurchasePrice ?? productPayload.costPrice,
+      suggestedRetailPrice:
+        initialSellingPrice ?? productPayload.suggestedRetailPrice,
+      quantityAvailable: initialStock ?? 0,
+      quantityInitial: initialStock ?? 0,
+      supplierId: initialSupplierId
+        ? new Types.ObjectId(initialSupplierId)
+        : undefined,
+      supplyDate: initialSupplyDate
+        ? new Date(initialSupplyDate)
+        : new Date(),
+      expiryDate: initialExpiryDate ? new Date(initialExpiryDate) : undefined,
+    });
 
     if ((initialStock ?? 0) > 0) {
-      const openingPurchasePrice = initialPurchasePrice ?? product.costPrice;
-      const openingSellingPrice =
-        initialSellingPrice ??
-        (product.suggestedRetailPrice > 0
-          ? product.suggestedRetailPrice
-          : product.basePrice);
-
-      const [batch] = await this.batchModel.create([
-        {
-          productId: product._id,
-          branchId: product.branchId,
-          lotNumber:
-            initialLotNumber ||
-            `OPEN-${new Date().toISOString().slice(0, 10)}-${product.sku}`,
-          expiryDate: new Date(initialExpiryDate!),
-          quantityAvailable: initialStock,
-          quantityInitial: initialStock,
-          purchasePrice: openingPurchasePrice,
-          sellingPrice: openingSellingPrice,
-          supplierId: initialSupplierId,
-          isExpired: false,
-          isDepleted: false,
-        },
-      ]);
-
-      // Record audit trail for the opening stock
       await this.inventoryService.recordPurchaseMovement(
         String(product.branchId),
         String(product._id),
-        String(batch._id),
         initialStock!,
         userId ?? 'system',
         undefined,

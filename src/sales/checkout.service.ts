@@ -1,12 +1,12 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
-import { InjectConnection } from '@nestjs/mongoose';
-import { Connection, ClientSession, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, ClientSession, Types, Model } from 'mongoose';
 import { SalesRepository } from './sales.repository.js';
 import { BatchesService } from '../batches/batches.service.js';
 import { BatchesRepository } from '../batches/batches.repository.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { ShiftsService } from '../shifts/shifts.service.js';
-import { CreateSaleDto, SaleItemDto } from './dto/create-sale.dto.js';
+import { CreateSaleDto, SaleItemDto, SaleItemPackSizeDto } from './dto/create-sale.dto.js';
 import {
   PaymentMethod,
   PaymentStatus,
@@ -16,17 +16,21 @@ import {
   SaleType,
   PrescriptionStatus,
 } from './schemas/sale.schema.js';
-import { SelectedBatch } from '../batches/dto/batch-selection.dto.js';
 import { EventsService } from '../websocket/events.service.js';
+import { Product, ProductDocument } from '../products/schemas/product.schema.js';
+import { SelectedBatch } from '../batches/dto/batch-selection.dto.js';
 
 /**
- * Result of batch selection for a sale item
+ * Result of batch selection for a sale item with pack size info
  */
 interface BatchSelectionResult {
   productId: string;
   selectedBatches: SelectedBatch[];
   totalQuantity: number;
   totalAmount: number;
+  unitPrice: number;
+  packSize?: SaleItemPackSizeDto;
+  originalQuantity: number;
 }
 
 /**
@@ -41,7 +45,7 @@ export interface CheckoutResult {
 
 /**
  * CheckoutService
- * Handles checkout processing with FEFO batch selection and MongoDB transactions
+ * Handles checkout processing with product-level stock selection and MongoDB transactions
  * Requirements: 5.1, 5.2, 5.3, 17.1
  * Properties: 19, 20, 21
  */
@@ -49,7 +53,7 @@ export interface CheckoutResult {
 export class CheckoutService {
   private readonly logger = new Logger(CheckoutService.name);
 
-  constructor(
+constructor(
     private readonly salesRepository: SalesRepository,
     private readonly batchesService: BatchesService,
     private readonly batchesRepository: BatchesRepository,
@@ -57,10 +61,11 @@ export class CheckoutService {
     private readonly shiftsService: ShiftsService,
     private readonly eventsService: EventsService,
     @InjectConnection() private readonly connection: Connection,
+    @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
   ) {}
 
   /**
-   * Process checkout with FEFO batch selection and transaction
+   * Process checkout with product-level stock selection and transaction
    * Requirements: 5.1, 5.2, 5.3, 17.1
    * Properties: 19 (FEFO batch selection), 20 (Multi-batch FEFO), 21 (Expired batch exclusion)
    * Property 28: Sales require open shift
@@ -92,7 +97,7 @@ async processCheckout(
       throw new BadRequestException('Sale must contain at least one item');
     }
 
-    // Calculate totals (will be recalculated after FEFO selection inside transaction)
+    // Calculate totals (will be recalculated inside the transaction)
     const discount = dto.discount || 0;
 
     let receiptNumber: string;
@@ -106,20 +111,19 @@ async processCheckout(
       throw new BadRequestException('Failed to generate receipt number. Please try again.');
     }
 
-    let session;
+let session;
     try {
       // Execute checkout in a transaction
       session = await this.connection.startSession();
       session.startTransaction();
 
-      // Select batches for all items using FEFO INSIDE the transaction
-      // This prevents race conditions where batches are selected outside and modified before transaction commits
+      // Use FEFO batch selection inside transaction (C7: prevents race conditions)
       const batchSelections = await this.selectBatchesForItems(
         dto.branchId,
         dto.items,
+        session,
       );
 
-      // Calculate totals based on selected batches
       const subtotal = batchSelections.reduce(
         (sum, selection) => sum + selection.totalAmount,
         0,
@@ -130,7 +134,6 @@ async processCheckout(
         throw new BadRequestException('Discount cannot exceed subtotal');
       }
 
-      // Build sale items from batch selections
       const saleItems = this.buildSaleItems(batchSelections);
 
       const saleType =
@@ -188,8 +191,8 @@ async processCheckout(
         session,
       );
 
-      // Update batch quantities and create stock movements
-      await this.processBatchUpdates(
+// Update batch quantities and create stock movements
+      await this.processBatchUpdatesFromSelections(
         dto.branchId,
         batchSelections,
         cashierId,
@@ -212,7 +215,6 @@ async processCheckout(
           paymentReference: dto.paymentReference,
           items: saleItems.map((item) => ({
             productId: item.productId.toString(),
-            batchId: item.batchId.toString(),
             quantity: item.quantity,
           })),
           updateType: 'completed',
@@ -256,21 +258,28 @@ async processCheckout(
     }
   }
 
-  /**
+/**
    * Select batches for all items using FEFO
+   * Supports pack sizes: calculates quantityInBaseUnits from packSize if not provided
    * Properties: 19, 20, 21
-   * Supports pack sizes: uses quantityInBaseUnits when provided
    */
   private async selectBatchesForItems(
     branchId: string,
     items: SaleItemDto[],
+    _session: ClientSession,
   ): Promise<BatchSelectionResult[]> {
     const results: BatchSelectionResult[] = [];
 
     for (const item of items) {
-      // Use quantityInBaseUnits if provided (for pack size conversions)
-      // Otherwise fall back to item.quantity (base unit quantity)
-      const quantityNeeded = item.quantityInBaseUnits ?? item.quantity;
+      // Calculate quantityInBaseUnits from packSize if not provided
+      let quantityNeeded = item.quantityInBaseUnits;
+      if (quantityNeeded === undefined || quantityNeeded === null) {
+        if (item.packSize) {
+          quantityNeeded = item.quantity * item.packSize.quantityPerPack;
+        } else {
+          quantityNeeded = item.quantity;
+        }
+      }
 
       // Use FEFO batch selection from BatchesService
       const selectedBatches = await this.batchesService.selectBatchesForSale({
@@ -279,9 +288,15 @@ async processCheckout(
         quantityNeeded,
       });
 
-      // Calculate total amount for this item
-      // Use unitPrice from item (already accounts for pack size pricing)
-      // and multiply by item.quantity (number of packs sold)
+      // Verify we have enough stock
+      const totalSelected = selectedBatches.reduce((sum, b) => sum + b.quantity, 0);
+      if (totalSelected < quantityNeeded) {
+        throw new BadRequestException(
+          `Insufficient stock for product ${item.productId}. Requested: ${quantityNeeded}, Available: ${totalSelected}`,
+        );
+      }
+
+      // Calculate total amount using the item's unitPrice (already accounts for pack size pricing)
       const totalAmount = item.unitPrice * item.quantity;
 
       results.push({
@@ -289,6 +304,9 @@ async processCheckout(
         selectedBatches,
         totalQuantity: quantityNeeded,
         totalAmount,
+        unitPrice: item.unitPrice,
+        packSize: item.packSize,
+        originalQuantity: item.quantity,
       });
     }
 
@@ -297,6 +315,7 @@ async processCheckout(
 
   /**
    * Build sale items from batch selections
+   * Preserves pack size info for receipt display and returns
    */
   private buildSaleItems(selections: BatchSelectionResult[]): SaleItem[] {
     const saleItems: SaleItem[] = [];
@@ -307,10 +326,13 @@ async processCheckout(
           productId: new Types.ObjectId(selection.productId),
           batchId: new Types.ObjectId(batch.batchId),
           quantity: batch.quantity,
-          unitPrice: batch.sellingPrice,
-          subtotal: batch.quantity * batch.sellingPrice,
-          lotNumber: batch.lotNumber,
-          expiryDate: batch.expiryDate,
+          unitPrice: selection.unitPrice,
+          subtotal: batch.quantity * (selection.unitPrice / selection.totalQuantity) * batch.quantity,
+          packSize: selection.packSize ? {
+            name: selection.packSize.name,
+            unit: selection.packSize.unit,
+            quantityPerPack: selection.packSize.quantityPerPack,
+          } : undefined,
           returnedQuantity: 0,
         });
       }
@@ -404,11 +426,11 @@ async processCheckout(
     ];
   }
 
-  /**
-   * Process batch quantity updates and stock movements
-   * Requirements: 5.3, 17.1
+/**
+   * Process batch quantity updates and stock movements using FEFO selections
+   * Requirements: 5.3, 17.1, 19, 20
    */
-  private async processBatchUpdates(
+  private async processBatchUpdatesFromSelections(
     branchId: string,
     selections: BatchSelectionResult[],
     userId: string,
@@ -417,28 +439,43 @@ async processCheckout(
   ): Promise<void> {
     for (const selection of selections) {
       for (const batch of selection.selectedBatches) {
-        // Decrement batch quantity
+        // Decrement batch quantity (atomic with stock check)
         await this.batchesRepository.updateQuantity(
           batch.batchId,
           -batch.quantity,
           session,
         );
 
-        // Create stock movement record
+        // Record stock movement
         await this.inventoryService.recordSaleMovement(
           branchId,
           selection.productId,
-          batch.batchId,
           batch.quantity,
           userId,
           saleId,
           session,
         );
       }
+
+      // Also update product-level quantityAvailable for consistency
+      const totalQuantity = selection.selectedBatches.reduce(
+        (sum, b) => sum + b.quantity,
+        0,
+      );
+      await this.productModel
+        .updateOne(
+          {
+            _id: new Types.ObjectId(selection.productId),
+            branchId: new Types.ObjectId(branchId),
+          },
+          { $inc: { quantityAvailable: -totalQuantity } },
+          { session },
+        )
+        .exec();
     }
   }
 
-  /**
+/**
    * Check stock availability for items without creating a sale
    * Useful for cart validation before checkout
    */
@@ -460,15 +497,19 @@ async processCheckout(
     }> = [];
 
     for (const item of items) {
-      const availableQuantity = await this.batchesService.getAvailableQuantity(
-        branchId,
-        item.productId,
-      );
+      const product = await this.productModel
+        .findOne({
+          _id: new Types.ObjectId(item.productId),
+          branchId: new Types.ObjectId(branchId),
+        })
+        .exec();
+      const requestedQuantity = item.quantityInBaseUnits ?? item.quantity;
+      const availableQuantity = product?.quantityAvailable ?? 0;
 
-      if (availableQuantity < item.quantity) {
+      if (availableQuantity < requestedQuantity) {
         unavailableItems.push({
           productId: item.productId,
-          requested: item.quantity,
+          requested: requestedQuantity,
           available: availableQuantity,
         });
       }

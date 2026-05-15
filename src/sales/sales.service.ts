@@ -4,10 +4,9 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { InjectConnection } from '@nestjs/mongoose';
-import { Connection, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { SalesRepository } from './sales.repository.js';
-import { BatchesRepository } from '../batches/batches.repository.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { ProcessReturnDto, ReturnItemDto } from './dto/process-return.dto.js';
 import { ReceiveSalePaymentDto } from './dto/receive-sale-payment.dto.js';
@@ -23,6 +22,7 @@ import {
   PrescriptionStatus,
 } from './schemas/sale.schema.js';
 import { EventsService } from '../websocket/events.service.js';
+import { Product, ProductDocument } from '../products/schemas/product.schema.js';
 
 /**
  * Return processing result
@@ -46,10 +46,10 @@ export class SalesService {
 
   constructor(
     private readonly salesRepository: SalesRepository,
-    private readonly batchesRepository: BatchesRepository,
     private readonly inventoryService: InventoryService,
     private readonly eventsService: EventsService,
     @InjectConnection() private readonly connection: Connection,
+    @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
   ) {}
 
   /**
@@ -195,19 +195,27 @@ export class SalesService {
     try {
       // Process each return item
       for (const returnItem of dto.items) {
-        // Update batch quantity (increment)
-        // Property 44: Return stock increment
-        await this.batchesRepository.updateQuantity(
-          returnItem.batchId,
-          returnItem.quantity,
-          session,
-        );
+        const updatedProduct = await this.productModel
+          .findOneAndUpdate(
+            {
+              _id: new Types.ObjectId(returnItem.productId),
+              branchId: sale.branchId,
+            },
+            { $inc: { quantityAvailable: returnItem.quantity } },
+            { new: true, session },
+          )
+          .exec();
+
+        if (!updatedProduct) {
+          throw new NotFoundException(
+            `Product ${returnItem.productId} not found for this branch`,
+          );
+        }
 
         // Persist item-level returned quantity for accurate partial/full return tracking
         await this.salesRepository.updateItemReturnedQuantity(
           dto.saleId,
           returnItem.productId,
-          returnItem.batchId,
           returnItem.quantity,
           session,
         );
@@ -216,7 +224,6 @@ export class SalesService {
         await this.inventoryService.recordReturnMovement(
           sale.branchId.toString(),
           returnItem.productId,
-          returnItem.batchId,
           returnItem.quantity,
           userId,
           dto.saleId,
@@ -253,7 +260,6 @@ export class SalesService {
         paymentReference: sale.paymentReference,
         items: updatedSale!.items.map((item) => ({
           productId: item.productId.toString(),
-          batchId: item.batchId.toString(),
           quantity: item.quantity,
         })),
         updateType:
@@ -294,9 +300,9 @@ export class SalesService {
 
     for (const returnItem of returnItems) {
       // Validate return item properties
-      if (!returnItem.productId || !returnItem.batchId) {
+      if (!returnItem.productId) {
         throw new BadRequestException(
-          'Each return item must have productId and batchId',
+          'Each return item must have productId',
         );
       }
 
@@ -308,14 +314,12 @@ export class SalesService {
 
       // Find matching item in original sale
       const saleItem = sale.items.find(
-        (item) =>
-          item.productId.toString() === returnItem.productId &&
-          item.batchId.toString() === returnItem.batchId,
+        (item) => item.productId.toString() === returnItem.productId,
       );
 
       if (!saleItem) {
         throw new BadRequestException(
-          `Item with productId ${returnItem.productId} and batchId ${returnItem.batchId} not found in original sale`,
+          `Item with productId ${returnItem.productId} not found in original sale`,
         );
       }
 
@@ -340,9 +344,7 @@ export class SalesService {
 
     for (const returnItem of returnItems) {
       const saleItem = sale.items.find(
-        (item) =>
-          item.productId.toString() === returnItem.productId &&
-          item.batchId.toString() === returnItem.batchId,
+        (item) => item.productId.toString() === returnItem.productId,
       );
 
       if (saleItem) {
@@ -370,9 +372,7 @@ export class SalesService {
 
       // Add current return quantities
       const currentReturn = returnItems.find(
-        (ri) =>
-          ri.productId === saleItem.productId.toString() &&
-          ri.batchId === saleItem.batchId.toString(),
+        (ri) => ri.productId === saleItem.productId.toString(),
       );
       if (currentReturn) {
         totalReturned += currentReturn.quantity;

@@ -121,4 +121,8 @@ export class CreateProductDto {
   @IsMongoId()
   @IsOptional()
   initialSupplierId?: string;
+
+  @IsDateString()
+  @IsOptional()
+  initialSupplyDate?: string;
 }

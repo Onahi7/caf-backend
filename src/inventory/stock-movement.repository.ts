@@ -31,7 +31,7 @@ export class StockMovementRepository {
     const movement = new this.stockMovementModel({
       branchId: new Types.ObjectId(dto.branchId),
       productId: new Types.ObjectId(dto.productId),
-      batchId: new Types.ObjectId(dto.batchId),
+      batchId: dto.batchId ? new Types.ObjectId(dto.batchId) : undefined,
       quantity: dto.quantity,
       movementType: dto.movementType,
       reason: dto.reason,

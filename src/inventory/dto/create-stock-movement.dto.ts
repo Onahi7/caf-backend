@@ -25,9 +25,9 @@ export class CreateStockMovementDto {
   @IsMongoId()
   productId!: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsMongoId()
-  batchId!: string;
+  batchId?: string;
 
   @IsNotEmpty()
   @IsNumber()

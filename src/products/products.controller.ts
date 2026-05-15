@@ -82,6 +82,30 @@ export class ProductsController {
     return res.send(workbookBuffer);
   }
 
+  @Get('export')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  async exportProducts(
+    @CurrentUser() user: CurrentUserData,
+    @Query('branchId') branchId: string | undefined,
+    @Res() res: Response,
+  ) {
+    const resolvedBranchId = resolveBranchId(user, branchId);
+    const workbookBuffer = await this.productExcelService.buildExportWorkbook({
+      resolvedBranchId,
+      user,
+    });
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=products-export.xlsx',
+    );
+    return res.send(workbookBuffer);
+  }
+
   @Post('import')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
   @UseInterceptors(FileInterceptor('file'))

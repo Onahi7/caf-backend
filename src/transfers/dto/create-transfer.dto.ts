@@ -25,10 +25,6 @@ export class CreateTransferDto {
   productId!: string;
 
   @IsNotEmpty()
-  @IsString()
-  batchId!: string;
-
-  @IsNotEmpty()
   @IsNumber()
   @Min(1)
   quantity!: number;

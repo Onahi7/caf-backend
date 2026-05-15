@@ -3,7 +3,9 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
 import ExcelJS from 'exceljs';
+import { Model, Types } from 'mongoose';
 import { BranchesService } from '../branches/branches.service.js';
 import { SuppliersService } from '../suppliers/suppliers.service.js';
 import { ProductsService } from './products.service.js';
@@ -14,6 +16,10 @@ import {
 } from '../audit/schemas/audit-log.schema.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import type { CreateProductDto } from './dto/create-product.dto.js';
+import {
+  Product,
+  type ProductDocument,
+} from './schemas/product.schema.js';
 
 interface TemplateContext {
   resolvedBranchId?: string;
@@ -22,6 +28,11 @@ interface TemplateContext {
 
 interface ImportContext {
   fileBuffer: Buffer;
+  resolvedBranchId?: string;
+  user: CurrentUserData;
+}
+
+interface ExportContext {
   resolvedBranchId?: string;
   user: CurrentUserData;
 }
@@ -104,6 +115,8 @@ export class ProductExcelService {
   private readonly logger = new Logger(ProductExcelService.name);
 
   constructor(
+    @InjectModel(Product.name)
+    private readonly productModel: Model<ProductDocument>,
     private readonly branchesService: BranchesService,
     private readonly suppliersService: SuppliersService,
     private readonly productsService: ProductsService,
@@ -164,6 +177,87 @@ export class ProductExcelService {
       .catch((error: unknown) => {
         this.logger.warn(
           `Skipping audit log for product template export: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`,
+        );
+      });
+
+    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+  }
+
+  async buildExportWorkbook({
+    resolvedBranchId,
+    user,
+  }: ExportContext): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'CAREFARM POS';
+    workbook.created = new Date();
+    workbook.modified = new Date();
+
+    const worksheet = workbook.addWorksheet('Products Export');
+    worksheet.columns = [
+      { header: 'Product Name', key: 'productName', width: 34 },
+      { header: 'Brand Name', key: 'brandName', width: 24 },
+      { header: 'Unit', key: 'unit', width: 16 },
+      { header: 'Quantity', key: 'quantity', width: 14 },
+      { header: 'Expiry', key: 'expiry', width: 18 },
+      { header: 'Cost Price', key: 'costPrice', width: 16 },
+      { header: 'Selling Price', key: 'sellingPrice', width: 16 },
+    ];
+
+    const products = await this.productModel
+      .find(this.buildBranchFilter(resolvedBranchId))
+      .sort({ name: 1, brand: 1, createdAt: 1 })
+      .exec();
+
+    for (const product of products) {
+      worksheet.addRow({
+        productName: product.name,
+        brandName: product.brand,
+        unit: product.unit,
+        quantity: product.quantityAvailable ?? 0,
+        expiry: this.formatDate(product.expiryDate),
+        costPrice: product.costPrice ?? 0,
+        sellingPrice:
+          product.suggestedRetailPrice > 0
+            ? product.suggestedRetailPrice
+            : product.basePrice,
+      });
+    }
+
+    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: 7 },
+    };
+    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1F3A2A' },
+    };
+
+    ['F', 'G'].forEach((column) => {
+      worksheet.getColumn(column).numFmt = '#,##0.00';
+    });
+    worksheet.getColumn('D').numFmt = '#,##0.##';
+
+    await this.auditService
+      .log({
+        userId: user.userId,
+        username: user.username,
+        action: AuditAction.EXPORT,
+        resource: AuditResource.PRODUCT,
+        branchId: resolvedBranchId,
+        description: 'Exported products to Excel',
+        metadata: {
+          branchScope: resolvedBranchId || 'all',
+          productCount: products.length,
+        },
+      })
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `Skipping audit log for product export: ${
             error instanceof Error ? error.message : 'Unknown error'
           }`,
         );
@@ -587,6 +681,33 @@ export class ProductExcelService {
     }
 
     return { headerMap: new Map<string, number>(), headerRowNumber: 1 };
+  }
+
+  private buildBranchFilter(branchId?: string): Record<string, unknown> {
+    if (!branchId) {
+      return {};
+    }
+
+    if (!Types.ObjectId.isValid(branchId)) {
+      return { branchId };
+    }
+
+    return {
+      branchId: { $in: [new Types.ObjectId(branchId), branchId] },
+    };
+  }
+
+  private formatDate(value?: Date | string): string {
+    if (!value) {
+      return '';
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+
+    return date.toISOString().slice(0, 10);
   }
 
   private isRowEmpty(row: ExcelJS.Row): boolean {

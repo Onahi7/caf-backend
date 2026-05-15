@@ -6,6 +6,8 @@ import {
   Min,
   IsArray,
   ValidateNested,
+  IsMongoId,
+  IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -101,4 +103,21 @@ export class UpdateProductDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  quantityAvailable?: number;
+
+  @IsMongoId()
+  @IsOptional()
+  supplierId?: string;
+
+  @IsDateString()
+  @IsOptional()
+  supplyDate?: string;
+
+  @IsDateString()
+  @IsOptional()
+  expiryDate?: string;
 }

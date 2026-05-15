@@ -25,7 +25,9 @@ export class ProductsRepository {
     };
   }
 
-  async create(createProductDto: CreateProductDto): Promise<ProductDocument> {
+  async create(
+    createProductDto: CreateProductDto | Partial<Product>,
+  ): Promise<ProductDocument> {
     const product = new this.productModel(createProductDto);
     return product.save();
   }

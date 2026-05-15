@@ -43,9 +43,6 @@ export class Transfer {
   @Prop({ required: true, type: Types.ObjectId, ref: 'Product', index: true })
   productId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Batch', index: true })
-  batchId!: Types.ObjectId;
-
   @Prop({ required: true, min: 1 })
   quantity!: number;
 

@@ -19,7 +19,7 @@ export class InventoryAdjustmentDto {
 
   @IsNotEmpty()
   @IsMongoId()
-  batchId!: string;
+  productId!: string;
 
   @IsNotEmpty()
   @IsNumber()

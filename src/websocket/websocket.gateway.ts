@@ -303,7 +303,7 @@ export class WebSocketGateway
   @OnEvent('inventory.updated')
   handleInventoryUpdateEvent(event: InventoryUpdateEvent) {
     this.broadcastInventoryUpdate(event.branchId, {
-      batchId: event.batchId,
+      batchId: event.batchId ?? event.productId,
       productId: event.productId,
       branchId: event.branchId,
       quantityAvailable: event.quantityAvailable,
@@ -365,7 +365,7 @@ export class WebSocketGateway
         sourceBranchId: event.sourceBranchId,
         destinationBranchId: event.destinationBranchId,
         productId: event.productId,
-        batchId: event.batchId,
+        batchId: event.batchId ?? event.productId,
         quantity: event.quantity,
         status: event.status,
         timestamp: event.timestamp,
@@ -378,7 +378,7 @@ export class WebSocketGateway
  * DTO for inventory update messages
  */
 export interface InventoryUpdateDto {
-  batchId: string;
+  batchId?: string;
   productId: string;
   branchId: string;
   quantityAvailable: number;
@@ -414,7 +414,7 @@ export interface SaleUpdateDto {
   paymentReference?: string;
   items: Array<{
     productId: string;
-    batchId: string;
+    batchId?: string;
     quantity: number;
   }>;
   updateType: 'completed' | 'returned' | 'partially_returned';
@@ -429,7 +429,7 @@ export interface TransferUpdateDto {
   sourceBranchId: string;
   destinationBranchId: string;
   productId: string;
-  batchId: string;
+  batchId?: string;
   quantity: number;
   status: 'pending' | 'approved' | 'rejected' | 'completed';
   timestamp: Date;

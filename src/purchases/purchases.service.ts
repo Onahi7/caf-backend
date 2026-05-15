@@ -3,10 +3,9 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectConnection } from '@nestjs/mongoose';
-import { Connection } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { PurchasesRepository } from './purchases.repository.js';
-import { BatchesRepository } from '../batches/batches.repository.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto.js';
 import { ReceivePurchaseOrderDto } from './dto/receive-purchase-order.dto.js';
@@ -15,20 +14,21 @@ import {
   PurchaseOrderDocument,
   PurchaseOrderStatus,
 } from './schemas/purchase-order.schema.js';
+import { Product, ProductDocument } from '../products/schemas/product.schema.js';
 
 /**
  * Result of receiving a purchase order
  */
 export interface ReceiveResult {
   purchaseOrder: PurchaseOrderDocument;
-  batchesCreated: number;
+  productsUpdated: number;
   movementsCreated: number;
   isPartialReceipt: boolean;
 }
 
 /**
  * PurchaseService
- * Handles purchase order creation, receiving, and batch creation
+ * Handles purchase order creation and product-level stock receiving
  * Requirements: 19.1, 19.2, 19.4
  * Properties: 71, 72, 73, 74
  */
@@ -36,9 +36,9 @@ export interface ReceiveResult {
 export class PurchasesService {
   constructor(
     private readonly purchasesRepository: PurchasesRepository,
-    private readonly batchesRepository: BatchesRepository,
     private readonly inventoryService: InventoryService,
     @InjectConnection() private readonly connection: Connection,
+    @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
   ) {}
 
   /**
@@ -105,10 +105,10 @@ export class PurchasesService {
 
   /**
    * Receive items from a purchase order
-   * Creates batches and stock movements for received items
+   * Updates product stock and stock movements for received items
    * Supports partial receipt
    *
-   * Property 72: PO receiving creates batches
+   * Property 72: PO receiving increases available stock
    * Property 73: PO status tracking
    * Property 74: Partial PO receipt
    * Requirements: 19.2, 19.4
@@ -156,7 +156,7 @@ export class PurchasesService {
     const session = await this.connection.startSession();
     session.startTransaction();
 
-    let batchesCreated = 0;
+    let productsUpdated = 0;
     let movementsCreated = 0;
 
     try {
@@ -167,24 +167,42 @@ export class PurchasesService {
           (item) => item.productId.toString() === receivedItem.productId,
         );
 
-        // Create batch for received item
-        const batch = await this.batchesRepository.create({
-          productId: receivedItem.productId,
-          branchId: purchaseOrder.branchId.toString(),
-          lotNumber: receivedItem.lotNumber,
-          expiryDate: receivedItem.expiryDate,
-          quantity: receivedItem.receivedQuantity,
-          purchasePrice: receivedItem.purchasePrice ?? poItem!.unitPrice,
-          sellingPrice: receivedItem.sellingPrice,
-          supplierId: purchaseOrder.supplierId.toString(),
-        }, session);
-        batchesCreated++;
+        const updatedProduct = await this.productModel
+          .findOneAndUpdate(
+            {
+              _id: new Types.ObjectId(receivedItem.productId),
+              branchId: purchaseOrder.branchId,
+            },
+            {
+              $inc: { quantityAvailable: receivedItem.receivedQuantity },
+              $set: {
+                supplierId: purchaseOrder.supplierId,
+                supplyDate: receivedItem.supplyDate
+                  ? new Date(receivedItem.supplyDate)
+                  : new Date(),
+                expiryDate: receivedItem.expiryDate
+                  ? new Date(receivedItem.expiryDate)
+                  : undefined,
+                costPrice: receivedItem.purchasePrice ?? poItem!.unitPrice,
+                suggestedRetailPrice: receivedItem.sellingPrice,
+                basePrice: receivedItem.sellingPrice,
+              },
+            },
+            { new: true, session },
+          )
+          .exec();
+
+        if (!updatedProduct) {
+          throw new NotFoundException(
+            `Product ${receivedItem.productId} not found for this branch`,
+          );
+        }
+        productsUpdated++;
 
         // Create stock movement for the purchase
         await this.inventoryService.recordPurchaseMovement(
           purchaseOrder.branchId.toString(),
           receivedItem.productId,
-          batch._id.toString(),
           receivedItem.receivedQuantity,
           receiveDto.receivedBy,
           id,
@@ -222,7 +240,7 @@ export class PurchasesService {
 
       return {
         purchaseOrder: finalPO,
-        batchesCreated,
+        productsUpdated,
         movementsCreated,
         isPartialReceipt: !isFullyReceived,
       };

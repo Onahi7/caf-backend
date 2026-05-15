@@ -12,9 +12,6 @@ export class ReturnItemDto {
   @IsString()
   productId!: string;
 
-  @IsString()
-  batchId!: string;
-
   @IsNumber()
   @Min(1)
   quantity!: number;

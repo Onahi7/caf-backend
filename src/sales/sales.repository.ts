@@ -267,7 +267,6 @@ export class SalesRepository {
   async updateItemReturnedQuantity(
     saleId: string,
     productId: string,
-    batchId: string,
     returnedQuantity: number,
     session?: ClientSession,
   ): Promise<SaleDocument | null> {
@@ -278,7 +277,6 @@ export class SalesRepository {
         {
           _id: new Types.ObjectId(saleId),
           'items.productId': new Types.ObjectId(productId),
-          'items.batchId': new Types.ObjectId(batchId),
         },
         {
           $inc: { 'items.$.returnedQuantity': returnedQuantity },

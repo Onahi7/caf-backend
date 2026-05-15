@@ -2,7 +2,7 @@ import {
   IsNotEmpty,
   IsString,
   IsNumber,
-  IsDate,
+  IsDateString,
   IsMongoId,
   IsArray,
   ValidateNested,
@@ -21,14 +21,9 @@ export class ReceivedItemDto {
   @Min(1)
   receivedQuantity!: number;
 
-  @IsNotEmpty()
-  @IsString()
-  lotNumber!: string;
-
-  @IsNotEmpty()
-  @IsDate()
-  @Type(() => Date)
-  expiryDate!: Date;
+  @IsOptional()
+  @IsDateString()
+  expiryDate?: string;
 
   @IsNotEmpty()
   @IsNumber()
@@ -39,6 +34,10 @@ export class ReceivedItemDto {
   @IsNumber()
   @Min(0)
   purchasePrice?: number;
+
+  @IsOptional()
+  @IsDateString()
+  supplyDate?: string;
 }
 
 export class ReceivePurchaseOrderDto {

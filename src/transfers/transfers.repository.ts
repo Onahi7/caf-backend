@@ -22,6 +22,16 @@ export class TransfersRepository {
     @InjectModel(Transfer.name) private transferModel: Model<TransferDocument>,
   ) {}
 
+  private populateReferences() {
+    return this.transferModel
+      .find()
+      .populate('sourceBranchId')
+      .populate('destinationBranchId')
+      .populate('productId')
+      .populate('requestedBy')
+      .populate('approvedBy');
+  }
+
   /**
    * Create a new transfer request
    * Property 15: Transfer structure completeness
@@ -38,7 +48,6 @@ export class TransfersRepository {
         createTransferDto.destinationBranchId,
       ),
       productId: new Types.ObjectId(createTransferDto.productId),
-      batchId: new Types.ObjectId(createTransferDto.batchId),
       quantity: createTransferDto.quantity,
       reason: createTransferDto.reason,
       notes: createTransferDto.notes,
@@ -54,11 +63,18 @@ export class TransfersRepository {
   }
 
   async findAll(): Promise<TransferDocument[]> {
-    return this.transferModel.find().sort({ createdAt: -1 }).exec();
+    return this.populateReferences().sort({ createdAt: -1 }).exec();
   }
 
   async findById(id: string): Promise<TransferDocument | null> {
-    return this.transferModel.findById(id).exec();
+    return this.transferModel
+      .findById(id)
+      .populate('sourceBranchId')
+      .populate('destinationBranchId')
+      .populate('productId')
+      .populate('requestedBy')
+      .populate('approvedBy')
+      .exec();
   }
 
   /**
@@ -109,7 +125,15 @@ export class TransfersRepository {
       }
     }
 
-    return this.transferModel.find(query).sort({ createdAt: -1 }).exec();
+    return this.transferModel
+      .find(query)
+      .populate('sourceBranchId')
+      .populate('destinationBranchId')
+      .populate('productId')
+      .populate('requestedBy')
+      .populate('approvedBy')
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
   /**
@@ -120,6 +144,11 @@ export class TransfersRepository {
   async findPending(): Promise<TransferDocument[]> {
     return this.transferModel
       .find({ status: TransferStatus.PENDING })
+      .populate('sourceBranchId')
+      .populate('destinationBranchId')
+      .populate('productId')
+      .populate('requestedBy')
+      .populate('approvedBy')
       .sort({ createdAt: -1 })
       .exec();
   }
@@ -133,6 +162,11 @@ export class TransfersRepository {
         destinationBranchId: new Types.ObjectId(branchId),
         status: TransferStatus.PENDING,
       })
+      .populate('sourceBranchId')
+      .populate('destinationBranchId')
+      .populate('productId')
+      .populate('requestedBy')
+      .populate('approvedBy')
       .sort({ createdAt: -1 })
       .exec();
   }

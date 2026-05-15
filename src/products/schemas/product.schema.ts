@@ -63,6 +63,12 @@ export class Product {
   maxStockLevel!: number;
 
   @Prop({ required: true, default: 0 })
+  quantityAvailable!: number;
+
+  @Prop({ required: true, default: 0 })
+  quantityInitial!: number;
+
+  @Prop({ required: true, default: 0 })
   basePrice!: number; // Price per base unit
 
   @Prop({ required: true, default: 0 })
@@ -82,6 +88,15 @@ export class Product {
 
   @Prop({ default: true })
   isActive!: boolean;
+
+  @Prop({ type: Types.ObjectId, ref: 'Supplier' })
+  supplierId?: Types.ObjectId;
+
+  @Prop()
+  supplyDate?: Date;
+
+  @Prop()
+  expiryDate?: Date;
 
   /**
    * Pack sizes for unit conversion hierarchy.

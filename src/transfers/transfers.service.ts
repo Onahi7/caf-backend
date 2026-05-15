@@ -3,10 +3,9 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectConnection } from '@nestjs/mongoose';
-import { Connection } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { TransfersRepository } from './transfers.repository.js';
-import { BatchesRepository } from '../batches/batches.repository.js';
 import { BranchesRepository } from '../branches/branches.repository.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { CreateTransferDto } from './dto/create-transfer.dto.js';
@@ -20,6 +19,7 @@ import {
   TransferStatus,
   TransferType,
 } from './schemas/transfer.schema.js';
+import { Product, ProductDocument } from '../products/schemas/product.schema.js';
 
 /**
  * TransfersService
@@ -31,10 +31,10 @@ import {
 export class TransfersService {
   constructor(
     private readonly transfersRepository: TransfersRepository,
-    private readonly batchesRepository: BatchesRepository,
     private readonly branchesRepository: BranchesRepository,
     private readonly inventoryService: InventoryService,
     @InjectConnection() private readonly connection: Connection,
+    @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
   ) {}
 
   /**
@@ -71,36 +71,22 @@ export class TransfersService {
       );
     }
 
-    // Validate batch exists and belongs to source branch
-    const batch = await this.batchesRepository.findById(dto.batchId);
-    if (!batch) {
-      throw new NotFoundException(`Batch ${dto.batchId} not found`);
+    const product = await this.productModel.findById(dto.productId).exec();
+    if (!product) {
+      throw new NotFoundException(`Product ${dto.productId} not found`);
     }
 
-    if (batch.branchId.toString() !== dto.sourceBranchId) {
+    if (product.branchId.toString() !== dto.sourceBranchId) {
       throw new BadRequestException(
-        'Batch does not belong to the source branch',
-      );
-    }
-
-    if (batch.productId.toString() !== dto.productId) {
-      throw new BadRequestException(
-        'Batch does not match the specified product',
+        'Product does not belong to the source branch',
       );
     }
 
     // Validate sufficient quantity
-    // Note: This is a pre-check; final availability is verified at approval time
-    // to prevent TOCTOU race conditions (see approveTransfer method, lines 187-198)
-    if (batch.quantityAvailable < dto.quantity) {
+    if (product.quantityAvailable < dto.quantity) {
       throw new BadRequestException(
-        `Insufficient quantity. Available: ${batch.quantityAvailable}, Requested: ${dto.quantity}`,
+        `Insufficient quantity. Available: ${product.quantityAvailable}, Requested: ${dto.quantity}`,
       );
-    }
-
-    // Check if batch is expired
-    if (batch.isExpired) {
-      throw new BadRequestException('Cannot transfer expired batch');
     }
 
     // Determine transfer type
@@ -185,17 +171,28 @@ export class TransfersService {
       );
     }
 
-    // Validate batch still has sufficient quantity
-    const batch = await this.batchesRepository.findById(
-      transfer.batchId.toString(),
-    );
-    if (!batch) {
-      throw new NotFoundException('Transfer batch no longer exists');
+    const sourceProduct = await this.productModel
+      .findById(transfer.productId)
+      .exec();
+    if (!sourceProduct) {
+      throw new NotFoundException('Transfer product no longer exists');
     }
 
-    if (batch.quantityAvailable < transfer.quantity) {
+    if (sourceProduct.quantityAvailable < transfer.quantity) {
       throw new BadRequestException(
-        `Insufficient quantity in batch. Available: ${batch.quantityAvailable}, Required: ${transfer.quantity}`,
+        `Insufficient quantity in product stock. Available: ${sourceProduct.quantityAvailable}, Required: ${transfer.quantity}`,
+      );
+    }
+
+    const destinationProduct = await this.productModel
+      .findOne({
+        branchId: transfer.destinationBranchId,
+        sku: sourceProduct.sku,
+      })
+      .exec();
+    if (!destinationProduct) {
+      throw new NotFoundException(
+        `Matching product with SKU ${sourceProduct.sku} not found in destination branch`,
       );
     }
 
@@ -213,18 +210,27 @@ export class TransfersService {
         session,
       );
 
-      // 2. Decrement stock at source branch
-      await this.batchesRepository.updateQuantity(
-        transfer.batchId.toString(),
-        -transfer.quantity,
-        session,
-      );
+      const updatedSource = await this.productModel
+        .findOneAndUpdate(
+          {
+            _id: new Types.ObjectId(sourceProduct._id),
+            quantityAvailable: { $gte: transfer.quantity },
+          },
+          { $inc: { quantityAvailable: -transfer.quantity } },
+          { new: true, session },
+        )
+        .exec();
+
+      if (!updatedSource) {
+        throw new BadRequestException(
+          `Insufficient quantity in product stock. Available stock changed before approval.`,
+        );
+      }
 
       // 3. Create stock movement for source (transfer out)
       await this.inventoryService.recordTransferMovement(
         transfer.sourceBranchId.toString(),
         transfer.productId.toString(),
-        transfer.batchId.toString(),
         transfer.quantity,
         approvedBy,
         transferId,
@@ -232,24 +238,28 @@ export class TransfersService {
         session,
       );
 
-      // 4. Create or update batch at destination branch
-      // For simplicity, we create a new batch at the destination
-      const newBatch = await this.batchesRepository.create({
-        productId: transfer.productId.toString(),
-        branchId: transfer.destinationBranchId.toString(),
-        lotNumber: batch.lotNumber,
-        expiryDate: batch.expiryDate,
-        quantity: transfer.quantity,
-        purchasePrice: batch.purchasePrice,
-        sellingPrice: batch.sellingPrice,
-        supplierId: batch.supplierId.toString(),
-      }, session);
+      await this.productModel
+        .findByIdAndUpdate(
+          destinationProduct._id,
+          {
+            $inc: { quantityAvailable: transfer.quantity },
+            $set: {
+              costPrice: sourceProduct.costPrice,
+              suggestedRetailPrice: sourceProduct.suggestedRetailPrice,
+              basePrice: sourceProduct.basePrice,
+              supplierId: sourceProduct.supplierId,
+              supplyDate: sourceProduct.supplyDate,
+              expiryDate: sourceProduct.expiryDate,
+            },
+          },
+          { new: true, session },
+        )
+        .exec();
 
       // 5. Create stock movement for destination (transfer in)
       await this.inventoryService.recordTransferMovement(
         transfer.destinationBranchId.toString(),
-        transfer.productId.toString(),
-        newBatch._id.toString(),
+        destinationProduct._id.toString(),
         transfer.quantity,
         approvedBy,
         transferId,

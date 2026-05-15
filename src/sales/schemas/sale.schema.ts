@@ -45,6 +45,20 @@ export enum PaymentStatus {
   OVERDUE = 'overdue',
 }
 
+@Schema({ _id: false })
+export class SaleItemPackSize {
+  @Prop({ required: true })
+  name!: string;
+
+  @Prop({ required: true })
+  unit!: string;
+
+  @Prop({ required: true })
+  quantityPerPack!: number;
+}
+
+export const SaleItemPackSizeSchema = SchemaFactory.createForClass(SaleItemPackSize);
+
 /**
  * Sale item embedded document
  * Represents a single item in a sale
@@ -54,8 +68,8 @@ export class SaleItem {
   @Prop({ required: true, type: Types.ObjectId, ref: 'Product' })
   productId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Batch' })
-  batchId!: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: 'Batch' })
+  batchId?: Types.ObjectId;
 
   @Prop({ required: true })
   quantity!: number;
@@ -66,11 +80,11 @@ export class SaleItem {
   @Prop({ required: true })
   subtotal!: number;
 
-  @Prop()
-  lotNumber?: string;
-
-  @Prop()
-  expiryDate?: Date;
+  /**
+   * Pack size info for unit conversion tracking
+   */
+  @Prop({ type: SaleItemPackSizeSchema })
+  packSize?: SaleItemPackSize;
 
   /**
    * Track returned quantity for partial returns

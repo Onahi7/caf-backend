@@ -31,8 +31,8 @@ export class StockMovement {
   @Prop({ required: true, type: Types.ObjectId, ref: 'Product', index: true })
   productId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Batch', index: true })
-  batchId!: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: 'Batch', index: true })
+  batchId?: Types.ObjectId;
 
   /**
    * Quantity change: positive for increase, negative for decrease

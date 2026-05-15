@@ -15,7 +15,9 @@ export class EventsService {
    * Emit inventory update event
    */
   emitInventoryUpdate(data: InventoryUpdateEvent) {
-    this.logger.debug(`Emitting inventory update event: ${data.batchId}`);
+    this.logger.debug(
+      `Emitting inventory update event: ${data.batchId ?? data.productId}`,
+    );
     this.eventEmitter.emit('inventory.updated', data);
   }
 
@@ -48,7 +50,7 @@ export class EventsService {
  * Event data interfaces
  */
 export interface InventoryUpdateEvent {
-  batchId: string;
+  batchId?: string;
   productId: string;
   branchId: string;
   quantityAvailable: number;
@@ -76,7 +78,7 @@ export interface SaleUpdateEvent {
   paymentReference?: string;
   items: Array<{
     productId: string;
-    batchId: string;
+    batchId?: string;
     quantity: number;
   }>;
   updateType: 'completed' | 'returned' | 'partially_returned';
@@ -88,7 +90,7 @@ export interface TransferUpdateEvent {
   sourceBranchId: string;
   destinationBranchId: string;
   productId: string;
-  batchId: string;
+  batchId?: string;
   quantity: number;
   status: 'pending' | 'approved' | 'rejected' | 'completed';
   timestamp: Date;
