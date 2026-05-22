@@ -354,8 +354,9 @@ export class ProductsController {
   async update(
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<ProductDocument> {
-    return this.productsService.update(id, updateProductDto);
+    return this.productsService.update(id, updateProductDto, user.userId);
   }
 
   @Delete(':id')

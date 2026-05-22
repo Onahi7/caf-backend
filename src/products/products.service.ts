@@ -236,6 +236,7 @@ export class ProductsService {
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
+    userId?: string,
   ): Promise<ProductDocument> {
     const existingProduct = await this.productsRepository.findById(id);
     if (!existingProduct) {
@@ -268,10 +269,30 @@ export class ProductsService {
       }
     }
 
-    const product = await this.productsRepository.update(id, updateProductDto);
+    const { quantityAvailable, ...productUpdates } = updateProductDto;
+    const product = await this.productsRepository.update(id, productUpdates);
     if (!product) {
       throw new NotFoundException(`Product with ID ${id} not found`);
     }
+
+    if (
+      quantityAvailable !== undefined &&
+      quantityAvailable !== existingProduct.quantityAvailable
+    ) {
+      const quantityChange = quantityAvailable - existingProduct.quantityAvailable;
+      await this.inventoryService.adjustInventory(
+        {
+          branchId: targetBranchId,
+          productId: id,
+          quantityChange,
+          reason: 'Stock corrected from product edit',
+        },
+        userId ?? 'system',
+      );
+
+      return this.findById(id);
+    }
+
     return product;
   }
 
