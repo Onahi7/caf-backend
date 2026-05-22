@@ -12,6 +12,10 @@ export enum CycleCountStatus {
 
 export interface CycleCountLine {
   productId: Types.ObjectId;
+  /**
+   * Legacy field name kept for API compatibility. For product-level counts,
+   * this stores the product id and should be treated as the line id.
+   */
   batchId: Types.ObjectId;
   lotNumber: string;
   systemQuantity: number;   // snapshot at time of count creation
@@ -45,8 +49,8 @@ export class CycleCount {
     type: [
       {
         productId: { type: Types.ObjectId, ref: 'Product', required: true },
-        batchId: { type: Types.ObjectId, ref: 'Batch', required: true },
-        lotNumber: { type: String, required: true },
+        batchId: { type: Types.ObjectId, ref: 'Product', required: true },
+        lotNumber: { type: String, default: 'Product total' },
         systemQuantity: { type: Number, required: true },
         countedQuantity: { type: Number, default: null },
         variance: { type: Number, default: null },

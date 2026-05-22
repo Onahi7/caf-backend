@@ -4,14 +4,14 @@ import { CycleCount, CycleCountSchema } from './schemas/cycle-count.schema.js';
 import { CycleCountRepository } from './cycle-count.repository.js';
 import { CycleCountService } from './cycle-count.service.js';
 import { CycleCountController } from './cycle-count.controller.js';
-import { Batch, BatchSchema } from '../batches/schemas/batch.schema.js';
+import { Product, ProductSchema } from '../products/schemas/product.schema.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: CycleCount.name, schema: CycleCountSchema },
-      { name: Batch.name, schema: BatchSchema },
+      { name: Product.name, schema: ProductSchema },
     ]),
     InventoryModule, // provides StockMovementRepository
   ],

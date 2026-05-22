@@ -13,7 +13,7 @@ import {
 } from './schemas/cycle-count.schema.js';
 import { CreateCycleCountDto } from './dto/create-cycle-count.dto.js';
 import { SubmitCycleCountDto } from './dto/submit-cycle-count.dto.js';
-import { Batch, BatchDocument } from '../batches/schemas/batch.schema.js';
+import { Product, ProductDocument } from '../products/schemas/product.schema.js';
 import { StockMovementRepository } from '../inventory/stock-movement.repository.js';
 import { MovementType } from '../inventory/schemas/stock-movement.schema.js';
 
@@ -22,13 +22,13 @@ export class CycleCountService {
   constructor(
     private readonly repo: CycleCountRepository,
     private readonly stockMovementRepo: StockMovementRepository,
-    @InjectModel(Batch.name) private readonly batchModel: Model<BatchDocument>,
+    @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
   /**
    * Create a new draft cycle count for a branch.
-   * Snapshots all active (non-depleted, non-expired) batches.
+   * Snapshots all active products. Stock is counted at product total level.
    */
   async create(
     dto: CreateCycleCountDto,
@@ -43,19 +43,18 @@ export class CycleCountService {
     }
 
     // Snapshot current stock
-    const batches = await this.batchModel
+    const products = await this.productModel
       .find({
         branchId: new Types.ObjectId(dto.branchId),
-        isDepleted: false,
-        isExpired: false,
+        isActive: true,
       })
       .exec();
 
-    const lines = batches.map((b) => ({
-      productId: b.productId,
-      batchId: b._id as Types.ObjectId,
-      lotNumber: b.lotNumber,
-      systemQuantity: b.quantityAvailable,
+    const lines = products.map((product) => ({
+      productId: product._id as Types.ObjectId,
+      batchId: product._id as Types.ObjectId,
+      lotNumber: 'Product total',
+      systemQuantity: product.quantityAvailable,
       countedQuantity: null,
       variance: null,
     }));
@@ -83,7 +82,7 @@ export class CycleCountService {
   }
 
   /**
-   * Submit counted quantities for each batch line.
+   * Submit counted quantities for each product line.
    * Computes variances. Transitions status to SUBMITTED.
    */
   async submit(
@@ -118,7 +117,7 @@ export class CycleCountService {
   /**
    * Approve the cycle count.
    * For every line with a non-zero variance, creates an ADJUSTMENT stock
-   * movement and updates the batch quantity atomically inside a transaction.
+   * movement and updates product total stock atomically inside a transaction.
    */
   async approve(id: string, userId: string): Promise<CycleCountDocument> {
     const count = await this.findOne(id);
@@ -143,18 +142,15 @@ export class CycleCountService {
         const variance = line.variance ?? 0;
         if (variance === 0) continue;
 
-        // Atomically update batch quantity
-        await this.batchModel
+        // Atomically update product total quantity.
+        await this.productModel
           .findByIdAndUpdate(
-            line.batchId,
+            line.productId,
             [
               {
                 $set: {
                   quantityAvailable: {
                     $max: [0, { $add: ['$quantityAvailable', variance] }],
-                  },
-                  isDepleted: {
-                    $lte: [{ $add: ['$quantityAvailable', variance] }, 0],
                   },
                 },
               },
@@ -168,7 +164,6 @@ export class CycleCountService {
           {
             branchId: count.branchId.toString(),
             productId: line.productId.toString(),
-            batchId: line.batchId.toString(),
             quantity: variance,
             movementType: MovementType.ADJUSTMENT,
             reason: `Cycle count adjustment (count ID: ${id})`,
