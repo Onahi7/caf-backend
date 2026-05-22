@@ -41,6 +41,7 @@ async function bootstrap() {
     'https://localhost',
     'capacitor://localhost',
     'https://caf-frontend.dicksonhardy7.workers.dev',
+    'https://caf-three-green.vercel.app',
   ];
   const allAllowedOrigins = [...new Set([...allowedOrigins, ...hardcodedOrigins])];
 

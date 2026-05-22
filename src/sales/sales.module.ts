@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Sale, SaleSchema } from './schemas/sale.schema.js';
 import { CounterSchema } from './schemas/counter.schema.js';
+import { Product, ProductSchema } from '../products/schemas/product.schema.js';
 import { SalesRepository } from './sales.repository.js';
 import { SalesService } from './sales.service.js';
 import { CheckoutService } from './checkout.service.js';
@@ -27,6 +28,7 @@ import { IdempotencyInterceptor } from '../common/interceptors/idempotency.inter
     MongooseModule.forFeature([
       { name: Sale.name, schema: SaleSchema },
       { name: 'Counter', schema: CounterSchema },
+      { name: Product.name, schema: ProductSchema },
     ]),
     forwardRef(() => BatchesModule),
     forwardRef(() => InventoryModule),

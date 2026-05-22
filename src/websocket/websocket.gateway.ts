@@ -63,6 +63,7 @@ export class WebSocketGateway
       'http://localhost:5173',
       'http://localhost:3000',
       'https://caf-frontend.dicksonhardy7.workers.dev',
+      'https://caf-three-green.vercel.app',
     ];
     const allAllowedOrigins = [
       ...new Set([...allowedOrigins, ...mobileOrigins, ...frontendOrigins]),

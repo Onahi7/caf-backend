@@ -7,6 +7,7 @@ import {
   PurchaseOrder,
   PurchaseOrderSchema,
 } from './schemas/purchase-order.schema.js';
+import { Product, ProductSchema } from '../products/schemas/product.schema.js';
 import { BatchesModule } from '../batches/batches.module.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
 import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
@@ -16,6 +17,7 @@ import { IdempotencyInterceptor } from '../common/interceptors/idempotency.inter
   imports: [
     MongooseModule.forFeature([
       { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
+      { name: Product.name, schema: ProductSchema },
     ]),
     BatchesModule,
     InventoryModule,

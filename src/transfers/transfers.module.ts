@@ -4,6 +4,7 @@ import { TransfersController } from './transfers.controller.js';
 import { TransfersService } from './transfers.service.js';
 import { TransfersRepository } from './transfers.repository.js';
 import { Transfer, TransferSchema } from './schemas/transfer.schema.js';
+import { Product, ProductSchema } from '../products/schemas/product.schema.js';
 import { BatchesModule } from '../batches/batches.module.js';
 import { BranchesModule } from '../branches/branches.module.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
@@ -12,6 +13,7 @@ import { InventoryModule } from '../inventory/inventory.module.js';
   imports: [
     MongooseModule.forFeature([
       { name: Transfer.name, schema: TransferSchema },
+      { name: Product.name, schema: ProductSchema },
     ]),
     BatchesModule,
     BranchesModule,
