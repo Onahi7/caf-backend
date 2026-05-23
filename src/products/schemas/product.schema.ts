@@ -15,6 +15,9 @@ export type ProductDocument = Product & Document;
  */
 @Schema({ _id: false })
 export class PackSize {
+  @Prop()
+  code?: string; // Stable identifier used by POS/cart even if label changes
+
   @Prop({ required: true })
   name!: string; // Display name: "Box", "Strip", "Tablet"
 

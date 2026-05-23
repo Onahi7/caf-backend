@@ -67,12 +67,17 @@ export class ProductsRepository {
     branchId: string,
   ): Promise<ProductDocument | null> {
     return this.productModel
-      .findOne({ barcode, ...this.withBranchFilter(branchId) })
+      .findOne({
+        $or: [{ barcode }, { 'packSizes.barcode': barcode }],
+        ...this.withBranchFilter(branchId),
+      })
       .exec();
   }
 
   async findByBarcode(barcode: string): Promise<ProductDocument | null> {
-    return this.productModel.findOne({ barcode }).exec();
+    return this.productModel
+      .findOne({ $or: [{ barcode }, { 'packSizes.barcode': barcode }] })
+      .exec();
   }
 
   async findByName(name: string): Promise<ProductDocument | null> {
@@ -92,8 +97,11 @@ export class ProductsRepository {
     const filter: Record<string, unknown> = {
       $or: [
         { name: { $regex: query, $options: 'i' } },
+        { brand: { $regex: query, $options: 'i' } },
         { sku: { $regex: query, $options: 'i' } },
         { barcode: { $regex: query, $options: 'i' } },
+        { 'packSizes.barcode': { $regex: query, $options: 'i' } },
+        { 'packSizes.name': { $regex: query, $options: 'i' } },
       ],
     };
 

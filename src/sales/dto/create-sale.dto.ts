@@ -20,6 +20,10 @@ import { PaymentMethod, SaleType } from '../schemas/sale.schema.js';
  */
 export class SaleItemPackSizeDto {
   @IsString()
+  @IsOptional()
+  code?: string;
+
+  @IsString()
   name!: string; // e.g., "Box", "Strip", "Tablet"
 
   @IsString()
@@ -28,6 +32,10 @@ export class SaleItemPackSizeDto {
   @IsNumber()
   @Min(1)
   quantityPerPack!: number; // e.g., 100 for box, 10 for strip
+
+  @IsString()
+  @IsOptional()
+  barcode?: string;
 }
 
 /**

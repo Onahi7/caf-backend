@@ -47,6 +47,9 @@ export enum PaymentStatus {
 
 @Schema({ _id: false })
 export class SaleItemPackSize {
+  @Prop()
+  code?: string;
+
   @Prop({ required: true })
   name!: string;
 
@@ -55,6 +58,9 @@ export class SaleItemPackSize {
 
   @Prop({ required: true })
   quantityPerPack!: number;
+
+  @Prop()
+  barcode?: string;
 }
 
 export const SaleItemPackSizeSchema = SchemaFactory.createForClass(SaleItemPackSize);

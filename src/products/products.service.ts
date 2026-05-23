@@ -216,7 +216,27 @@ export class ProductsService {
     );
 
     const data = await this.attachSellingPriceAndStock(result.data, branchId);
-    return { data, total: result.total };
+    const query = searchDto.query?.trim();
+    return {
+      data: query ? data.map((product) => this.withMatchedPack(product, query)) : data,
+      total: result.total,
+    };
+  }
+
+  private withMatchedPack(
+    product: Record<string, unknown>,
+    query: string,
+  ): Record<string, unknown> {
+    const packSizes = Array.isArray(product.packSizes)
+      ? (product.packSizes as Array<Record<string, unknown>>)
+      : [];
+    const normalizedQuery = query.toLowerCase();
+    const matchedPackSize = packSizes.find((pack) => {
+      const barcode = String(pack.barcode ?? '').toLowerCase();
+      return barcode.length > 0 && barcode === normalizedQuery;
+    });
+
+    return matchedPackSize ? { ...product, matchedPackSize } : product;
   }
 
   async findByCategory(

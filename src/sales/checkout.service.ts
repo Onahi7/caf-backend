@@ -97,6 +97,8 @@ async processCheckout(
       throw new BadRequestException('Sale must contain at least one item');
     }
 
+    dto.items = await this.validateAndNormalizeSaleItems(dto.branchId, dto.items);
+
     // Calculate totals (will be recalculated inside the transaction)
     const discount = dto.discount || 0;
 
@@ -313,6 +315,82 @@ let session;
     return results;
   }
 
+  private async validateAndNormalizeSaleItems(
+    branchId: string,
+    items: SaleItemDto[],
+  ): Promise<SaleItemDto[]> {
+    return Promise.all(
+      items.map(async (item) => {
+        const product = await this.productModel.findById(item.productId).exec();
+        if (!product) {
+          throw new BadRequestException(`Product ${item.productId} was not found`);
+        }
+
+        if (String(product.branchId) !== branchId) {
+          throw new BadRequestException(
+            `Product ${product.name} does not belong to this branch`,
+          );
+        }
+
+        const normalized: SaleItemDto = { ...item };
+        if (item.packSize) {
+          const matchedPack = product.packSizes.find((pack) =>
+            this.isSamePackSize(pack, item.packSize!),
+          );
+
+          if (!matchedPack) {
+            throw new BadRequestException(
+              `Pack size ${item.packSize.name} is not configured for ${product.name}`,
+            );
+          }
+
+          normalized.packSize = {
+            code: matchedPack.code,
+            name: matchedPack.name,
+            unit: matchedPack.unit,
+            quantityPerPack: matchedPack.quantityPerPack,
+            barcode: matchedPack.barcode,
+          };
+          normalized.unitPrice = matchedPack.sellingPrice;
+          normalized.quantityInBaseUnits =
+            normalized.quantity * matchedPack.quantityPerPack;
+        } else {
+          normalized.unitPrice =
+            product.suggestedRetailPrice > 0
+              ? product.suggestedRetailPrice
+              : product.basePrice;
+          normalized.quantityInBaseUnits = normalized.quantity;
+        }
+
+        if ((product.quantityAvailable ?? 0) < normalized.quantityInBaseUnits!) {
+          throw new BadRequestException(
+            `Insufficient stock for ${product.name}. Requested ${normalized.quantityInBaseUnits}, available ${product.quantityAvailable ?? 0}`,
+          );
+        }
+
+        return normalized;
+      }),
+    );
+  }
+
+  private isSamePackSize(
+    configuredPack: Product['packSizes'][number],
+    requestedPack: SaleItemPackSizeDto,
+  ): boolean {
+    if (requestedPack.code && configuredPack.code === requestedPack.code) {
+      return true;
+    }
+
+    if (requestedPack.barcode && configuredPack.barcode === requestedPack.barcode) {
+      return true;
+    }
+
+    return (
+      configuredPack.unit === requestedPack.unit &&
+      configuredPack.quantityPerPack === requestedPack.quantityPerPack
+    );
+  }
+
   /**
    * Build sale items from batch selections
    * Preserves pack size info for receipt display and returns
@@ -329,11 +407,15 @@ let session;
           unitPrice: selection.unitPrice,
           subtotal:
             batch.quantity * (selection.totalAmount / selection.totalQuantity),
-          packSize: selection.packSize ? {
-            name: selection.packSize.name,
-            unit: selection.packSize.unit,
-            quantityPerPack: selection.packSize.quantityPerPack,
-          } : undefined,
+          packSize: selection.packSize
+            ? {
+                code: selection.packSize.code,
+                name: selection.packSize.name,
+                unit: selection.packSize.unit,
+                quantityPerPack: selection.packSize.quantityPerPack,
+                barcode: selection.packSize.barcode,
+              }
+            : undefined,
           returnedQuantity: 0,
         });
       }

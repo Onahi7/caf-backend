@@ -187,13 +187,23 @@ export class ProductsController {
         product ? [product] : [],
         branchId,
       );
+      const data = catalogItems.map((item) => {
+        const packSizes = Array.isArray(item.packSizes)
+          ? (item.packSizes as Array<Record<string, unknown>>)
+          : [];
+        const matchedPackSize = packSizes.find(
+          (pack) =>
+            String(pack.barcode ?? '').toLowerCase() === barcode.toLowerCase(),
+        );
+        return matchedPackSize ? { ...item, matchedPackSize } : item;
+      });
       return {
         success: true,
-        data: catalogItems,
+        data,
         pagination: {
           page: p,
           limit: l,
-          total: catalogItems.length,
+          total: data.length,
           pages: 1,
           hasNext: false,
           hasPrev: false,
