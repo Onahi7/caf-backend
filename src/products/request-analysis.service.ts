@@ -14,6 +14,12 @@ interface ExtractedRequestItem {
   notes?: string;
 }
 
+interface RequestSheetHeaderMap {
+  nameIndex?: number;
+  quantityIndex?: number;
+  unitIndex?: number;
+}
+
 @Injectable()
 export class RequestAnalysisService {
   constructor(
@@ -102,17 +108,32 @@ export class RequestAnalysisService {
     const items: ExtractedRequestItem[] = [];
 
     workbook.eachSheet((sheet) => {
+      let activeHeaderMap: RequestSheetHeaderMap | null = null;
+
       sheet.eachRow((row, rowNumber) => {
         const rowValues = Array.isArray(row.values) ? row.values.slice(1) : [];
-        const values = rowValues
-          .map((value: ExcelJS.CellValue) => this.cellToString(value))
-          .filter(Boolean);
+        const values = rowValues.map((value: ExcelJS.CellValue) =>
+          this.cellToString(value),
+        );
 
-        if (values.length === 0) {
+        if (values.every((value) => value.length === 0)) {
           return;
         }
 
-        const extracted = this.buildItemFromCells(values, rowNumber);
+        const detectedHeaderMap = this.detectHeaderMap(values);
+        if (detectedHeaderMap) {
+          activeHeaderMap = detectedHeaderMap;
+          return;
+        }
+
+        const extracted =
+          (activeHeaderMap
+            ? this.buildItemFromHeaderMap(values, rowNumber, activeHeaderMap)
+            : null) ??
+          this.buildItemFromCells(
+            values.filter((value) => value.length > 0),
+            rowNumber,
+          );
         if (extracted) {
           items.push(extracted);
         }
@@ -161,7 +182,12 @@ export class RequestAnalysisService {
       return null;
     }
 
-    const serialOffset = this.isSerialCell(cleaned[0]) && cleaned.length > 1 ? 1 : 0;
+    const serialOffset =
+      this.isSerialCell(cleaned[0]) &&
+      cleaned.length > 1 &&
+      this.isProductNameCandidate(cleaned[1])
+        ? 1
+        : 0;
     const descriptionIndex = cleaned.findIndex(
       (cell, index) =>
         index >= serialOffset && this.isProductNameCandidate(cell),
@@ -173,11 +199,17 @@ export class RequestAnalysisService {
 
     const description = cleaned[descriptionIndex];
     const cellsAfterDescription = cleaned.slice(descriptionIndex + 1);
-    const unitCell = cellsAfterDescription.find((cell) => this.isUnitOnlyCell(cell));
+    const contextCells = cleaned.filter((_, index) => index !== descriptionIndex);
+    const unitCell = contextCells.find((cell) => this.isUnitOnlyCell(cell));
     const requestedUnit =
       (unitCell ? this.extractUnit(unitCell) : null) ??
-      this.extractUnit(cellsAfterDescription.join(' '));
-    const quantityCell = this.findQuantityCell(cellsAfterDescription, unitCell);
+      this.extractUnit(contextCells.join(' '));
+    const cellsBeforeDescription = cleaned
+      .slice(0, descriptionIndex)
+      .filter((_, index) => !(serialOffset === 1 && index === 0));
+    const quantityCell =
+      this.findQuantityCell(cellsAfterDescription, unitCell) ??
+      this.findQuantityCell(cellsBeforeDescription, unitCell);
     const qty = quantityCell ? this.extractQuantity(quantityCell) : null;
 
     if (qty === null && !this.looksLikeCatalogItem(description)) {
@@ -198,6 +230,56 @@ export class RequestAnalysisService {
               index !== descriptionIndex &&
               cell !== quantityCell &&
               cell !== unitCell,
+          )
+          .join(' | ') || undefined,
+    };
+  }
+
+  private buildItemFromHeaderMap(
+    cells: string[],
+    rowNumber: number,
+    headerMap: RequestSheetHeaderMap,
+  ): ExtractedRequestItem | null {
+    const compactCells = cells.filter(Boolean);
+    if (compactCells.length === 0 || this.isIgnorableRequestRow(compactCells)) {
+      return null;
+    }
+
+    const description = this.readMappedCell(cells, headerMap.nameIndex);
+    if (!description || !this.isProductNameCandidate(description)) {
+      return null;
+    }
+
+    const quantityCell = this.readMappedCell(cells, headerMap.quantityIndex);
+    const unitCell = this.readMappedCell(cells, headerMap.unitIndex);
+    const fallbackCells = cells
+      .filter((cell) => cell && cell !== description)
+      .map((cell) => cell.trim());
+    const requestedUnit =
+      (unitCell ? this.extractUnit(unitCell) : null) ??
+      this.extractUnit(fallbackCells.join(' '));
+    const quantity =
+      (quantityCell ? this.extractQuantity(quantityCell) : null) ??
+      this.extractQuantityFromMappedRow(cells, headerMap);
+
+    if (quantity === null && !this.looksLikeCatalogItem(description)) {
+      return null;
+    }
+
+    return {
+      rowNumber,
+      rawText: compactCells.join(' | '),
+      itemName: description,
+      quantityRequested: quantity,
+      requestedUnit,
+      notes:
+        cells
+          .filter(
+            (cell, index) =>
+              cell &&
+              index !== headerMap.nameIndex &&
+              index !== headerMap.quantityIndex &&
+              index !== headerMap.unitIndex,
           )
           .join(' | ') || undefined,
     };
@@ -327,6 +409,71 @@ export class RequestAnalysisService {
       /\b(amp|amps|ampoule|ampoules|bottle|bottles|box|boxes|cap|caps|caplet|caplets|carton|cartons|cream|cup|cups|gel|inhaler|inhalers|injection|injections|iv|ointment|ointments|pc|pcs|piece|pieces|sachet|sachets|strip|strips|suppository|suppositories|suspension|syrup|tab|tabs|tablet|tablets|tube|tubes|vial|vials)\b/i,
     );
     return match ? match[1].toLowerCase() : null;
+  }
+
+  private detectHeaderMap(cells: string[]): RequestSheetHeaderMap | null {
+    const normalized = cells.map((cell) => this.normalize(cell));
+    const headerMap: RequestSheetHeaderMap = {};
+
+    normalized.forEach((cell, index) => {
+      if (!cell) {
+        return;
+      }
+
+      if (
+        /^(description|item description|product description|product|product name|drug|drug name|medicine|medicine name|item|items|name)$/.test(
+          cell,
+        )
+      ) {
+        headerMap.nameIndex = index;
+      }
+
+      if (/^(qty|quantity|requested quantity|order qty|order quantity|amount)$/.test(cell)) {
+        headerMap.quantityIndex = index;
+      }
+
+      if (/^(uom|unit|units|pack|package)$/.test(cell)) {
+        headerMap.unitIndex = index;
+      }
+    });
+
+    const recognizedCount = [
+      headerMap.nameIndex,
+      headerMap.quantityIndex,
+      headerMap.unitIndex,
+    ].filter((value) => value !== undefined).length;
+
+    return headerMap.nameIndex !== undefined && recognizedCount >= 2
+      ? headerMap
+      : null;
+  }
+
+  private readMappedCell(cells: string[], index?: number): string | null {
+    if (index === undefined) {
+      return null;
+    }
+
+    const value = cells[index]?.trim();
+    return value || null;
+  }
+
+  private extractQuantityFromMappedRow(
+    cells: string[],
+    headerMap: RequestSheetHeaderMap,
+  ): number | null {
+    const candidateCells = cells.filter((cell, index) => {
+      if (!cell || index === headerMap.nameIndex || index === headerMap.unitIndex) {
+        return false;
+      }
+
+      return !this.isSerialCell(cell);
+    });
+
+    const quantityCell =
+      candidateCells.find((cell) => this.isQuantityCell(cell, true)) ??
+      candidateCells.find((cell) => this.isQuantityCell(cell, false));
+
+    return quantityCell ? this.extractQuantity(quantityCell) : null;
   }
 
   private findQuantityCell(
