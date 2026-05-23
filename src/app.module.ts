@@ -31,6 +31,9 @@ import { SettingsModule } from './settings/settings.module.js';
 import { FinanceModule } from './finance/finance.module.js';
 import { MarketerModule } from './marketer/marketer.module.js';
 import { CycleCountsModule } from './cycle-counts/cycle-count.module.js';
+import { CustomerOrdersModule } from './customer-orders/customer-orders.module.js';
+import { ProformaInvoicesModule } from './proforma-invoices/proforma-invoices.module.js';
+import { DeliveryNotesModule } from './delivery-notes/delivery-notes.module.js';
 
 @Module({
   imports: [
@@ -72,6 +75,9 @@ import { CycleCountsModule } from './cycle-counts/cycle-count.module.js';
     FinanceModule,
     MarketerModule,
     CycleCountsModule,
+    CustomerOrdersModule,
+    ProformaInvoicesModule,
+    DeliveryNotesModule,
   ],
   controllers: [AppController],
   providers: [
