@@ -24,6 +24,34 @@ export interface DocumentProcessingResult {
   customerInfo: CustomerInfo;
 }
 
+const METADATA_PATTERNS = [
+  /^(p\.?o?\s*[#:\/]|order\s*[#:\/]|purchase\s*order\s*[#:\/])/i,
+  /^(invoice\s*[#:\/]|quote\s*[#:\/])/i,
+  /^(date|delivery\s*date|valid\s*until|issue\s*date)\s*[:]/i,
+  /^(page\s*\d+)/i,
+  /^(tel|phone|fax|email|website|www\.)/i,
+  /^(bill\s*to|ship\s*to|sold\s*to|shipped\s*to)/i,
+  /^(terms?\s*(&|\band\b)?\s*conditions?|payment\s*terms|net\s+\d+)/i,
+  /^(total|subtotal|amount\s*(due|paid)|balance|discount|tax|vat|shipping|freight)/i,
+  /^[\d\s\/\-:]+$/,
+  /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/,
+  /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+];
+
+const COLUMN_HEADER_PATTERNS = [
+  /^(item\s*[#\/]?|product\s*[#\/]?|code\s*[#\/]?|sku\s*[#\/]?)$/i,
+  /^(description|item\s*description|product\s*name|name)$/i,
+  /^(qty|quantity|qty\s*ordered|order\s*qty)$/i,
+  /^(price|unit\s*price|rate|cost|amount|total)$/i,
+];
+
+const NON_PRODUCT_POST_FILTER = [
+  /^(page|tel|fax|email|website|www\.|po\s*#|order\s*#|invoice\s*#|date|total|subtotal|amount|balance|discount|tax|vat|shipping|freight|terms|notes)$/i,
+  /^[\d\s\/\-:]+$/,
+  /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/,
+  /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+];
+
 @Injectable()
 export class DocumentProcessorService {
   private readonly logger = new Logger(DocumentProcessorService.name);
@@ -57,7 +85,8 @@ export class DocumentProcessorService {
       rawText = buffer.toString('utf-8');
     }
 
-    const extracted = await this.extractWithAI(rawText);
+    const cleanedText = this.stripMetadata(rawText);
+    const extracted = await this.extractWithAI(cleanedText);
     return {
       rawText,
       extractedItems: extracted.items,
@@ -65,16 +94,46 @@ export class DocumentProcessorService {
     };
   }
 
+  private stripMetadata(text: string): string {
+    const lines = text.split('\n').filter((l) => l.trim());
+    const contentLines: string[] = [];
+    let startedDataSection = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (!startedDataSection) {
+        const isColHeader = COLUMN_HEADER_PATTERNS.some((p) => p.test(trimmed));
+        if (isColHeader) {
+          startedDataSection = true;
+          contentLines.push(trimmed);
+          continue;
+        }
+      }
+
+      const isMetadata = METADATA_PATTERNS.some((p) => p.test(trimmed));
+      if (!isMetadata) {
+        contentLines.push(trimmed);
+      }
+    }
+    return contentLines.join('\n');
+  }
+
   private parseExcel(buffer: Buffer): string {
     try {
       const workbook = XLSX.read(buffer, { type: 'buffer' });
       const sheets: string[] = [];
+
       for (const sheetName of workbook.SheetNames) {
         const sheet = workbook.Sheets[sheetName];
         const json = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
         sheets.push(`--- Sheet: ${sheetName} ---`);
-        for (const row of json) {
-          sheets.push(row.filter((c: any) => c != null).join('\t'));
+
+        const nonEmptyRows = json.filter((row) => row.some((c: any) => c != null && String(c).trim() !== ''));
+        const dataStartIndex = this.findDataStartRow(nonEmptyRows);
+
+        for (let i = dataStartIndex; i < nonEmptyRows.length; i++) {
+          sheets.push(nonEmptyRows[i].filter((c: any) => c != null).join('\t'));
         }
       }
       return sheets.join('\n');
@@ -82,6 +141,33 @@ export class DocumentProcessorService {
       this.logger.error(`Excel parse error: ${error.message}`);
       return buffer.toString('utf-8');
     }
+  }
+
+  private findDataStartRow(rows: any[][]): number {
+    const headerKeywords = ['item', 'description', 'product', 'qty', 'quantity', 'price', 'unit', 'code'];
+    for (let i = 0; i < Math.min(rows.length, 15); i++) {
+      const row = rows[i];
+      const rowText = row.filter((c: any) => c != null).map(String).join(' ').toLowerCase();
+      const matchCount = headerKeywords.filter((kw) => rowText.includes(kw)).length;
+      if (matchCount >= 2) {
+        return i;
+      }
+    }
+    const nonEmptyRows = rows.filter((r) => r.some((c: any) => c != null && String(c).trim() !== ''));
+    if (nonEmptyRows.length > 3) {
+      const firstRowText = nonEmptyRows[0].filter((c: any) => c != null).map(String).join(' ').toLowerCase();
+      const looksLikeTitle = firstRowText.length < 80 && !/\d/.test(firstRowText);
+      if (looksLikeTitle) {
+        for (let i = 1; i < Math.min(nonEmptyRows.length, 6); i++) {
+          const r = nonEmptyRows[i];
+          const t = r.filter((c: any) => c != null).map(String).join(' ').toLowerCase();
+          if (/\d/.test(t) && r.filter((c: any) => c != null).length >= 3) {
+            return i;
+          }
+        }
+      }
+    }
+    return 0;
   }
 
   private async parseDocx(buffer: Buffer): Promise<string> {
@@ -120,7 +206,7 @@ export class DocumentProcessorService {
             mimeType,
           },
         },
-        'Extract all text from this image, especially product names, quantities, and prices.',
+        'Extract all text from this purchase order image, especially product/medicine names, quantities, and prices. Ignore company logos, headers, and decorative elements.',
       ]);
       return result.response.text();
     } catch (error: any) {
@@ -132,55 +218,57 @@ export class DocumentProcessorService {
   private async extractWithAI(
     text: string,
   ): Promise<{ items: ExtractedItem[]; customerInfo: CustomerInfo }> {
+    const cleaned = text.slice(0, 20000);
+
     if (!this.genAI) {
       return {
-        items: this.fallbackExtract(text),
+        items: this.fallbackExtract(cleaned),
         customerInfo: {},
       };
     }
 
     try {
       const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-      const prompt = `You are a pharmaceutical purchase order parser. Extract ONLY genuine medicine/product line items and customer info.
+      const prompt = `You are a pharmaceutical purchase order parser. Your job is to extract ONLY genuine medicine/product line items from the document text below.
 
-Return ONLY valid JSON (no markdown, no code fences) with this structure:
-{
-  "customerInfo": { "name": "", "phone": "", "email": "", "address": "" },
-  "items": [{ "name": "product name", "quantity": 0, "unitPrice": 0 }]
-}
+Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
+{"customerInfo":{"name":"","phone":"","email":"","address":""},"items":[{"name":"product name","quantity":0,"unitPrice":0}]}
 
-CRITICAL — What to IGNORE (DO NOT extract as items):
-- Company name, logo, or business title of the ordering facility
-- PO number, order number, reference number
-- Date, delivery date, valid until date
-- Address, city, phone number, email, website
-- "Bill To", "Ship To" sections and their contents
-- Terms & conditions, payment terms, notes
-- Headers, footers, page numbers
-- Any single word or short text that is clearly a header label (e.g. "Item", "Description", "Qty", "Price", "Total")
-- Any text that contains "Page", "Tel:", "Fax:", "Email:", "Website:"
-- The supplier/vendor name if it appears at the top of the document
+EXAMPLES of what to INCLUDE as items:
+- "Amoxicillin 500mg Capsule  100  $15.00"  → {"name":"Amoxicillin 500mg Capsule","quantity":100,"unitPrice":15.00}
+- "Paracetamol 250mg/5ml Syrup  50  $8.50" → {"name":"Paracetamol 250mg/5ml Syrup","quantity":50,"unitPrice":8.50}
+- "Metformin 850mg Tablet  200"              → {"name":"Metformin 850mg Tablet","quantity":200}
+- "IV Giving Set  30  $2.50"                 → {"name":"IV Giving Set","quantity":30,"unitPrice":2.50}
+- "Item: 001  Description: Amoxicillin  Qty: 100  Rate: 15.00" → {"name":"Amoxicillin","quantity":100,"unitPrice":15.00}
 
-What to EXTRACT as items:
-- Only rows that appear to be product/medicine line items in a table or list
-- Pharmaceutical products typically have: a drug name + strength (e.g. "Amoxicillin 500mg", "Paracetamol 250mg/5ml")
-- Look for rows containing: product name/number + quantity + optionally a unit price
-- A line item must have a quantity (number) to be included
+EXAMPLES of what to IGNORE (NOT items):
+- "Care Pharmacy" or "ABC Hospital" → this is the facility name, NOT a product
+- "PO #: PO-2024-001" → order reference
+- "Date: 2024-01-15" → date
+- "123 Main Street, Freetown" → address
+- "+232-77-123-456" → phone number
+- "Item | Description | Qty | Price" → column headers
+- "Total: $3,550.00" → summary total
+- "Terms: Net 30 Days" → payment terms
+- "Page 1 of 3" → page number
+- "Shipping Address:" → section header
 
-Rules:
-- quantity must be a number (default 1 if unclear but prefer to skip if no number found)
-- unitPrice is optional (omit if not found, don't put 0)
-- For customerInfo, only include the actual customer/facility name (NOT "Care Pharmacy" or similar header text)
-- If no customer info found, return empty strings
-- If the document text is mostly meta-data with no clear line items, return an empty items array
+RULES:
+1. IGNORE: company/facility names, addresses, phone numbers, emails, PO numbers, dates, terms & conditions, page numbers, headers, footers, column headers, totals, subtotals. These are NOT products.
+2. EXTRACT only rows that look like medicine/product line items. A valid line item has a product name and a quantity number.
+3. Pharmaceutical products usually have a drug name, often with strength (mg, ml, %, IU) and dosage form (tablet, capsule, injection, syrup, cream, ointment).
+4. For customerInfo, only fill if you see a facility/hospital/clinic name clearly identified as the ordering party. Leave empty if unsure.
+5. quantity must be a number. Default to 1 only if the context clearly indicates a single item.
+6. unitPrice is optional — omit if not found (don't put 0).
+7. If there are no clear product line items in the document, return an empty items array: {"customerInfo":{},"items":[]}
 
 Document text:
-${text.slice(0, 20000)}`;
+${cleaned}`;
 
       const result = await model.generateContent(prompt);
       const responseText = result.response.text().trim();
-      const cleaned = responseText.replace(/```(?:json)?\n?/g, '').trim();
-      const parsed = JSON.parse(cleaned);
+      const cleanedJson = responseText.replace(/```(?:json)?\n?/g, '').trim();
+      const parsed = JSON.parse(cleanedJson);
       const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
       const filteredItems = rawItems.filter((item: any) =>
         item.name &&
@@ -188,7 +276,8 @@ ${text.slice(0, 20000)}`;
         item.name.trim().length >= 3 &&
         typeof item.quantity === 'number' &&
         item.quantity > 0 &&
-        !/^(page|tel|fax|email|website|po\s*#|order\s*#|date|total|subtotal|amount)$/i.test(item.name.trim())
+        item.quantity < 100000 &&
+        !NON_PRODUCT_POST_FILTER.some((p) => p.test(item.name.trim()))
       );
       return {
         items: filteredItems,
@@ -204,16 +293,25 @@ ${text.slice(0, 20000)}`;
   }
 
   private fallbackExtract(text: string): ExtractedItem[] {
-    const lines = text.split('\n').filter((l) => l.trim());
     const items: ExtractedItem[] = [];
+    const cleanedLines = this.stripMetadata(text).split('\n').filter((l) => l.trim());
     const lineRegex = /(.+?)\s+(\d+)\s*(?:x\s*)?([\d,.]+)?/i;
-    for (const line of lines) {
-      const match = line.match(lineRegex);
+
+    for (const line of cleanedLines) {
+      const trimmed = line.trim();
+      if (
+        trimmed.length < 5 ||
+        METADATA_PATTERNS.some((p) => p.test(trimmed)) ||
+        COLUMN_HEADER_PATTERNS.some((p) => p.test(trimmed))
+      ) {
+        continue;
+      }
+      const match = trimmed.match(lineRegex);
       if (match) {
         const name = match[1].trim();
         const qty = parseInt(match[2], 10);
         const price = match[3] ? parseFloat(match[3].replace(/,/g, '')) : undefined;
-        if (name && qty > 0) {
+        if (name && name.length >= 3 && qty > 0 && qty < 100000) {
           items.push({ name, quantity: qty, unitPrice: price });
         }
       }
