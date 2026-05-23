@@ -141,7 +141,7 @@ export class DocumentProcessorService {
 
     try {
       const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-      const prompt = `You are a purchase order parser. Extract line items and customer info from this document.
+      const prompt = `You are a pharmaceutical purchase order parser. Extract ONLY genuine medicine/product line items and customer info.
 
 Return ONLY valid JSON (no markdown, no code fences) with this structure:
 {
@@ -149,11 +149,30 @@ Return ONLY valid JSON (no markdown, no code fences) with this structure:
   "items": [{ "name": "product name", "quantity": 0, "unitPrice": 0 }]
 }
 
+CRITICAL — What to IGNORE (DO NOT extract as items):
+- Company name, logo, or business title of the ordering facility
+- PO number, order number, reference number
+- Date, delivery date, valid until date
+- Address, city, phone number, email, website
+- "Bill To", "Ship To" sections and their contents
+- Terms & conditions, payment terms, notes
+- Headers, footers, page numbers
+- Any single word or short text that is clearly a header label (e.g. "Item", "Description", "Qty", "Price", "Total")
+- Any text that contains "Page", "Tel:", "Fax:", "Email:", "Website:"
+- The supplier/vendor name if it appears at the top of the document
+
+What to EXTRACT as items:
+- Only rows that appear to be product/medicine line items in a table or list
+- Pharmaceutical products typically have: a drug name + strength (e.g. "Amoxicillin 500mg", "Paracetamol 250mg/5ml")
+- Look for rows containing: product name/number + quantity + optionally a unit price
+- A line item must have a quantity (number) to be included
+
 Rules:
-- quantity must be a number (default 1 if unclear)
+- quantity must be a number (default 1 if unclear but prefer to skip if no number found)
 - unitPrice is optional (omit if not found, don't put 0)
-- For customerInfo, fill what you can find, leave empty strings for missing fields
+- For customerInfo, only include the actual customer/facility name (NOT "Care Pharmacy" or similar header text)
 - If no customer info found, return empty strings
+- If the document text is mostly meta-data with no clear line items, return an empty items array
 
 Document text:
 ${text.slice(0, 20000)}`;
@@ -162,8 +181,17 @@ ${text.slice(0, 20000)}`;
       const responseText = result.response.text().trim();
       const cleaned = responseText.replace(/```(?:json)?\n?/g, '').trim();
       const parsed = JSON.parse(cleaned);
+      const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+      const filteredItems = rawItems.filter((item: any) =>
+        item.name &&
+        typeof item.name === 'string' &&
+        item.name.trim().length >= 3 &&
+        typeof item.quantity === 'number' &&
+        item.quantity > 0 &&
+        !/^(page|tel|fax|email|website|po\s*#|order\s*#|date|total|subtotal|amount)$/i.test(item.name.trim())
+      );
       return {
-        items: Array.isArray(parsed.items) ? parsed.items : [],
+        items: filteredItems,
         customerInfo: parsed.customerInfo || {},
       };
     } catch (error: any) {

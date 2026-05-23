@@ -25,6 +25,21 @@ export interface MatchResult {
   unmatched: UnmatchedItem[];
 }
 
+const NON_PRODUCT_PATTERNS = [
+  /^(page|tel|fax|email|website|www\.|po\s*#|order\s*#|invoice\s*#|date|delivery|ship|bill|terms|conditions|notes|reference|account|vat|tin|cst|gst)$/i,
+  /^[\d\s\/\-:]+$/,
+  /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/,
+  /^(sub)?total|amount|balance|paid|due|discount|tax|freight|shipping$/i,
+  /^(qty|quantity|description|item|product|code|price|rate|unit)$/i,
+];
+
+function looksLikeProductName(name: string): boolean {
+  const trimmed = name.trim();
+  if (trimmed.length < 3) return false;
+  if (NON_PRODUCT_PATTERNS.some((p) => p.test(trimmed))) return false;
+  return true;
+}
+
 @Injectable()
 export class ProductMatcherService {
   constructor(
@@ -57,7 +72,7 @@ export class ProductMatcherService {
         { name: 'sku', weight: 0.3 },
         { name: 'barcode', weight: 0.1 },
       ],
-      threshold: 0.4,
+      threshold: 0.35,
       ignoreLocation: true,
     });
 
@@ -65,8 +80,16 @@ export class ProductMatcherService {
     const unmatched: UnmatchedItem[] = [];
 
     for (const item of items) {
+      if (!looksLikeProductName(item.name)) {
+        unmatched.push({
+          extractedName: item.name,
+          extractedQuantity: item.quantity,
+          extractedUnitPrice: item.unitPrice,
+        });
+        continue;
+      }
       const results = fuse.search(item.name);
-      if (results.length > 0 && results[0].score! < 0.4) {
+      if (results.length > 0 && (results[0].score ?? 1) < 0.35) {
         const p = results[0].item as any;
         matched.push({
           extractedName: item.name,
