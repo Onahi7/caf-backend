@@ -149,17 +149,40 @@ export class RequestAnalysisService {
     cells: string[],
     rowNumber: number,
   ): ExtractedRequestItem | null {
-    const cleaned = cells.filter((cell) => !/^(s\/?n|sn|no|qty|date)$/i.test(cell));
+    const cleaned = cells
+      .map((cell) => cell.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+
     if (cleaned.length === 0) {
       return null;
     }
 
-    const description =
-      cleaned.find((cell) => /[a-z]/i.test(cell) && cell.length > 5) ?? cleaned[0];
-    const qtyCell =
-      cleaned.find((cell) => /\d/.test(cell) && cell !== description) ?? null;
-    const qty = qtyCell ? this.extractQuantity(qtyCell) : null;
-    const requestedUnit = qtyCell ? this.extractUnit(qtyCell) : null;
+    if (this.isIgnorableRequestRow(cleaned)) {
+      return null;
+    }
+
+    const serialOffset = this.isSerialCell(cleaned[0]) && cleaned.length > 1 ? 1 : 0;
+    const descriptionIndex = cleaned.findIndex(
+      (cell, index) =>
+        index >= serialOffset && this.isProductNameCandidate(cell),
+    );
+
+    if (descriptionIndex < 0) {
+      return null;
+    }
+
+    const description = cleaned[descriptionIndex];
+    const cellsAfterDescription = cleaned.slice(descriptionIndex + 1);
+    const unitCell = cellsAfterDescription.find((cell) => this.isUnitOnlyCell(cell));
+    const requestedUnit =
+      (unitCell ? this.extractUnit(unitCell) : null) ??
+      this.extractUnit(cellsAfterDescription.join(' '));
+    const quantityCell = this.findQuantityCell(cellsAfterDescription, unitCell);
+    const qty = quantityCell ? this.extractQuantity(quantityCell) : null;
+
+    if (qty === null && !this.looksLikeCatalogItem(description)) {
+      return null;
+    }
 
     return {
       rowNumber,
@@ -167,7 +190,16 @@ export class RequestAnalysisService {
       itemName: description,
       quantityRequested: qty,
       requestedUnit,
-      notes: cleaned.filter((cell) => cell !== description && cell !== qtyCell).join(' | ') || undefined,
+      notes:
+        cleaned
+          .filter(
+            (cell, index) =>
+              !(serialOffset === 1 && index === 0) &&
+              index !== descriptionIndex &&
+              cell !== quantityCell &&
+              cell !== unitCell,
+          )
+          .join(' | ') || undefined,
     };
   }
 
@@ -199,7 +231,7 @@ export class RequestAnalysisService {
         product,
         score: this.scoreMatch(normalizedItem, this.buildProductSearchText(product)),
       }))
-      .filter((candidate) => candidate.score > 0.22)
+      .filter((candidate) => candidate.score >= 0.6)
       .sort((a, b) => b.score - a.score);
 
     const best = scored[0];
@@ -292,9 +324,141 @@ export class RequestAnalysisService {
 
   private extractUnit(value: string): string | null {
     const match = value.match(
-      /\b(amp|amps|ampoule|ampoules|vial|vials|tab|tabs|tablet|tablets|pcs|pieces|box|boxes|bottle|bottles|cup|cups|strip|strips)\b/i,
+      /\b(amp|amps|ampoule|ampoules|bottle|bottles|box|boxes|cap|caps|caplet|caplets|carton|cartons|cream|cup|cups|gel|inhaler|inhalers|injection|injections|iv|ointment|ointments|pc|pcs|piece|pieces|sachet|sachets|strip|strips|suppository|suppositories|suspension|syrup|tab|tabs|tablet|tablets|tube|tubes|vial|vials)\b/i,
     );
     return match ? match[1].toLowerCase() : null;
+  }
+
+  private findQuantityCell(
+    cellsAfterDescription: string[],
+    unitCell?: string,
+  ): string | null {
+    const unitIndex = unitCell
+      ? cellsAfterDescription.findIndex((cell) => cell === unitCell)
+      : -1;
+    const searchOrder =
+      unitIndex >= 0
+        ? [
+            ...cellsAfterDescription.slice(unitIndex + 1),
+            ...cellsAfterDescription.slice(0, unitIndex),
+          ]
+        : cellsAfterDescription;
+
+    return (
+      searchOrder.find((cell) => this.isQuantityCell(cell, true)) ??
+      searchOrder.find((cell) => this.isQuantityCell(cell, false)) ??
+      null
+    );
+  }
+
+  private isQuantityCell(value: string, preferWholeNumber: boolean): boolean {
+    const normalized = value.replace(/,/g, '').trim();
+    if (!/^\d+(?:\.\d+)?$/.test(normalized)) {
+      return false;
+    }
+
+    const quantity = Number(normalized);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return false;
+    }
+
+    return preferWholeNumber ? Number.isInteger(quantity) : true;
+  }
+
+  private isSerialCell(value: string): boolean {
+    return /^\d{1,3}$/.test(value.trim());
+  }
+
+  private isUnitOnlyCell(value: string): boolean {
+    return (
+      /^(amp|amps|ampoule|ampoules|bottle|bottles|box|boxes|cap|caps|caplet|caplets|carton|cartons|cream|cup|cups|gel|inhaler|inhalers|injection|injections|iv|ointment|ointments|pc|pcs|piece|pieces|sachet|sachets|strip|strips|suppository|suppositories|suspension|syrup|tab|tabs|tablet|tablets|tube|tubes|vial|vials)$/i.test(
+        value.trim(),
+      )
+    );
+  }
+
+  private isProductNameCandidate(value: string): boolean {
+    const normalized = this.normalize(value);
+    if (normalized.length < 3 || !/[a-z]/i.test(normalized)) {
+      return false;
+    }
+
+    if (this.isUnitOnlyCell(value) || this.isMetadataText(normalized)) {
+      return false;
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value) || /^https?:\/\//i.test(value)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private looksLikeCatalogItem(value: string): boolean {
+    const normalized = this.normalize(value);
+    return (
+      /\b\d+(?:\.\d+)?\s*(mg|mcg|g|gm|ml|l|iu|%)\b/i.test(value) ||
+      /\b(tablet|tab|capsule|caplet|syrup|injection|cream|ointment|gel|suspension|suppository|inhaler|solution|vaccine|juice|box)\b/i.test(
+        normalized,
+      ) ||
+      normalized.split(' ').length >= 2
+    );
+  }
+
+  private isIgnorableRequestRow(cells: string[]): boolean {
+    const normalizedCells = cells.map((cell) => this.normalize(cell));
+    const joined = normalizedCells.join(' ');
+
+    if (normalizedCells.every((cell) => !/[a-z]/i.test(cell))) {
+      return true;
+    }
+
+    if (
+      normalizedCells.some((cell) => this.isMetadataText(cell)) ||
+      /\b(po box|roundabout|freetown|sierra leone|www|http|freedom from fistula)\b/i.test(
+        joined,
+      )
+    ) {
+      return true;
+    }
+
+    const headerWords = new Set([
+      'description',
+      'uom',
+      'unit',
+      'unit cost',
+      'total cost',
+      'qty',
+      'quantity',
+    ]);
+    const headerCellCount = normalizedCells.filter((cell) =>
+      headerWords.has(cell),
+    ).length;
+
+    return headerCellCount >= 2;
+  }
+
+  private isMetadataText(normalizedValue: string): boolean {
+    return [
+      /^request for quotation$/,
+      /^quotation request for/,
+      /^purchase reference/,
+      /^minimum information required/,
+      /^request for /,
+      /^name /,
+      /^title /,
+      /^manager$/,
+      /^signature$/,
+      /^sign$/,
+      /^business name/,
+      /^date$/,
+      /^date\d*/,
+      /^grand total$/,
+      /^description$/,
+      /^uom$/,
+      /^unit cost$/,
+      /^total cost$/,
+    ].some((pattern) => pattern.test(normalizedValue));
   }
 
   private cellToString(value: ExcelJS.CellValue): string {
