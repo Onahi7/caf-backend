@@ -4,7 +4,6 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { Types } from 'mongoose';
 import { ProductsRepository } from './products.repository.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
@@ -88,14 +87,17 @@ export class ProductsService {
       initialStock,
       initialPurchasePrice,
       initialSellingPrice,
+      initialLotNumber: _initialLotNumber,
       initialExpiryDate,
       initialSupplierId,
       initialSupplyDate,
+      supplierId,
       ...productPayload
     } = createProductDto;
+    const effectiveSupplierId = initialSupplierId ?? supplierId;
 
     if ((initialStock ?? 0) > 0) {
-      if (!initialSupplierId) {
+      if (!effectiveSupplierId) {
         throw new BadRequestException(
           'Initial supplier is required when initial stock is provided',
         );
@@ -109,9 +111,7 @@ export class ProductsService {
         initialSellingPrice ?? productPayload.suggestedRetailPrice,
       quantityAvailable: initialStock ?? 0,
       quantityInitial: initialStock ?? 0,
-      supplierId: initialSupplierId
-        ? new Types.ObjectId(initialSupplierId)
-        : undefined,
+      supplierId: effectiveSupplierId,
       supplyDate: initialSupplyDate
         ? new Date(initialSupplyDate)
         : new Date(),

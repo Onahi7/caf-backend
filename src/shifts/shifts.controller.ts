@@ -22,7 +22,10 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
-import { resolveBranchId } from '../common/utils/branch-scope.util.js';
+import {
+  assignResolvedBranchId,
+  requireResolvedBranchId,
+} from '../common/utils/branch-scope.util.js';
 import { apiResponse, apiListResponse } from '../common/utils/api-response.util.js';
 import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
@@ -97,7 +100,7 @@ export class ShiftsController {
     @Query() filter: ShiftFilterDto,
     @CurrentUser() user: CurrentUserData,
   ) {
-    filter.branchId = resolveBranchId(user, filter.branchId) as string;
+    assignResolvedBranchId(user, filter);
     const shifts = await this.shiftsService.findAll(filter);
     return apiListResponse(shifts);
   }
@@ -119,7 +122,7 @@ export class ShiftsController {
     @Param('branchId') branchId: string,
     @CurrentUser() user: CurrentUserData,
   ) {
-    const resolvedBranchId = resolveBranchId(user, branchId) as string;
+    const resolvedBranchId = requireResolvedBranchId(user, branchId);
     const shifts = await this.shiftsService.findByBranch(resolvedBranchId);
     return apiListResponse(shifts);
   }
@@ -143,7 +146,7 @@ export class ShiftsController {
   ) {
     // Non-admin users are always scoped to their assigned branch regardless of incoming query params.
     const requestedBranchId = user.role === UserRole.SUPER_ADMIN ? branchId : undefined;
-    const resolvedBranchId = resolveBranchId(user, requestedBranchId) as string;
+    const resolvedBranchId = requireResolvedBranchId(user, requestedBranchId);
 
     // Cashiers can only query their own shift; managers/admins can provide cashierId explicitly.
     const effectiveCashierId =

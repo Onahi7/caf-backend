@@ -16,7 +16,11 @@ import {
 } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
-import { resolveBranchId } from '../common/utils/branch-scope.util.js';
+import {
+  assignResolvedBranchId,
+  requireResolvedBranchId,
+  resolveBranchId,
+} from '../common/utils/branch-scope.util.js';
 import { ReportsService } from './reports.service.js';
 import { ValuationService } from './valuation.service.js';
 import { ExportService, ExportFormat } from './export.service.js';
@@ -74,9 +78,9 @@ export class ReportsController {
     @CurrentUser() user: CurrentUserData,
     @Query('branchId') branchId: string,
   ) {
-    const resolvedBranchId = resolveBranchId(user, branchId);
+    const resolvedBranchId = requireResolvedBranchId(user, branchId);
     this.logger.log(`Getting dashboard stats for branch: ${resolvedBranchId}`);
-    return this.reportsService.getDashboardStats(resolvedBranchId as string);
+    return this.reportsService.getDashboardStats(resolvedBranchId);
   }
 
   /**
@@ -89,7 +93,7 @@ export class ReportsController {
     @CurrentUser() user: CurrentUserData,
     @Query() dto: SalesReportDto,
   ) {
-    dto.branchId = resolveBranchId(user, dto.branchId) as string;
+    assignResolvedBranchId(user, dto);
     return this.reportsService.generateSalesReport(dto);
   }
 
@@ -103,7 +107,7 @@ export class ReportsController {
     @CurrentUser() user: CurrentUserData,
     @Query() dto: InventoryReportDto,
   ) {
-    dto.branchId = resolveBranchId(user, dto.branchId) as string;
+    assignResolvedBranchId(user, dto);
     return this.reportsService.generateInventoryReport(dto);
   }
 
@@ -122,7 +126,7 @@ export class ReportsController {
     @CurrentUser() user: CurrentUserData,
     @Query() dto: ExpiryReportDto,
   ) {
-    dto.branchId = resolveBranchId(user, dto.branchId) as string;
+    assignResolvedBranchId(user, dto);
     return this.reportsService.generateExpiryReport(dto);
   }
 
@@ -136,7 +140,7 @@ export class ReportsController {
     @CurrentUser() user: CurrentUserData,
     @Query() dto: InventoryReportDto,
   ) {
-    dto.branchId = resolveBranchId(user, dto.branchId) as string;
+    assignResolvedBranchId(user, dto);
     return this.reportsService.generateInventoryReport({
       ...dto,
       lowStockOnly: true,
@@ -159,7 +163,7 @@ export class ReportsController {
     @Res() res: Response,
   ) {
     this.logger.log('Generating sales report');
-    dto.branchId = resolveBranchId(user, dto.branchId) as string;
+    assignResolvedBranchId(user, dto);
 
     const report = await this.reportsService.generateSalesReport(dto);
 
@@ -221,7 +225,7 @@ export class ReportsController {
     @Res() res: Response,
   ) {
     this.logger.log('Generating inventory report');
-    dto.branchId = resolveBranchId(user, dto.branchId) as string;
+    assignResolvedBranchId(user, dto);
 
     const report = await this.reportsService.generateInventoryReport(dto);
 
@@ -294,7 +298,7 @@ export class ReportsController {
     @Res() res: Response,
   ) {
     this.logger.log('Generating expiry report');
-    dto.branchId = resolveBranchId(user, dto.branchId) as string;
+    assignResolvedBranchId(user, dto);
 
     const report = await this.reportsService.generateExpiryReport(dto);
 
@@ -361,7 +365,7 @@ export class ReportsController {
     @Res() res: Response,
   ) {
     this.logger.log('Generating transfer report');
-    dto.branchId = resolveBranchId(user, dto.branchId) as string;
+    assignResolvedBranchId(user, dto);
 
     const report = await this.reportsService.generateTransferReport(dto);
 

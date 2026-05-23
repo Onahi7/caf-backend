@@ -21,7 +21,10 @@ import type { CurrentUserData } from '../auth/decorators/current-user.decorator.
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
-import { resolveBranchId } from '../common/utils/branch-scope.util.js';
+import {
+  assignResolvedBranchId,
+  requireResolvedBranchId,
+} from '../common/utils/branch-scope.util.js';
 import { apiResponse, apiListResponse, apiMessageResponse } from '../common/utils/api-response.util.js';
 import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
@@ -73,7 +76,7 @@ export class ExpensesController {
     @Query() filter: ExpenseFilterDto & { page?: string; limit?: string },
     @CurrentUser() user: CurrentUserData,
   ) {
-    filter.branchId = resolveBranchId(user, filter.branchId) as string;
+    assignResolvedBranchId(user, filter);
     const p = parseInt(filter.page || '1', 10);
     const l = parseInt(filter.limit || '20', 10);
     const { data, total } = await this.expensesService.findAll({
@@ -149,7 +152,7 @@ export class ExpensesController {
     @CurrentUser() user: CurrentUserData,
     @Query('limit') limit?: number,
   ): Promise<{ success: true; data: ExpenseDocument[]; count: number }> {
-    const resolvedBranchId = resolveBranchId(user, branchId) as string;
+    const resolvedBranchId = requireResolvedBranchId(user, branchId);
     const expenses = await this.expensesService.findByBranch(resolvedBranchId, limit);
     return apiListResponse(expenses);
   }
@@ -185,7 +188,7 @@ export class ExpensesController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ): Promise<{ category: string; total: number; count: number }[]> {
-    const resolvedBranchId = resolveBranchId(user, branchId) as string;
+    const resolvedBranchId = requireResolvedBranchId(user, branchId);
     const start = startDate ? new Date(startDate) : undefined;
     const end = endDate ? new Date(endDate) : undefined;
     return this.expensesService.getTotalByCategory(resolvedBranchId, start, end);

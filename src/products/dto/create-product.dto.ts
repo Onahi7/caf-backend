@@ -103,6 +103,10 @@ export class CreateProductDto {
   @IsOptional()
   initialSupplierId?: string;
 
+  @IsMongoId()
+  @IsOptional()
+  supplierId?: string;
+
   @IsDateString()
   @IsOptional()
   initialSupplyDate?: string;

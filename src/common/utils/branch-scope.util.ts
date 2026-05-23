@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { CurrentUserData } from '../../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../../users/schemas/user.schema.js';
 
@@ -31,4 +31,29 @@ export function resolveBranchId(
   }
 
   return String(user.branchId);
+}
+
+export function requireResolvedBranchId(
+  user: CurrentUserData,
+  requestedBranchId?: string,
+  message = 'branchId is required',
+): string {
+  const resolvedBranchId = resolveBranchId(user, requestedBranchId);
+  if (!resolvedBranchId) {
+    throw new BadRequestException(message);
+  }
+  return resolvedBranchId;
+}
+
+export function assignResolvedBranchId<T extends { branchId?: string }>(
+  user: CurrentUserData,
+  target: T,
+): T {
+  const resolvedBranchId = resolveBranchId(user, target.branchId);
+  if (resolvedBranchId) {
+    target.branchId = resolvedBranchId;
+  } else {
+    delete target.branchId;
+  }
+  return target;
 }

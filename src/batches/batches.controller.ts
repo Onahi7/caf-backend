@@ -17,7 +17,10 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
-import { resolveBranchId } from '../common/utils/branch-scope.util.js';
+import {
+  requireResolvedBranchId,
+  resolveBranchId,
+} from '../common/utils/branch-scope.util.js';
 import { apiResponse, apiListResponse } from '../common/utils/api-response.util.js';
 
 @Controller('batches')
@@ -55,22 +58,45 @@ export class BatchesController {
     @CurrentUser() user: CurrentUserData,
     @Query('branchId') branchId?: string,
     @Query('productId') productId?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '50',
   ) {
+    const currentPage = Math.max(1, parseInt(page, 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const paginate = <T,>(items: T[]) => {
+      const start = (currentPage - 1) * pageSize;
+      const data = items.slice(start, start + pageSize);
+      const pages = Math.ceil(items.length / pageSize);
+      return {
+        success: true,
+        data,
+        count: items.length,
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total: items.length,
+          pages,
+          hasNext: currentPage < pages,
+          hasPrev: currentPage > 1,
+        },
+      };
+    };
+
     const resolvedBranchId = resolveBranchId(user, branchId);
     if (resolvedBranchId && productId) {
       const batches = await this.batchesService.findByBranchAndProduct(resolvedBranchId, productId);
-      return apiListResponse(batches);
+      return paginate(batches);
     }
     if (resolvedBranchId) {
       const batches = await this.batchesService.findByBranch(resolvedBranchId);
-      return apiListResponse(batches);
+      return paginate(batches);
     }
     if (productId) {
       const batches = await this.batchesService.findByProduct(productId);
-      return apiListResponse(batches);
+      return paginate(batches);
     }
     const batches = await this.batchesService.findAll();
-    return apiListResponse(batches);
+    return paginate(batches);
   }
 
   /**
@@ -109,7 +135,7 @@ export class BatchesController {
     @CurrentUser() user: CurrentUserData,
     @Param('productId') productId: string,
   ) {
-    const resolvedBranchId = resolveBranchId(user, branchId) as string;
+    const resolvedBranchId = requireResolvedBranchId(user, branchId);
     const batches = await this.batchesService.findByBranchAndProduct(resolvedBranchId, productId);
     return apiListResponse(batches);
   }
@@ -130,7 +156,7 @@ export class BatchesController {
     @CurrentUser() user: CurrentUserData,
     @Query('days') days?: string,
   ) {
-    const resolvedBranchId = resolveBranchId(user, branchId) as string;
+    const resolvedBranchId = requireResolvedBranchId(user, branchId);
     const daysUntilExpiry = days ? parseInt(days, 10) : 30;
     const batches = await this.batchesService.findExpiring(resolvedBranchId, daysUntilExpiry);
     return apiListResponse(batches);
