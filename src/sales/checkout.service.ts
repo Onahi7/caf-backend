@@ -327,7 +327,8 @@ let session;
           batchId: new Types.ObjectId(batch.batchId),
           quantity: batch.quantity,
           unitPrice: selection.unitPrice,
-          subtotal: batch.quantity * (selection.unitPrice / selection.totalQuantity) * batch.quantity,
+          subtotal:
+            batch.quantity * (selection.totalAmount / selection.totalQuantity),
           packSize: selection.packSize ? {
             name: selection.packSize.name,
             unit: selection.packSize.unit,

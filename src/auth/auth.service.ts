@@ -86,6 +86,14 @@ export class AuthService {
       this.REFRESH_TOKEN_EXPIRY,
     );
 
+    try {
+      await this.auditService.logLogin(user._id.toString(), user.username);
+    } catch (auditError) {
+      const auditMessage =
+        auditError instanceof Error ? auditError.message : 'Unknown audit error';
+      this.logger.warn(`Login audit failed for ${user.username}: ${auditMessage}`);
+    }
+
     this.logger.log(`User ${user.username} logged in successfully`);
 
     return {

@@ -268,7 +268,12 @@ export class SalesController {
     @CurrentUser() user: CurrentUserData,
     @Query() filter: SaleFilterDto,
   ) {
-    filter.branchId = resolveBranchId(user, filter.branchId) as string;
+    const resolvedBranchId = resolveBranchId(user, filter.branchId);
+    if (resolvedBranchId) {
+      filter.branchId = resolvedBranchId;
+    } else {
+      delete filter.branchId;
+    }
     const sales = await this.salesService.findAll(filter);
 
     return {

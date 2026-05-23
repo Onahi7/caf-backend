@@ -10,26 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-
-class PackSizeDto {
-  @IsString()
-  name!: string;
-
-  @IsString()
-  unit!: string;
-
-  @IsNumber()
-  @Min(1)
-  quantityPerPack!: number;
-
-  @IsNumber()
-  @Min(0)
-  sellingPrice!: number;
-
-  @IsString()
-  @IsOptional()
-  barcode?: string;
-}
+import { PackSizeDto } from './product-pack-size.dto.js';
 
 export class CreateProductDto {
   @IsMongoId()
