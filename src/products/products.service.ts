@@ -40,21 +40,163 @@ export class ProductsService {
     _branchId?: string,
   ): Promise<Array<Record<string, unknown>>> {
     return products.map((product) => {
+      const effectiveSellingPrice = this.getEffectiveSellingPrice(product);
       return {
         ...product.toObject(),
-        price:
-          product.suggestedRetailPrice > 0
-            ? product.suggestedRetailPrice
-            : product.basePrice,
+        price: effectiveSellingPrice,
+        sellingPrice: effectiveSellingPrice,
         stock: product.quantityAvailable ?? 0,
+        stockAvailable: product.quantityAvailable ?? 0,
       };
     });
+  }
+
+  private getEffectiveSellingPrice(product: {
+    suggestedRetailPrice?: number;
+    basePrice?: number;
+  }): number {
+    return (product.suggestedRetailPrice ?? 0) > 0
+      ? product.suggestedRetailPrice ?? 0
+      : product.basePrice ?? 0;
+  }
+
+  private normalizePackSizes(
+    packSizes: CreateProductDto['packSizes'] | UpdateProductDto['packSizes'],
+    productBarcode?: string,
+  ) {
+    if (!packSizes) {
+      return packSizes;
+    }
+
+    const seenCodes = new Set<string>();
+    const seenUnits = new Set<string>();
+    const seenBarcodes = new Set<string>();
+
+    return packSizes.map((pack, index) => {
+      const name = pack.name.trim();
+      const unit = (pack.unit || name).trim().toLowerCase().replace(/\s+/g, '-');
+      const code = (
+        pack.code?.trim() ||
+        `${unit}-${pack.quantityPerPack}-${index + 1}`
+      )
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-');
+      const barcode = pack.barcode?.trim() || undefined;
+
+      if (!name || !unit) {
+        throw new BadRequestException('Each pack size requires a name and unit');
+      }
+
+      if (seenCodes.has(code)) {
+        throw new BadRequestException(`Duplicate pack code: ${code}`);
+      }
+      seenCodes.add(code);
+
+      if (seenUnits.has(unit)) {
+        throw new BadRequestException(`Duplicate pack unit: ${unit}`);
+      }
+      seenUnits.add(unit);
+
+      if (barcode) {
+        if (productBarcode && barcode === productBarcode) {
+          throw new BadRequestException(
+            'Pack barcode cannot be the same as product barcode',
+          );
+        }
+        if (seenBarcodes.has(barcode)) {
+          throw new BadRequestException(`Duplicate pack barcode: ${barcode}`);
+        }
+        seenBarcodes.add(barcode);
+      }
+
+      return {
+        ...pack,
+        code,
+        name,
+        unit,
+        barcode,
+      };
+    });
+  }
+
+  private normalizeCreateProductPayload(createProductDto: CreateProductDto) {
+    const effectiveCostPrice =
+      createProductDto.initialPurchasePrice ?? createProductDto.costPrice ?? 0;
+    const effectiveSellingPrice =
+      createProductDto.initialSellingPrice ??
+      createProductDto.suggestedRetailPrice ??
+      createProductDto.basePrice ??
+      0;
+
+    return {
+      ...createProductDto,
+      costPrice: effectiveCostPrice,
+      basePrice: effectiveSellingPrice,
+      suggestedRetailPrice: effectiveSellingPrice,
+      packSizes: this.normalizePackSizes(
+        createProductDto.packSizes,
+        createProductDto.barcode,
+      ),
+    };
+  }
+
+  private normalizeUpdateProductPayload(
+    updateProductDto: UpdateProductDto,
+    existingProduct: ProductDocument,
+  ): UpdateProductDto {
+    const nextBarcode = updateProductDto.barcode ?? existingProduct.barcode;
+    const normalized: UpdateProductDto = { ...updateProductDto };
+
+    if (
+      updateProductDto.basePrice !== undefined ||
+      updateProductDto.suggestedRetailPrice !== undefined
+    ) {
+      const effectiveSellingPrice =
+        updateProductDto.suggestedRetailPrice ??
+        updateProductDto.basePrice ??
+        this.getEffectiveSellingPrice(existingProduct);
+      normalized.basePrice = effectiveSellingPrice;
+      normalized.suggestedRetailPrice = effectiveSellingPrice;
+    }
+
+    if (updateProductDto.packSizes) {
+      normalized.packSizes = this.normalizePackSizes(
+        updateProductDto.packSizes,
+        nextBarcode,
+      );
+    }
+
+    return normalized;
+  }
+
+  private async assertPackBarcodesAreUniqueInBranch(
+    packSizes: CreateProductDto['packSizes'] | UpdateProductDto['packSizes'],
+    branchId: string,
+    currentProductId?: string,
+  ): Promise<void> {
+    const packBarcodes = (packSizes ?? [])
+      .map((pack) => pack.barcode?.trim())
+      .filter((barcode): barcode is string => Boolean(barcode));
+
+    for (const barcode of packBarcodes) {
+      const existing = await this.productsRepository.findByBarcodeAndBranch(
+        barcode,
+        branchId,
+      );
+      if (existing && existing._id.toString() !== currentProductId) {
+        throw new ConflictException(
+          `Pack barcode ${barcode} is already used by another product or pack`,
+        );
+      }
+    }
   }
 
   async create(
     createProductDto: CreateProductDto,
     userId?: string,
   ): Promise<ProductDocument> {
+    createProductDto = this.normalizeCreateProductPayload(createProductDto);
+
     // Auto-generate SKU if not provided
     if (!createProductDto.sku) {
       createProductDto.sku = this.generateSku(createProductDto.name);
@@ -83,10 +225,15 @@ export class ProductsService {
       );
     }
 
+    await this.assertPackBarcodesAreUniqueInBranch(
+      createProductDto.packSizes,
+      createProductDto.branchId,
+    );
+
     const {
       initialStock,
-      initialPurchasePrice,
-      initialSellingPrice,
+      initialPurchasePrice: _initialPurchasePrice,
+      initialSellingPrice: _initialSellingPrice,
       initialLotNumber: _initialLotNumber,
       initialExpiryDate,
       initialSupplierId,
@@ -106,9 +253,9 @@ export class ProductsService {
 
     const product = await this.productsRepository.create({
       ...productPayload,
-      costPrice: initialPurchasePrice ?? productPayload.costPrice,
-      suggestedRetailPrice:
-        initialSellingPrice ?? productPayload.suggestedRetailPrice,
+      costPrice: productPayload.costPrice,
+      basePrice: productPayload.basePrice,
+      suggestedRetailPrice: productPayload.suggestedRetailPrice,
       quantityAvailable: initialStock ?? 0,
       quantityInitial: initialStock ?? 0,
       supplierId: effectiveSupplierId,
@@ -288,6 +435,17 @@ export class ProductsService {
         throw new ConflictException('Product with this barcode already exists');
       }
     }
+
+    updateProductDto = this.normalizeUpdateProductPayload(
+      updateProductDto,
+      existingProduct,
+    );
+
+    await this.assertPackBarcodesAreUniqueInBranch(
+      updateProductDto.packSizes,
+      targetBranchId,
+      id,
+    );
 
     const { quantityAvailable, ...productUpdates } = updateProductDto;
     const product = await this.productsRepository.update(id, productUpdates);
