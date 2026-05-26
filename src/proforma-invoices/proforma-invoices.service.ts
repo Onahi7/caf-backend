@@ -103,6 +103,9 @@ export class ProformaInvoicesService {
     if (pf.status !== ProformaStatus.APPROVED && pf.status !== ProformaStatus.CONVERTED) {
       throw new BadRequestException('Payments can only be recorded on approved proformas');
     }
+    if (dto.amount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than zero');
+    }
 
     const paymentEntry = {
       amount: dto.amount,
@@ -145,50 +148,102 @@ export class ProformaInvoicesService {
     // Create sale via the Sales module
     const SalesModule = this.model.db.model('Sale');
     const ProductModel = this.model.db.model('Product');
-    const shift = await this.model.db.model('Shift').findOne({
-      branchId: pf.branchId,
-      status: 'open',
-    }).exec();
-
-    if (!shift) {
-      throw new BadRequestException('No open shift found. Please open a shift first.');
+    const productIds = pf.items.map((item) => item.productId);
+    const isCreditSale = dto.paymentMethod === PaymentMethod.CREDIT;
+    const amountPaid = dto.amountPaid ?? (isCreditSale ? 0 : pf.total);
+    if (amountPaid < 0 || amountPaid > pf.total) {
+      throw new BadRequestException('Amount paid must be between zero and the proforma total');
     }
 
-    // Deduct stock for each item
-    for (const item of pf.items) {
-      await ProductModel.updateOne(
-        { _id: item.productId, branchId: pf.branchId },
-        { $inc: { quantityAvailable: -item.quantity } },
-      ).exec();
+    let sale: any;
+    const session = await this.model.db.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const shift = await this.model.db.model('Shift').findOne({
+          branchId: pf.branchId,
+          status: 'open',
+        }).session(session).exec();
+
+        if (!shift) {
+          throw new BadRequestException('No open shift found. Please open a shift first.');
+        }
+
+        const products = await ProductModel.find({
+          _id: { $in: productIds },
+          branchId: pf.branchId,
+          isActive: true,
+        }).select('_id name quantityAvailable').lean().session(session).exec();
+        const productsById = new Map(products.map((product: any) => [product._id.toString(), product]));
+
+        for (const item of pf.items) {
+          const product = productsById.get(item.productId.toString());
+          if (!product) {
+            throw new BadRequestException(`Product ${item.productName} is no longer available in this branch`);
+          }
+          if ((product.quantityAvailable ?? 0) < item.quantity) {
+            throw new BadRequestException(
+              `Insufficient stock for ${item.productName}. Available: ${product.quantityAvailable ?? 0}, requested: ${item.quantity}`,
+            );
+          }
+        }
+
+        const stockUpdateResult = await ProductModel.bulkWrite(
+          pf.items.map((item) => ({
+            updateOne: {
+              filter: {
+                _id: item.productId,
+                branchId: pf.branchId,
+                quantityAvailable: { $gte: item.quantity },
+              },
+              update: { $inc: { quantityAvailable: -item.quantity } },
+            },
+          })),
+          { session },
+        );
+        if (stockUpdateResult.modifiedCount !== pf.items.length) {
+          throw new BadRequestException('Stock changed while converting this proforma. Please refresh and try again.');
+        }
+
+        [sale] = await SalesModule.create([{
+          branchId: pf.branchId,
+          shiftId: shift._id,
+          terminalId: 'ORDER-MGMT',
+          cashierId: new Types.ObjectId(userId),
+          items: saleItems.map((si: any) => ({
+            productId: new Types.ObjectId(si.productId),
+            quantity: si.quantity,
+            unitPrice: si.unitPrice,
+            subtotal: si.quantity * si.unitPrice,
+          })),
+          subtotal: pf.subtotal,
+          discount: 0,
+          total: pf.total,
+          saleType: isCreditSale ? 'credit' : 'cash',
+          paymentMethod: isCreditSale ? 'credit' : 'cash',
+          paymentStatus: amountPaid >= pf.total ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid',
+          amountPaid,
+          balanceDue: Math.max(pf.total - amountPaid, 0),
+          payments: amountPaid > 0
+            ? [{
+                amount: amountPaid,
+                paymentMethod: isCreditSale ? 'credit' : 'cash',
+                receivedBy: new Types.ObjectId(userId),
+                receivedAt: new Date(),
+                isInitialPayment: true,
+              }]
+            : [],
+          receiptNumber: `SALE-${Date.now()}`,
+          customerName: pf.customerId ? undefined : undefined,
+          status: 'completed',
+        }], { session });
+
+        pf.saleId = sale._id;
+        pf.status = ProformaStatus.CONVERTED;
+        await pf.save({ session });
+      });
+    } finally {
+      await session.endSession();
     }
-
-    const sale = await SalesModule.create({
-      branchId: pf.branchId,
-      shiftId: shift._id,
-      terminalId: 'ORDER-MGMT',
-      cashierId: new Types.ObjectId(userId),
-      items: saleItems.map((si: any) => ({
-        productId: new Types.ObjectId(si.productId),
-        quantity: si.quantity,
-        unitPrice: si.unitPrice,
-        subtotal: si.quantity * si.unitPrice,
-      })),
-      subtotal: pf.subtotal,
-      discount: 0,
-      total: pf.total,
-      saleType: 'cash',
-      paymentMethod: dto.paymentMethod === PaymentMethod.CREDIT ? 'credit' : 'cash',
-      paymentStatus: dto.paymentMethod === PaymentMethod.CREDIT ? 'unpaid' : 'paid',
-      amountPaid: dto.amountPaid ?? pf.total,
-      balanceDue: dto.paymentMethod === PaymentMethod.CREDIT ? pf.total - (dto.amountPaid ?? 0) : 0,
-      receiptNumber: `SALE-${Date.now()}`,
-      customerName: pf.customerId ? undefined : undefined,
-      status: 'completed',
-    });
-
-    pf.saleId = sale._id;
-    pf.status = ProformaStatus.CONVERTED;
-    await pf.save();
 
     this.logger.log(`Proforma ${pf.proformaNumber} converted to sale ${sale._id}`);
 
