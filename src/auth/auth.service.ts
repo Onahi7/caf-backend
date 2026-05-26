@@ -109,6 +109,7 @@ export class AuthService {
       accessToken,
       refreshToken,
       expiresIn: this.ACCESS_TOKEN_EXPIRY,
+      refreshExpiresIn: this.REFRESH_TOKEN_EXPIRY,
     };
   }
 
@@ -164,6 +165,7 @@ export class AuthService {
         accessToken,
         refreshToken, // Return the same refresh token
         expiresIn: this.ACCESS_TOKEN_EXPIRY,
+        refreshExpiresIn: this.REFRESH_TOKEN_EXPIRY,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -300,6 +302,7 @@ export class AuthService {
       accessToken,
       refreshToken,
       expiresIn: this.ACCESS_TOKEN_EXPIRY,
+      refreshExpiresIn: this.REFRESH_TOKEN_EXPIRY,
     };
   }
 }

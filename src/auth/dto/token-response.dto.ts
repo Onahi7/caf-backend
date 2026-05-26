@@ -11,4 +11,5 @@ export class TokenResponseDto {
   accessToken!: string;
   refreshToken!: string;
   expiresIn!: number;
+  refreshExpiresIn!: number;
 }
