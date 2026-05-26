@@ -3,18 +3,25 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { BatchesRepository } from './batches.repository.js';
 import { CreateBatchDto } from './dto/create-batch.dto.js';
 import { UpdateBatchDto } from './dto/update-batch.dto.js';
 import { BatchDocument } from './schemas/batch.schema.js';
 import { BatchSelectionDto, SelectedBatch } from './dto/batch-selection.dto.js';
 import { EventsService } from '../websocket/events.service.js';
+import { Product, ProductDocument } from '../products/schemas/product.schema.js';
+import { StockMovement, StockMovementDocument, MovementType } from '../inventory/schemas/stock-movement.schema.js';
 
 @Injectable()
 export class BatchesService {
   constructor(
     private readonly batchesRepository: BatchesRepository,
     private readonly eventsService: EventsService,
+    @InjectConnection() private readonly connection: Connection,
+    @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
+    @InjectModel(StockMovement.name) private readonly stockMovementModel: Model<StockMovementDocument>,
   ) {}
 
   /**
@@ -33,7 +40,7 @@ export class BatchesService {
     }
   }
 
-  async create(createBatchDto: CreateBatchDto): Promise<BatchDocument> {
+  async create(createBatchDto: CreateBatchDto, userId: string): Promise<BatchDocument> {
     // Validate required fields
     if (
       !createBatchDto.branchId ||
@@ -58,7 +65,59 @@ export class BatchesService {
       );
     }
 
-    const batch = await this.batchesRepository.create(createBatchDto);
+    const session = await this.connection.startSession();
+    let batch: BatchDocument | undefined;
+    try {
+      await session.withTransaction(async () => {
+        const product = await this.productModel.findOneAndUpdate(
+          {
+            _id: new Types.ObjectId(createBatchDto.productId),
+            branchId: new Types.ObjectId(createBatchDto.branchId),
+          },
+          {
+            $inc: { quantityAvailable: createBatchDto.quantity },
+            $set: {
+              supplierId: new Types.ObjectId(createBatchDto.supplierId),
+              expiryDate,
+              costPrice: createBatchDto.purchasePrice,
+              basePrice: createBatchDto.sellingPrice,
+              suggestedRetailPrice: createBatchDto.sellingPrice,
+            },
+          },
+          { new: true, session },
+        ).exec();
+
+        if (!product) {
+          throw new BadRequestException('Product does not belong to the selected branch');
+        }
+
+        batch = await this.batchesRepository.create(createBatchDto, session);
+
+        await this.stockMovementModel.create([{
+          branchId: new Types.ObjectId(createBatchDto.branchId),
+          productId: new Types.ObjectId(createBatchDto.productId),
+          batchId: batch._id,
+          quantity: createBatchDto.quantity,
+          movementType: MovementType.PURCHASE,
+          reason: `Batch ${createBatchDto.lotNumber} created`,
+          userId: new Types.ObjectId(userId),
+          referenceId: batch._id,
+          referenceType: 'Batch',
+          timestamp: new Date(),
+          metadata: {
+            purchasePrice: createBatchDto.purchasePrice,
+            sellingPrice: createBatchDto.sellingPrice,
+            supplierId: createBatchDto.supplierId,
+          },
+        }], { session });
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    if (!batch) {
+      throw new BadRequestException('Batch could not be created');
+    }
 
     // Emit batch created event
     this.eventsService.emitBatchUpdate({

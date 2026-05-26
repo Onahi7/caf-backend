@@ -21,6 +21,8 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 
 @Controller('purchase-orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -38,8 +40,12 @@ export class PurchasesController {
   @UseInterceptors(IdempotencyInterceptor)
   async create(
     @Body() createPurchaseOrderDto: CreatePurchaseOrderDto,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<PurchaseOrderDocument> {
-    return this.purchasesService.create(createPurchaseOrderDto);
+    return this.purchasesService.create({
+      ...createPurchaseOrderDto,
+      createdBy: user.userId,
+    });
   }
 
   /**
@@ -148,8 +154,12 @@ export class PurchasesController {
   async receive(
     @Param('id') id: string,
     @Body() receiveDto: ReceivePurchaseOrderDto,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<ReceiveResult> {
-    return this.purchasesService.receivePurchaseOrder(id, receiveDto);
+    return this.purchasesService.receivePurchaseOrder(id, {
+      ...receiveDto,
+      receivedBy: user.userId,
+    });
   }
 
   /**

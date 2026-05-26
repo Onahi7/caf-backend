@@ -35,7 +35,7 @@ import {
   CurrentUser,
 } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
-import { resolveBranchId } from '../common/utils/branch-scope.util.js';
+import { requireResolvedBranchId, resolveBranchId } from '../common/utils/branch-scope.util.js';
 import { ProductExcelService } from './product-excel.service.js';
 import { RequestAnalysisService } from './request-analysis.service.js';
 
@@ -145,11 +145,11 @@ export class ProductsController {
       throw new BadRequestException('Upload file is required');
     }
 
-    const resolvedBranchId = resolveBranchId(user, branchId);
+    const resolvedBranchId = requireResolvedBranchId(user, branchId);
     return {
       success: true,
       data: await this.requestAnalysisService.analyzeUpload({
-        branchId: resolvedBranchId as string,
+        branchId: resolvedBranchId,
         fileBuffer: file.buffer,
         filename: file.originalname,
         mimeType: file.mimetype,

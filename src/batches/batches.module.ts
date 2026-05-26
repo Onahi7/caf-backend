@@ -5,10 +5,16 @@ import { BatchesService } from './batches.service.js';
 import { BatchesRepository } from './batches.repository.js';
 import { Batch, BatchSchema } from './schemas/batch.schema.js';
 import { WebSocketModule } from '../websocket/websocket.module.js';
+import { Product, ProductSchema } from '../products/schemas/product.schema.js';
+import { StockMovement, StockMovementSchema } from '../inventory/schemas/stock-movement.schema.js';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Batch.name, schema: BatchSchema }]),
+    MongooseModule.forFeature([
+      { name: Batch.name, schema: BatchSchema },
+      { name: Product.name, schema: ProductSchema },
+      { name: StockMovement.name, schema: StockMovementSchema },
+    ]),
     WebSocketModule,
   ],
   controllers: [BatchesController],

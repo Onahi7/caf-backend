@@ -4,11 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectConnection } from '@nestjs/mongoose';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { User, UserRole } from '../users/schemas/user.schema.js';
 import { Product } from '../products/schemas/product.schema.js';
+import { StockMovement, StockMovementDocument, MovementType } from '../inventory/schemas/stock-movement.schema.js';
 import {
   MarketerProductAssignment,
   MarketerAssignmentStatus,
@@ -31,6 +33,10 @@ export class MarketerService {
     private readonly userModel: Model<User>,
     @InjectModel(Product.name)
     private readonly productModel: Model<Product>,
+    @InjectModel(StockMovement.name)
+    private readonly stockMovementModel: Model<StockMovementDocument>,
+    @InjectConnection()
+    private readonly connection: Connection,
   ) {}
 
   async createAssignment(dto: CreateMarketerAssignmentDto, actor: CurrentUserData) {
@@ -71,12 +77,46 @@ export class MarketerService {
       throw new BadRequestException('An active assignment already exists for this marketer and product');
     }
 
-    const assignment = await this.assignmentModel.create({
-      ...dto,
-      assignedBy: actor.userId,
-      remainingQuantity: dto.assignedQuantity,
-      status: MarketerAssignmentStatus.PENDING,
-    });
+    const session = await this.connection.startSession();
+    let assignment: MarketerProductAssignmentDocument | undefined;
+    try {
+      await session.withTransaction(async () => {
+        const updatedProduct = await this.productModel.findOneAndUpdate(
+          {
+            _id: dto.productId,
+            branchId: dto.branchId,
+            quantityAvailable: { $gte: dto.assignedQuantity },
+          },
+          { $inc: { quantityAvailable: -dto.assignedQuantity } },
+          { new: true, session },
+        ).exec();
+
+        if (!updatedProduct) {
+          throw new BadRequestException(
+            `Insufficient stock to assign ${dto.assignedQuantity} units to marketer`,
+          );
+        }
+
+        [assignment] = await this.assignmentModel.create([{
+          ...dto,
+          assignedBy: actor.userId,
+          remainingQuantity: dto.assignedQuantity,
+          status: MarketerAssignmentStatus.PENDING,
+        }], { session });
+
+        await this.recordMarketerStockMovement({
+          branchId: dto.branchId,
+          productId: dto.productId,
+          quantity: -dto.assignedQuantity,
+          userId: actor.userId,
+          referenceId: assignment._id,
+          reason: 'Stock assigned to marketer',
+          metadata: { marketerId: dto.marketerId },
+        }, session);
+      });
+    } finally {
+      await session.endSession();
+    }
 
     return assignment;
   }
@@ -186,28 +226,97 @@ export class MarketerService {
       throw new ForbiddenException('You can only update assignments in your branch');
     }
 
-    if (dto.assignedQuantity !== undefined) {
+    const session = await this.connection.startSession();
+    try {
+      await session.withTransaction(async () => {
+        if (dto.assignedQuantity !== undefined) {
       const soldQuantity = assignment.assignedQuantity - assignment.remainingQuantity;
       if (dto.assignedQuantity < soldQuantity) {
         throw new BadRequestException('Assigned quantity cannot be lower than already sold quantity');
       }
+      const quantityDelta = dto.assignedQuantity - assignment.assignedQuantity;
+      if (quantityDelta > 0) {
+        const updatedProduct = await this.productModel.findOneAndUpdate(
+          {
+            _id: assignment.productId,
+            branchId: assignment.branchId,
+            quantityAvailable: { $gte: quantityDelta },
+          },
+          { $inc: { quantityAvailable: -quantityDelta } },
+          { new: true, session },
+        ).exec();
+
+        if (!updatedProduct) {
+          throw new BadRequestException(`Insufficient branch stock to increase assignment by ${quantityDelta} units`);
+        }
+
+        await this.recordMarketerStockMovement({
+          branchId: assignment.branchId.toString(),
+          productId: assignment.productId.toString(),
+          quantity: -quantityDelta,
+          userId: actor.userId,
+          referenceId: assignment._id,
+          reason: 'Marketer assignment increased',
+          metadata: { marketerId: assignment.marketerId.toString() },
+        }, session);
+      } else if (quantityDelta < 0) {
+        const returnQuantity = Math.abs(quantityDelta);
+        await this.productModel.updateOne(
+          { _id: assignment.productId, branchId: assignment.branchId },
+          { $inc: { quantityAvailable: returnQuantity } },
+          { session },
+        ).exec();
+
+        await this.recordMarketerStockMovement({
+          branchId: assignment.branchId.toString(),
+          productId: assignment.productId.toString(),
+          quantity: returnQuantity,
+          userId: actor.userId,
+          referenceId: assignment._id,
+          reason: 'Marketer assignment reduced',
+          metadata: { marketerId: assignment.marketerId.toString() },
+        }, session);
+      }
       assignment.assignedQuantity = dto.assignedQuantity;
       assignment.remainingQuantity = dto.assignedQuantity - soldQuantity;
-    }
+        }
 
-    if (dto.assignedUnitPrice !== undefined) {
-      assignment.assignedUnitPrice = dto.assignedUnitPrice;
-    }
+        if (dto.assignedUnitPrice !== undefined) {
+          assignment.assignedUnitPrice = dto.assignedUnitPrice;
+        }
 
-    if (dto.isActive !== undefined) {
-      assignment.isActive = dto.isActive;
-    }
+        if (dto.isActive !== undefined && dto.isActive !== assignment.isActive) {
+          if (!dto.isActive && assignment.remainingQuantity > 0) {
+            await this.productModel.updateOne(
+              { _id: assignment.productId, branchId: assignment.branchId },
+              { $inc: { quantityAvailable: assignment.remainingQuantity } },
+              { session },
+            ).exec();
 
-    if (dto.notes !== undefined) {
-      assignment.notes = dto.notes;
-    }
+            await this.recordMarketerStockMovement({
+              branchId: assignment.branchId.toString(),
+              productId: assignment.productId.toString(),
+              quantity: assignment.remainingQuantity,
+              userId: actor.userId,
+              referenceId: assignment._id,
+              reason: 'Unsold marketer stock returned',
+              metadata: { marketerId: assignment.marketerId.toString() },
+            }, session);
 
-    await assignment.save();
+            assignment.remainingQuantity = 0;
+          }
+          assignment.isActive = dto.isActive;
+        }
+
+        if (dto.notes !== undefined) {
+          assignment.notes = dto.notes;
+        }
+
+        await assignment.save({ session });
+      });
+    } finally {
+      await session.endSession();
+    }
     return assignment;
   }
 
@@ -441,5 +550,31 @@ export class MarketerService {
     ) {
       throw new ForbiddenException('Not allowed to record marketer sales');
     }
+  }
+
+  private async recordMarketerStockMovement(
+    dto: {
+      branchId: string;
+      productId: string;
+      quantity: number;
+      userId: string;
+      referenceId: Types.ObjectId;
+      reason: string;
+      metadata?: Record<string, any>;
+    },
+    session: any,
+  ) {
+    await this.stockMovementModel.create([{
+      branchId: new Types.ObjectId(dto.branchId),
+      productId: new Types.ObjectId(dto.productId),
+      quantity: dto.quantity,
+      movementType: MovementType.TRANSFER,
+      reason: dto.reason,
+      userId: new Types.ObjectId(dto.userId),
+      referenceId: dto.referenceId,
+      referenceType: 'MarketerProductAssignment',
+      timestamp: new Date(),
+      metadata: dto.metadata,
+    }], { session });
   }
 }

@@ -35,8 +35,11 @@ export class BatchesController {
    */
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
-  async create(@Body() createBatchDto: CreateBatchDto) {
-    const batch = await this.batchesService.create(createBatchDto);
+  async create(
+    @Body() createBatchDto: CreateBatchDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    const batch = await this.batchesService.create(createBatchDto, user.userId);
     return apiResponse(batch);
   }
 
@@ -58,6 +61,7 @@ export class BatchesController {
     @CurrentUser() user: CurrentUserData,
     @Query('branchId') branchId?: string,
     @Query('productId') productId?: string,
+    @Query('expiring') expiring?: string,
     @Query('page') page = '1',
     @Query('limit') limit = '50',
   ) {
@@ -83,6 +87,17 @@ export class BatchesController {
     };
 
     const resolvedBranchId = resolveBranchId(user, branchId);
+    if (resolvedBranchId && expiring) {
+      const daysUntilExpiry = Math.max(1, parseInt(expiring, 10) || 90);
+      const batches = await this.batchesService.findExpiring(resolvedBranchId, daysUntilExpiry);
+      const filtered = productId
+        ? batches.filter((batch) => {
+            const batchProductId = (batch.productId as any)?._id ?? batch.productId;
+            return batchProductId.toString() === productId;
+          })
+        : batches;
+      return paginate(filtered);
+    }
     if (resolvedBranchId && productId) {
       const batches = await this.batchesService.findByBranchAndProduct(resolvedBranchId, productId);
       return paginate(batches);

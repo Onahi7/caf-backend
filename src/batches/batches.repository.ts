@@ -28,19 +28,19 @@ export class BatchesRepository {
   }
 
   async findAll(): Promise<BatchDocument[]> {
-    return this.batchModel.find().exec();
+    return this.withDisplayPopulates(this.batchModel.find()).exec();
   }
 
   async findById(id: string): Promise<BatchDocument | null> {
-    return this.batchModel.findById(id).exec();
+    return this.withDisplayPopulates(this.batchModel.findById(id)).exec();
   }
 
   async findByBranch(branchId: string): Promise<BatchDocument[]> {
-    return this.batchModel.find({ branchId }).exec();
+    return this.withDisplayPopulates(this.batchModel.find({ branchId })).exec();
   }
 
   async findByProduct(productId: string): Promise<BatchDocument[]> {
-    return this.batchModel.find({ productId }).exec();
+    return this.withDisplayPopulates(this.batchModel.find({ productId })).exec();
   }
 
   async findByBranchAndProduct(
@@ -52,6 +52,9 @@ export class BatchesRepository {
         branchId: new Types.ObjectId(branchId),
         productId: new Types.ObjectId(productId),
       })
+      .populate('productId', 'name sku')
+      .populate('branchId', 'name code')
+      .populate('supplierId', 'name')
       .sort({ expiryDate: 1 }) // Sort by expiry date ascending (FEFO)
       .exec();
   }
@@ -93,6 +96,9 @@ export class BatchesRepository {
         expiryDate: { $gte: now, $lte: expiryThreshold },
         quantityAvailable: { $gt: 0 },
       })
+      .populate('productId', 'name sku')
+      .populate('branchId', 'name code')
+      .populate('supplierId', 'name')
       .sort({ expiryDate: 1 })
       .exec();
   }
@@ -108,7 +114,7 @@ export class BatchesRepository {
       filter.branchId = new Types.ObjectId(branchId);
     }
 
-    return this.batchModel.find(filter).exec();
+    return this.withDisplayPopulates(this.batchModel.find(filter)).exec();
   }
 
   async update(
@@ -117,6 +123,9 @@ export class BatchesRepository {
   ): Promise<BatchDocument | null> {
     return this.batchModel
       .findByIdAndUpdate(id, updateBatchDto, { new: true })
+      .populate('productId', 'name sku')
+      .populate('branchId', 'name code')
+      .populate('supplierId', 'name')
       .exec();
   }
 
@@ -188,6 +197,13 @@ export class BatchesRepository {
 
   async delete(id: string): Promise<BatchDocument | null> {
     return this.batchModel.findByIdAndDelete(id).exec();
+  }
+
+  private withDisplayPopulates<T extends { populate: (path: string, select?: string) => T }>(query: T): T {
+    return query
+      .populate('productId', 'name sku')
+      .populate('branchId', 'name code')
+      .populate('supplierId', 'name');
   }
 
   async getTotalStockForProduct(
