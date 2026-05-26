@@ -19,7 +19,7 @@ export class CustomerOrdersController {
   constructor(private readonly service: CustomerOrdersService) {}
 
   @Post('upload')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST, UserRole.CASHIER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
   @UseInterceptors(FileInterceptor('file'))
   async upload(
     @UploadedFile() file: Express.Multer.File,
@@ -33,7 +33,7 @@ export class CustomerOrdersController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST, UserRole.CASHIER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
   async findAll(
     @Query() filter: CustomerOrderFilterDto,
   ) {
@@ -42,7 +42,7 @@ export class CustomerOrdersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST, UserRole.CASHIER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
   async findById(@Param('id') id: string) {
     const order = await this.service.findById(id);
     return apiResponse(order);

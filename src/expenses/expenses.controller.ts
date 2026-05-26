@@ -43,7 +43,6 @@ export class ExpensesController {
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
     UserRole.CASHIER,
-    UserRole.PHARMACIST,
   )
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
@@ -68,7 +67,6 @@ export class ExpensesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -107,7 +105,6 @@ export class ExpensesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -124,7 +121,6 @@ export class ExpensesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -143,7 +139,6 @@ export class ExpensesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -165,7 +160,6 @@ export class ExpensesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )

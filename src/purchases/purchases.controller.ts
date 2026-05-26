@@ -58,7 +58,6 @@ export class PurchasesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findAll(
@@ -85,7 +84,6 @@ export class PurchasesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findPending(): Promise<PurchaseOrderDocument[]> {
@@ -101,7 +99,6 @@ export class PurchasesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findByBranch(
@@ -119,7 +116,6 @@ export class PurchasesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findBySupplier(
@@ -137,7 +133,6 @@ export class PurchasesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findById(@Param('id') id: string): Promise<PurchaseOrderDocument> {
@@ -150,7 +145,7 @@ export class PurchasesController {
    * Requirements: 19.2, 19.4
    */
   @Post(':id/receive')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async receive(
     @Param('id') id: string,
     @Body() receiveDto: ReceivePurchaseOrderDto,

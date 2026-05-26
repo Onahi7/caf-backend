@@ -46,7 +46,6 @@ export class SuppliersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findAll(
@@ -87,7 +86,6 @@ export class SuppliersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async search(@Query('name') name: string): Promise<SupplierDocument[]> {
@@ -103,7 +101,6 @@ export class SuppliersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findById(@Param('id') id: string): Promise<SupplierDocument> {

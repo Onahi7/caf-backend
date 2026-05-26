@@ -29,7 +29,7 @@ export class DeliveryNotesController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST, UserRole.CASHIER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
   async findAll(
     @Query() filter: DeliveryNoteFilterDto,
     @CurrentUser() user: CurrentUserData,
@@ -40,7 +40,7 @@ export class DeliveryNotesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST, UserRole.CASHIER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
   async findById(@Param('id') id: string) {
     const dn = await this.service.findById(id);
     return apiResponse(dn);

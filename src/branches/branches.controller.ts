@@ -36,7 +36,6 @@ export class BranchesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
     UserRole.MARKETER,
@@ -49,7 +48,6 @@ export class BranchesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
     UserRole.MARKETER,
@@ -68,7 +66,6 @@ export class BranchesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
     UserRole.MARKETER,

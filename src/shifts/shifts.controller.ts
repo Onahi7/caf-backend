@@ -92,7 +92,6 @@ export class ShiftsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -114,7 +113,6 @@ export class ShiftsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -135,7 +133,6 @@ export class ShiftsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   async getCurrentShift(
@@ -186,7 +183,6 @@ export class ShiftsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -203,7 +199,6 @@ export class ShiftsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )

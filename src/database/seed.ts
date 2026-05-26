@@ -184,16 +184,6 @@ async function bootstrap() {
         isActive: true,
       },
       {
-        username: 'pharmacist1',
-        email: 'pharmacist1@carefarm.example',
-        passwordHash,
-        firstName: 'Sarah',
-        lastName: 'Williams',
-        role: UserRole.PHARMACIST,
-        branchId: asObjectId(hq._id),
-        isActive: true,
-      },
-      {
         username: 'cashier1',
         email: 'cashier1@carefarm.example',
         passwordHash,
@@ -646,7 +636,7 @@ async function bootstrap() {
         insurancePolicyNumber: 'PC-778201',
         loyaltyPoints: 240,
         isActive: true,
-        notes: 'Requires pharmacist consultation for prescriptions.',
+        notes: 'Requires prescription verification before sale.',
       },
     ];
 

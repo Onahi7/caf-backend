@@ -38,7 +38,6 @@ export class PromotionsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   findAll(@Query('branchId') branchId?: string, @Query('search') search?: string) {
@@ -49,7 +48,6 @@ export class PromotionsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   findActive(@Query('branchId') branchId?: string) {
@@ -60,7 +58,6 @@ export class PromotionsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   findByCode(@Param('code') code: string) {
@@ -71,7 +68,6 @@ export class PromotionsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   findOne(@Param('id') id: string) {
@@ -103,7 +99,6 @@ export class PromotionsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   calculateDiscount(@Body() calculateDiscountDto: CalculateDiscountDto) {

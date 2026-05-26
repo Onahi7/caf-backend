@@ -180,8 +180,8 @@ Authorization: Bearer {token}
 
 | Endpoint | Roles |
 |----------|-------|
-| Create Expense | super_admin, branch_manager, cashier, pharmacist |
-| Get Expenses | super_admin, branch_manager, cashier, pharmacist, auditor |
+| Create Expense | super_admin, branch_manager, cashier |
+| Get Expenses | super_admin, branch_manager, cashier, auditor |
 | Get by Category | super_admin, branch_manager, auditor |
 | Delete Expense | super_admin, branch_manager |
 

@@ -50,7 +50,7 @@ export class ProductsController {
   ) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async create(
     @Body() createProductDto: CreateProductDto,
     @CurrentUser() user: CurrentUserData,
@@ -59,7 +59,7 @@ export class ProductsController {
   }
 
   @Get('import-template')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async downloadImportTemplate(
     @CurrentUser() user: CurrentUserData,
     @Query('branchId') branchId: string | undefined,
@@ -83,7 +83,7 @@ export class ProductsController {
   }
 
   @Get('export')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async exportProducts(
     @CurrentUser() user: CurrentUserData,
     @Query('branchId') branchId: string | undefined,
@@ -107,7 +107,7 @@ export class ProductsController {
   }
 
   @Post('import')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   @UseInterceptors(FileInterceptor('file'))
   async importProducts(
     @CurrentUser() user: CurrentUserData,
@@ -161,7 +161,6 @@ export class ProductsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -244,7 +243,6 @@ export class ProductsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -258,7 +256,6 @@ export class ProductsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -281,7 +278,6 @@ export class ProductsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -297,7 +293,6 @@ export class ProductsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -313,7 +308,6 @@ export class ProductsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -325,7 +319,6 @@ export class ProductsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -351,7 +344,6 @@ export class ProductsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -360,7 +352,7 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async update(
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
@@ -387,7 +379,6 @@ export class ProductsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   async getProductPricing(
@@ -398,7 +389,7 @@ export class ProductsController {
   }
 
   @Patch(':id/pricing')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async updateProductPricing(
     @Param('id') id: string,
     @Body()
@@ -413,7 +404,7 @@ export class ProductsController {
   }
 
   @Post(':id/sync-batch-prices')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async synchronizeBatchPrices(
     @Param('id') id: string,
     @Query('branchId') branchId?: string,

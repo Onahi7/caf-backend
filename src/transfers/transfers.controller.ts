@@ -42,7 +42,7 @@ export class TransfersController {
    * Requirements: 4.1
    */
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
   async create(
@@ -66,7 +66,6 @@ export class TransfersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findAll(
@@ -121,7 +120,6 @@ export class TransfersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findById(@Param('id') id: string): Promise<TransferDocument> {

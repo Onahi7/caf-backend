@@ -70,7 +70,6 @@ export class ReportsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -119,7 +118,6 @@ export class ReportsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async getHqExpiryReport(
@@ -288,7 +286,6 @@ export class ReportsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async getExpiryReport(
@@ -338,7 +335,6 @@ export class ReportsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async exportExpiryReport(

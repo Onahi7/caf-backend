@@ -34,7 +34,6 @@ export class PrintersController {
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
     UserRole.CASHIER,
-    UserRole.PHARMACIST,
   )
   async findAll() {
     return this.printersService.findAll();
@@ -45,7 +44,6 @@ export class PrintersController {
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
     UserRole.CASHIER,
-    UserRole.PHARMACIST,
   )
   async findByBranch(@Param('branchId') branchId: string) {
     return this.printersService.findByBranch(branchId);
@@ -56,7 +54,6 @@ export class PrintersController {
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
     UserRole.CASHIER,
-    UserRole.PHARMACIST,
   )
   async findByTerminal(
     @Param('branchId') branchId: string,
@@ -97,7 +94,6 @@ export class PrintersController {
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
     UserRole.CASHIER,
-    UserRole.PHARMACIST,
   )
   async networkPrint(
     @Body()

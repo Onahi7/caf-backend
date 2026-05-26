@@ -8,7 +8,6 @@ export enum UserRole {
   SUPER_ADMIN = 'super_admin',
   BRANCH_MANAGER = 'branch_manager',
   MARKETER = 'marketer',
-  PHARMACIST = 'pharmacist',
   CASHIER = 'cashier',
   AUDITOR = 'auditor',
 }

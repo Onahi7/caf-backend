@@ -392,7 +392,7 @@ export class SalesService {
    */
   async verifyPrescription(
     dto: VerifyPrescriptionDto,
-    pharmacistId: string,
+    verifiedByUserId: string,
   ): Promise<SaleDocument> {
     const sale = await this.findById(dto.saleId);
 
@@ -405,7 +405,7 @@ export class SalesService {
     const updatedSale = await this.salesRepository.updatePrescriptionStatus(
       dto.saleId,
       dto.status,
-      pharmacistId,
+      verifiedByUserId,
     );
 
     if (!updatedSale) {

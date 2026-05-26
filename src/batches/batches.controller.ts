@@ -34,7 +34,7 @@ export class BatchesController {
    * Requirements: 2.1, 2.2
    */
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async create(
     @Body() createBatchDto: CreateBatchDto,
     @CurrentUser() user: CurrentUserData,
@@ -53,7 +53,6 @@ export class BatchesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -122,7 +121,6 @@ export class BatchesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -141,7 +139,6 @@ export class BatchesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -163,7 +160,6 @@ export class BatchesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findExpiring(
@@ -186,7 +182,6 @@ export class BatchesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findExpired(
@@ -206,7 +201,6 @@ export class BatchesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -221,7 +215,7 @@ export class BatchesController {
    * Requirements: 2.2
    */
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async update(
     @Param('id') id: string,
     @Body() updateBatchDto: UpdateBatchDto,

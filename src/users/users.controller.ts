@@ -77,7 +77,6 @@ export class UsersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findByBranch(
@@ -94,7 +93,6 @@ export class UsersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findById(@Param('id') id: string): Promise<UserDocument> {

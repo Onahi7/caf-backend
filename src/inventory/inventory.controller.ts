@@ -40,7 +40,6 @@ export class InventoryController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async getStockMovements(@Query() filter: StockMovementFilterDto) {
@@ -60,7 +59,7 @@ export class InventoryController {
    * Requirements: 11.2, 11.3
    */
   @Post('adjust')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
   async adjustInventory(
@@ -83,7 +82,6 @@ export class InventoryController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async getStockSummary(@Query('branchId') branchId: string) {
@@ -105,7 +103,7 @@ export class InventoryController {
    * Requirements: 8.4
    */
   @Get('low-stock-alerts')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async getLowStockAlerts(@Query('branchId') branchId: string) {
     if (!branchId) {
       throw new BadRequestException('branchId is required');
@@ -127,7 +125,6 @@ export class InventoryController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async getBatchStock(@Query('batchId') batchId: string) {
@@ -149,7 +146,6 @@ export class InventoryController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async getProductStock(

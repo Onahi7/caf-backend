@@ -32,7 +32,7 @@ export class ProformaInvoicesController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST, UserRole.CASHIER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
   async findAll(
     @Query() filter: ProformaFilterDto,
     @CurrentUser() user: CurrentUserData,
@@ -43,7 +43,7 @@ export class ProformaInvoicesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST, UserRole.CASHIER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
   async findById(@Param('id') id: string) {
     const pf = await this.service.findById(id);
     return apiResponse(pf);

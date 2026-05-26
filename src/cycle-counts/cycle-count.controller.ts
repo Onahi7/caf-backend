@@ -31,7 +31,6 @@ export class CycleCountController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
   )
   create(
     @Body() dto: CreateCycleCountDto,
@@ -45,7 +44,6 @@ export class CycleCountController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findAll(
@@ -65,7 +63,6 @@ export class CycleCountController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findOne(@Param('id') id: string) {
@@ -81,7 +78,6 @@ export class CycleCountController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
   )
   submit(@Param('id') id: string, @Body() dto: SubmitCycleCountDto) {
     return this.service.submit(id, dto);

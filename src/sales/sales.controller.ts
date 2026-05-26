@@ -82,7 +82,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   @UseGuards(IdempotencyGuard)
@@ -123,7 +122,7 @@ export class SalesController {
    * Requirements: 11.1, 11.4, 1.4
    */
   @Post(':id/return')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
   @HttpCode(HttpStatus.OK)
@@ -184,7 +183,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -260,7 +258,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -292,7 +289,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -314,7 +310,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -337,7 +332,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.AUDITOR,
   )
   async findByBranch(@Param('branchId') branchId: string) {
@@ -356,7 +350,7 @@ export class SalesController {
    * Requirements: 22.4
    */
   @Post(':id/verify-prescription')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   @HttpCode(HttpStatus.OK)
   async verifyPrescription(
     @Param('id') saleId: string,
@@ -385,7 +379,7 @@ export class SalesController {
    * Requirements: 1.4
    */
   @Get('pending-prescriptions')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.PHARMACIST)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async getPendingPrescriptions(@Query('branchId') branchId?: string) {
     const sales =
       await this.salesService.getSalesPendingPrescriptionVerification(branchId);
@@ -406,7 +400,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
@@ -427,7 +420,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   @HttpCode(HttpStatus.OK)
@@ -486,7 +478,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   async getShiftTotal(@Param('shiftId') shiftId: string) {
@@ -509,7 +500,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   async downloadPDFReceipt(
@@ -537,7 +527,6 @@ export class SalesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
-    UserRole.PHARMACIST,
     UserRole.CASHIER,
   )
   async getThermalReceipt(
