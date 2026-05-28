@@ -275,6 +275,18 @@ export class Sale {
   @Prop()
   customerPhone?: string;
 
+  /**
+   * Patient linkage (for EMR/LAB pharmacy sales)
+   */
+  @Prop()
+  patientId?: string;
+
+  @Prop()
+  patientName?: string;
+
+  @Prop()
+  sourceSystem?: string;
+
   @Prop()
   notes?: string;
 

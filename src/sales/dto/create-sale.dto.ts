@@ -153,6 +153,21 @@ export class CreateSaleDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(100)
+  patientId?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  patientName?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  sourceSystem?: string;
+
+  @IsString()
+  @IsOptional()
   @MaxLength(500)
   notes?: string;
 }

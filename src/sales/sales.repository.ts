@@ -73,6 +73,9 @@ export class SalesRepository {
       prescriptionStatus?: PrescriptionStatus;
       customerName?: string;
       customerPhone?: string;
+      patientId?: string;
+      patientName?: string;
+      sourceSystem?: string;
       notes?: string;
       receiptNumber: string;
     },
@@ -99,6 +102,9 @@ export class SalesRepository {
       prescriptionStatus: saleData.prescriptionStatus,
       customerName: saleData.customerName,
       customerPhone: saleData.customerPhone,
+      patientId: saleData.patientId,
+      patientName: saleData.patientName,
+      sourceSystem: saleData.sourceSystem,
       notes: saleData.notes,
       receiptNumber: saleData.receiptNumber,
       status: SaleStatus.COMPLETED,

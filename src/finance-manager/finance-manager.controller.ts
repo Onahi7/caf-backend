@@ -18,6 +18,7 @@ import {
 import {
   CreateCashEntryDto, CashEntryFilterDto,
 } from './dto/cash-entry.dto.js';
+import { DailyFinancePushDto } from './dto/daily-finance-push.dto.js';
 import { apiResponse, apiListResponse } from '../common/utils/api-response.util.js';
 
 const FINANCE_ROLES = [UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.FINANCE_MANAGER];
@@ -40,6 +41,28 @@ export class FinanceManagerController {
   ) {
     const dashboard = await this.aggregation.getUnifiedDashboard(branchId, startDate, endDate);
     return apiResponse(dashboard);
+  }
+
+  // ─── Cross-Check Reconciliation ────────────────────────
+  @Get('cross-check')
+  @Roles(...FINANCE_ROLES)
+  async getCrossCheck(
+    @Query('branchId') branchId: string,
+    @Query('date') date?: string,
+  ) {
+    const result = await this.aggregation.getCrossCheckReconciliation(branchId, date);
+    return apiResponse(result);
+  }
+
+  // ─── Finance Push (EMR/LAB → CAF) ─────────────────────
+  @Post('finance-push')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.FINANCE_MANAGER)
+  async receiveFinancePush(
+    @Body() dto: DailyFinancePushDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    const result = await this.service.receiveFinancePush(dto, user.userId);
+    return apiResponse(result);
   }
 
   // ─── Dashboard ────────────────────────────────────────────

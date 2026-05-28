@@ -536,4 +536,63 @@ export class FinanceAggregationService {
       total: r.total,
     }));
   }
+
+  async getCrossCheckReconciliation(_branchId?: string, date?: string): Promise<{
+    emr: { cafExpected: number; emrReported: number; variance: number; status: string };
+    lab: { cafExpected: number; labReported: number; variance: number; status: string };
+    timestamp: string;
+  }> {
+    const targetDate = date || new Date().toISOString().slice(0, 10);
+    const externalData = await this.microserviceClient.getAllFinancialData().catch(() => null);
+
+    const cafEmrSales = await this.saleModel.aggregate([
+      {
+        $match: {
+          terminalId: 'emr-integration',
+          createdAt: {
+            $gte: new Date(targetDate),
+            $lt: new Date(new Date(targetDate).getTime() + 86400000),
+          },
+        },
+      },
+      { $group: { _id: null, total: { $sum: '$total' } } },
+    ]).exec();
+
+    const cafLabSales = await this.saleModel.aggregate([
+      {
+        $match: {
+          terminalId: 'lab-dispensary',
+          createdAt: {
+            $gte: new Date(targetDate),
+            $lt: new Date(new Date(targetDate).getTime() + 86400000),
+          },
+        },
+      },
+      { $group: { _id: null, total: { $sum: '$total' } } },
+    ]).exec();
+
+    const cafEmrRevenue = cafEmrSales[0]?.total || 0;
+    const cafLabRevenue = cafLabSales[0]?.total || 0;
+    const emrReported = externalData?.emr?.paymentStats?.paidRevenue || externalData?.emr?.dailyReport?.income?.total || 0;
+    const labReported = externalData?.lab?.paymentStats?.paidRevenue || externalData?.lab?.dailyReport?.income?.total || 0;
+
+    const emrVariance = cafEmrRevenue - emrReported;
+    const labVariance = cafLabRevenue - labReported;
+
+    return {
+      emr: {
+        cafExpected: cafEmrRevenue,
+        emrReported,
+        variance: emrVariance,
+        status: Math.abs(emrVariance) < 1 ? 'matched' : emrVariance > 0 ? 'caf_higher' : 'emr_higher',
+      },
+      lab: {
+        cafExpected: cafLabRevenue,
+        labReported,
+        variance: labVariance,
+        status: Math.abs(labVariance) < 1 ? 'matched' : labVariance > 0 ? 'caf_higher' : 'lab_higher',
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
 }

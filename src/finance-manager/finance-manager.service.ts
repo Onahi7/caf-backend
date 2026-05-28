@@ -297,4 +297,35 @@ export class FinanceManagerService {
     ]);
     return { reconciliation, salary, cash, recentReconciliations, recentCashEntries };
   }
+
+  async receiveFinancePush(dto: any, userId: string): Promise<any> {
+    const source = dto.source?.toLowerCase();
+    if (!['emr', 'lab'].includes(source)) {
+      throw new BadRequestException('Source must be "emr" or "lab"');
+    }
+
+    const cashEntry = await this.cashModel.create({
+      type: 'income',
+      category: 'sales',
+      branchId: new Types.ObjectId(dto.source === 'emr' ? 'emr' : 'lab'),
+      amount: dto.totalRevenue || 0,
+      description: `${source.toUpperCase()} Daily Finance Push - ${dto.date}`,
+      notes: JSON.stringify({
+        totalExpenses: dto.totalExpenses,
+        netIncome: dto.netIncome,
+        cashCollected: dto.cashCollected,
+        orangeMoneyCollected: dto.orangeMoneyCollected,
+        afrimoneyCollected: dto.afrimoneyCollected,
+        outstandingBalance: dto.outstandingBalance,
+        orderCount: dto.orderCount,
+        submittedBy: dto.submittedBy,
+        pushNotes: dto.notes,
+      }),
+      recordedBy: new Types.ObjectId(userId),
+      entryDate: new Date(dto.date),
+    });
+
+    this.logger.log(`Finance push received from ${source.toUpperCase()} for ${dto.date}: Le ${dto.totalRevenue}`);
+    return cashEntry;
+  }
 }
