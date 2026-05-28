@@ -10,6 +10,7 @@ export enum UserRole {
   MARKETER = 'marketer',
   CASHIER = 'cashier',
   AUDITOR = 'auditor',
+  FINANCE_MANAGER = 'finance_manager',
 }
 
 @Schema({ timestamps: true })
