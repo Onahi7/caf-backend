@@ -23,10 +23,34 @@ import { RedisService } from './redis.service.js';
         }
 
         try {
+          const redisUrl =
+            configService.get<string>('REDIS_URL') ||
+            configService.get<string>('KV_URL');
+          const parsedRedisUrl = redisUrl ? new URL(redisUrl) : null;
+          const redisOptions = parsedRedisUrl
+            ? {
+                host: parsedRedisUrl.hostname,
+                port: Number(parsedRedisUrl.port || 6379),
+                username: parsedRedisUrl.username
+                  ? decodeURIComponent(parsedRedisUrl.username)
+                  : undefined,
+                password: parsedRedisUrl.password
+                  ? decodeURIComponent(parsedRedisUrl.password)
+                  : undefined,
+                tls: parsedRedisUrl.protocol === 'rediss:' ? {} : undefined,
+              }
+            : {
+                host: configService.get<string>('REDIS_HOST', 'localhost'),
+                port: configService.get<number>('REDIS_PORT', 6379),
+                password: configService.get<string>('REDIS_PASSWORD'),
+                tls:
+                  configService.get<string>('REDIS_TLS') === 'true'
+                    ? {}
+                    : undefined,
+              };
+
           const store = await redisStore({
-            host: configService.get<string>('REDIS_HOST', 'localhost'),
-            port: configService.get<number>('REDIS_PORT', 6379),
-            password: configService.get<string>('REDIS_PASSWORD'),
+            ...redisOptions,
             ttl: 60 * 60 * 1000, // 1 hour default TTL in milliseconds
             // Connection pool settings
             maxRetriesPerRequest: 1,

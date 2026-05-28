@@ -11,6 +11,14 @@ export class BatchesRepository {
     @InjectModel(Batch.name) private batchModel: Model<BatchDocument>,
   ) {}
 
+  private branchIdFilter(branchId: string) {
+    return { $in: [new Types.ObjectId(branchId), branchId] };
+  }
+
+  private productIdFilter(productId: string) {
+    return { $in: [new Types.ObjectId(productId), productId] };
+  }
+
   async create(
     createBatchDto: CreateBatchDto,
     session?: ClientSession,
@@ -36,11 +44,15 @@ export class BatchesRepository {
   }
 
   async findByBranch(branchId: string): Promise<BatchDocument[]> {
-    return this.withDisplayPopulates(this.batchModel.find({ branchId })).exec();
+    return this.withDisplayPopulates(
+      this.batchModel.find({ branchId: this.branchIdFilter(branchId) }),
+    ).exec();
   }
 
   async findByProduct(productId: string): Promise<BatchDocument[]> {
-    return this.withDisplayPopulates(this.batchModel.find({ productId })).exec();
+    return this.withDisplayPopulates(
+      this.batchModel.find({ productId: this.productIdFilter(productId) }),
+    ).exec();
   }
 
   async findByBranchAndProduct(
@@ -49,8 +61,8 @@ export class BatchesRepository {
   ): Promise<BatchDocument[]> {
     return this.batchModel
       .find({
-        branchId: new Types.ObjectId(branchId),
-        productId: new Types.ObjectId(productId),
+        branchId: this.branchIdFilter(branchId),
+        productId: this.productIdFilter(productId),
       })
       .populate('productId', 'name sku')
       .populate('branchId', 'name code')
@@ -71,8 +83,8 @@ export class BatchesRepository {
     const now = new Date();
     return this.batchModel
       .find({
-        branchId: new Types.ObjectId(branchId),
-        productId: new Types.ObjectId(productId),
+        branchId: this.branchIdFilter(branchId),
+        productId: this.productIdFilter(productId),
         quantityAvailable: { $gt: 0 },
         expiryDate: { $gt: now },
         isExpired: false,
@@ -92,7 +104,7 @@ export class BatchesRepository {
 
     return this.batchModel
       .find({
-        branchId: new Types.ObjectId(branchId),
+        branchId: this.branchIdFilter(branchId),
         expiryDate: { $gte: now, $lte: expiryThreshold },
         quantityAvailable: { $gt: 0 },
       })
@@ -111,7 +123,7 @@ export class BatchesRepository {
     };
 
     if (branchId) {
-      filter.branchId = new Types.ObjectId(branchId);
+      filter.branchId = this.branchIdFilter(branchId);
     }
 
     return this.withDisplayPopulates(this.batchModel.find(filter)).exec();
@@ -215,8 +227,8 @@ export class BatchesRepository {
       .aggregate([
         {
           $match: {
-            productId: new Types.ObjectId(productId),
-            branchId: new Types.ObjectId(branchId),
+            productId: this.productIdFilter(productId),
+            branchId: this.branchIdFilter(branchId),
             isDepleted: false,
             isExpired: false,
           },

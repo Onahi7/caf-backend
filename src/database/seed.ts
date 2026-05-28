@@ -223,6 +223,26 @@ async function bootstrap() {
         branchId: asObjectId(hq._id),
         isActive: true,
       },
+      {
+        username: 'svc_emr_pharmacy',
+        email: 'svc.emr@carefarm.example',
+        passwordHash,
+        firstName: 'EMR',
+        lastName: 'Integration',
+        role: UserRole.BRANCH_MANAGER,
+        branchId: asObjectId(hq._id),
+        isActive: true,
+      },
+      {
+        username: 'svc_lab_pharmacy',
+        email: 'svc.lab@carefarm.example',
+        passwordHash,
+        firstName: 'Lab',
+        lastName: 'Integration',
+        role: UserRole.BRANCH_MANAGER,
+        branchId: asObjectId(outlet._id),
+        isActive: true,
+      },
     ];
 
     const users = await Promise.all(

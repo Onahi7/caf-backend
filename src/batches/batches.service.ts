@@ -72,7 +72,12 @@ export class BatchesService {
         const product = await this.productModel.findOneAndUpdate(
           {
             _id: new Types.ObjectId(createBatchDto.productId),
-            branchId: new Types.ObjectId(createBatchDto.branchId),
+            branchId: {
+              $in: [
+                new Types.ObjectId(createBatchDto.branchId),
+                createBatchDto.branchId,
+              ],
+            },
           },
           {
             $inc: { quantityAvailable: createBatchDto.quantity },

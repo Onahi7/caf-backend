@@ -129,6 +129,9 @@ export class WebSocketGateway
 
     try {
       // Create Redis clients for Socket.io adapter
+      const redisUrl =
+        this.configService.get<string>('REDIS_URL') ||
+        this.configService.get<string>('KV_URL');
       const redisHost = this.configService.get<string>(
         'REDIS_HOST',
         'localhost',
@@ -136,13 +139,15 @@ export class WebSocketGateway
       const redisPort = this.configService.get<number>('REDIS_PORT', 6379);
       const redisPassword = this.configService.get<string>('REDIS_PASSWORD');
 
-      this.pubClient = createClient({
-        socket: {
-          host: redisHost,
-          port: redisPort,
-        },
-        password: redisPassword,
-      });
+      this.pubClient = redisUrl
+        ? createClient({ url: redisUrl })
+        : createClient({
+            socket:
+              this.configService.get<string>('REDIS_TLS') === 'true'
+                ? { host: redisHost, port: redisPort, tls: true }
+                : { host: redisHost, port: redisPort },
+            password: redisPassword,
+          });
 
       this.subClient = this.pubClient.duplicate();
 
@@ -159,7 +164,14 @@ export class WebSocketGateway
       await Promise.all([this.pubClient.connect(), this.subClient.connect()]);
 
       // Set up Redis adapter for Socket.io
-      server.adapter(createAdapter(this.pubClient, this.subClient));
+      const socketServer = (server as unknown as { server?: Server }).server ?? server;
+      if (typeof socketServer.adapter === 'function') {
+        socketServer.adapter(createAdapter(this.pubClient, this.subClient));
+      } else {
+        this.logger.warn(
+          'Socket.io adapter function unavailable; continuing without Redis adapter',
+        );
+      }
 
       this.logger.log('Redis adapter configured for Socket.io');
     } catch (error) {

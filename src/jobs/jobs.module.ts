@@ -35,27 +35,52 @@ export class JobsModule {
       imports.push(
         BullModule.forRootAsync({
           imports: [ConfigModule],
-          useFactory: (configService: ConfigService) => ({
-            redis: {
-              host: configService.get<string>('REDIS_HOST', 'localhost'),
-              port: configService.get<number>('REDIS_PORT', 6379),
-              password: configService.get<string>('REDIS_PASSWORD'),
-              maxRetriesPerRequest: 1,
-              enableReadyCheck: false,
-              enableOfflineQueue: false,
-              connectTimeout: 5000,
-              lazyConnect: true,
-            },
-            defaultJobOptions: {
-              removeOnComplete: 100,
-              removeOnFail: 50,
-              attempts: 3,
-              backoff: {
-                type: 'exponential',
-                delay: 1000,
+          useFactory: (configService: ConfigService) => {
+            const redisUrl =
+              configService.get<string>('REDIS_URL') ||
+              configService.get<string>('KV_URL');
+            const parsedRedisUrl = redisUrl ? new URL(redisUrl) : null;
+            const redisOptions = parsedRedisUrl
+              ? {
+                  host: parsedRedisUrl.hostname,
+                  port: Number(parsedRedisUrl.port || 6379),
+                  username: parsedRedisUrl.username
+                    ? decodeURIComponent(parsedRedisUrl.username)
+                    : undefined,
+                  password: parsedRedisUrl.password
+                    ? decodeURIComponent(parsedRedisUrl.password)
+                    : undefined,
+                  tls: parsedRedisUrl.protocol === 'rediss:' ? {} : undefined,
+                }
+              : {
+                  host: configService.get<string>('REDIS_HOST', 'localhost'),
+                  port: configService.get<number>('REDIS_PORT', 6379),
+                  password: configService.get<string>('REDIS_PASSWORD'),
+                  tls:
+                    configService.get<string>('REDIS_TLS') === 'true'
+                      ? {}
+                      : undefined,
+                };
+
+            return {
+              redis: {
+                ...redisOptions,
+                maxRetriesPerRequest: 1,
+                enableReadyCheck: false,
+                enableOfflineQueue: true,
+                connectTimeout: 5000,
               },
-            },
-          }),
+              defaultJobOptions: {
+                removeOnComplete: 100,
+                removeOnFail: 50,
+                attempts: 3,
+                backoff: {
+                  type: 'exponential',
+                  delay: 1000,
+                },
+              },
+            };
+          },
           inject: [ConfigService],
         }),
         BullModule.registerQueue(
