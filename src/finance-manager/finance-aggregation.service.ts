@@ -159,7 +159,7 @@ export class FinanceAggregationService {
     const netProfit = grossProfit - operatingExpenses;
     const margin = grossRevenue > 0 ? (netProfit / grossRevenue) * 100 : 0;
 
-    const externalServices = this.buildExternalServices(revenue, expenses, creditOutstanding, externalData);
+    const externalServices = this.buildExternalServices(revenue, expenses, creditOutstanding, cashPosition, externalData);
 
     return {
       revenue,
@@ -186,6 +186,7 @@ export class FinanceAggregationService {
     cafRevenue: UnifiedDashboard['revenue'],
     cafExpenses: UnifiedDashboard['expenses'],
     cafCredit: UnifiedDashboard['creditOutstanding'],
+    cafCashPosition: UnifiedDashboard['cashPosition'],
     externalData: { emr: any; lab: any } | null,
   ): UnifiedDashboard['externalServices'] {
     const emrRevenue = externalData?.emr?.paymentStats?.paidRevenue || externalData?.emr?.revenueReport?.totalRevenue || 0;
@@ -213,7 +214,17 @@ export class FinanceAggregationService {
       outstanding: cafCredit.totalBalanceDue,
       orders: cafRevenue.salesCount,
       byPaymentMethod: [],
-      reconciliation: null,
+      reconciliation: {
+        submitted: cafCashPosition.closedShifts > 0,
+        status: cafCashPosition.totalVariance === 0 ? 'balanced' : 'variance',
+        submittedBy: '',
+        notes: '',
+        income: { cash: cafRevenue.netRevenue, orangeMoney: 0, afrimoney: 0, total: cafRevenue.netRevenue },
+        expenditures: { cash: cafExpenses.totalExpenses, orangeMoney: 0, afrimoney: 0, total: cafExpenses.totalExpenses },
+        netExpected: { cash: cafCashPosition.totalExpectedCash, orangeMoney: 0, afrimoney: 0, total: cafCashPosition.totalExpectedCash },
+        actual: { cash: cafCashPosition.totalClosingCash, orangeMoney: 0, afrimoney: 0, total: cafCashPosition.totalClosingCash },
+        variance: { cash: cafCashPosition.totalVariance, orangeMoney: 0, afrimoney: 0, total: cafCashPosition.totalVariance },
+      },
     };
 
     const emrRecon = externalData?.emr?.dailyReport?.reconciliation;
