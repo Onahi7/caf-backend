@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Sale, SaleDocument } from '../sales/schemas/sale.schema.js';
@@ -8,6 +8,16 @@ import { FinanceTransaction, FinanceTransactionDocument } from '../finance/schem
 import { MarketerSale, MarketerSaleDocument } from '../marketer/schemas/marketer-sale.schema.js';
 import { MarketerProductAssignment, MarketerProductAssignmentDocument } from '../marketer/schemas/marketer-product-assignment.schema.js';
 import { PurchaseOrder, PurchaseOrderDocument } from '../purchases/schemas/purchase-order.schema.js';
+import { MicroserviceClientService } from './microservice-client.service.js';
+
+export interface ServiceFinancials {
+  revenue: number;
+  expenses: number;
+  profit: number;
+  outstanding: number;
+  orders: number;
+  byPaymentMethod: { method: string; count: number; total: number }[];
+}
 
 export interface UnifiedDashboard {
   revenue: {
@@ -71,10 +81,23 @@ export interface UnifiedDashboard {
     count: number;
     total: number;
   }[];
+  externalServices: {
+    caf: ServiceFinancials;
+    emr: ServiceFinancials;
+    lab: ServiceFinancials;
+    combined: {
+      totalRevenue: number;
+      totalExpenses: number;
+      totalProfit: number;
+      totalOutstanding: number;
+    };
+  };
 }
 
 @Injectable()
 export class FinanceAggregationService {
+  private readonly logger = new Logger(FinanceAggregationService.name);
+
   constructor(
     @InjectModel(Sale.name) private readonly saleModel: Model<SaleDocument>,
     @InjectModel(Shift.name) private readonly shiftModel: Model<ShiftDocument>,
@@ -83,6 +106,7 @@ export class FinanceAggregationService {
     @InjectModel(MarketerSale.name) private readonly marketerSaleModel: Model<MarketerSaleDocument>,
     @InjectModel(MarketerProductAssignment.name) private readonly assignmentModel: Model<MarketerProductAssignmentDocument>,
     @InjectModel(PurchaseOrder.name) private readonly purchaseModel: Model<PurchaseOrderDocument>,
+    private readonly microserviceClient: MicroserviceClientService,
   ) {}
 
   async getUnifiedDashboard(
@@ -102,7 +126,7 @@ export class FinanceAggregationService {
 
     const combinedFilter = { ...branchFilter, ...dateFilter };
 
-    const [revenue, expenses, cashPosition, creditOutstanding, marketer, purchases, byBranch, byPaymentMethod] = await Promise.all([
+    const [revenue, expenses, cashPosition, creditOutstanding, marketer, purchases, byBranch, byPaymentMethod, externalData] = await Promise.all([
       this.getRevenue(combinedFilter),
       this.getExpenses(combinedFilter, branchId),
       this.getCashPosition(branchFilter),
@@ -111,6 +135,10 @@ export class FinanceAggregationService {
       this.getPurchases(dateFilter),
       this.getByBranch(dateFilter),
       this.getByPaymentMethod(combinedFilter),
+      this.microserviceClient.getAllFinancialData().catch((err) => {
+        this.logger.warn(`Failed to fetch external service data: ${err.message}`);
+        return null;
+      }),
     ]);
 
     const costOfGoods = purchases.receivedValue;
@@ -119,6 +147,8 @@ export class FinanceAggregationService {
     const operatingExpenses = expenses.totalExpenses;
     const netProfit = grossProfit - operatingExpenses;
     const margin = grossRevenue > 0 ? (netProfit / grossRevenue) * 100 : 0;
+
+    const externalServices = this.buildExternalServices(revenue, expenses, creditOutstanding, externalData);
 
     return {
       revenue,
@@ -137,6 +167,71 @@ export class FinanceAggregationService {
       },
       byBranch,
       byPaymentMethod,
+      externalServices,
+    };
+  }
+
+  private buildExternalServices(
+    cafRevenue: UnifiedDashboard['revenue'],
+    cafExpenses: UnifiedDashboard['expenses'],
+    cafCredit: UnifiedDashboard['creditOutstanding'],
+    externalData: { emr: any; lab: any } | null,
+  ): UnifiedDashboard['externalServices'] {
+    const emrRevenue = externalData?.emr?.paymentStats?.paidRevenue || externalData?.emr?.revenueReport?.totalRevenue || 0;
+    const emrExpenses = externalData?.emr?.expenditureSummary?.total || 0;
+    const emrOutstanding = externalData?.emr?.paymentStats?.pendingRevenue ||
+      (externalData?.emr?.outstanding as any[])?.reduce((sum: number, o: any) => sum + (o.balance || 0), 0) || 0;
+    const emrOrders = externalData?.emr?.paymentStats?.byMethod?.reduce((sum: number, m: any) => sum + m.count, 0) || 0;
+    const emrByMethod = externalData?.emr?.paymentStats?.byMethod?.map((m: any) => ({
+      method: m.method, count: m.count, total: m.total,
+    })) || [];
+
+    const labRevenue = externalData?.lab?.paymentStats?.paidRevenue || externalData?.lab?.revenueReport?.totalRevenue || 0;
+    const labExpenses = externalData?.lab?.expenditureSummary?.total || 0;
+    const labOutstanding = externalData?.lab?.paymentStats?.pendingRevenue ||
+      (externalData?.lab?.outstanding as any[])?.reduce((sum: number, o: any) => sum + (o.balance || 0), 0) || 0;
+    const labOrders = externalData?.lab?.paymentStats?.byMethod?.reduce((sum: number, m: any) => sum + m.count, 0) || 0;
+    const labByMethod = externalData?.lab?.paymentStats?.byMethod?.map((m: any) => ({
+      method: m.method, count: m.count, total: m.total,
+    })) || [];
+
+    const caf: ServiceFinancials = {
+      revenue: cafRevenue.netRevenue,
+      expenses: cafExpenses.totalExpenses,
+      profit: cafRevenue.netRevenue - cafExpenses.totalExpenses,
+      outstanding: cafCredit.totalBalanceDue,
+      orders: cafRevenue.salesCount,
+      byPaymentMethod: [],
+    };
+
+    const emr: ServiceFinancials = {
+      revenue: emrRevenue,
+      expenses: emrExpenses,
+      profit: emrRevenue - emrExpenses,
+      outstanding: emrOutstanding,
+      orders: emrOrders,
+      byPaymentMethod: emrByMethod,
+    };
+
+    const lab: ServiceFinancials = {
+      revenue: labRevenue,
+      expenses: labExpenses,
+      profit: labRevenue - labExpenses,
+      outstanding: labOutstanding,
+      orders: labOrders,
+      byPaymentMethod: labByMethod,
+    };
+
+    return {
+      caf,
+      emr,
+      lab,
+      combined: {
+        totalRevenue: caf.revenue + emr.revenue + lab.revenue,
+        totalExpenses: caf.expenses + emr.expenses + lab.expenses,
+        totalProfit: caf.profit + emr.profit + lab.profit,
+        totalOutstanding: caf.outstanding + emr.outstanding + lab.outstanding,
+      },
     };
   }
 

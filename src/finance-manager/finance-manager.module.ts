@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Reconciliation, ReconciliationSchema } from './schema/reconciliation.schema.js';
 import { Salary, SalarySchema } from './schema/salary.schema.js';
@@ -12,10 +13,12 @@ import { MarketerProductAssignment, MarketerProductAssignmentSchema } from '../m
 import { PurchaseOrder, PurchaseOrderSchema } from '../purchases/schemas/purchase-order.schema.js';
 import { FinanceManagerService } from './finance-manager.service.js';
 import { FinanceAggregationService } from './finance-aggregation.service.js';
+import { MicroserviceClientService } from './microservice-client.service.js';
 import { FinanceManagerController } from './finance-manager.controller.js';
 
 @Module({
   imports: [
+    HttpModule.register({ timeout: 15000, maxRedirects: 3 }),
     MongooseModule.forFeature([
       { name: Reconciliation.name, schema: ReconciliationSchema },
       { name: Salary.name, schema: SalarySchema },
@@ -30,7 +33,7 @@ import { FinanceManagerController } from './finance-manager.controller.js';
     ]),
   ],
   controllers: [FinanceManagerController],
-  providers: [FinanceManagerService, FinanceAggregationService],
-  exports: [FinanceManagerService, FinanceAggregationService],
+  providers: [FinanceManagerService, FinanceAggregationService, MicroserviceClientService],
+  exports: [FinanceManagerService, FinanceAggregationService, MicroserviceClientService],
 })
 export class FinanceManagerModule {}
