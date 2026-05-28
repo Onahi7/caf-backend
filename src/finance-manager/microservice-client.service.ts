@@ -36,16 +36,23 @@ interface ExpenditureSummary {
 
 interface DailyReport {
   date: string;
-  totalOrders: number;
-  totalIncome: number;
-  totalExpenditures: number;
-  netIncome: number;
-  reconciliation?: {
-    expectedCash: number;
+  orders: { total: number; paid: number; pending: number; subtotal: number; discounts: number; billed: number };
+  income: { cash: number; orangeMoney: number; afrimoney: number; total: number };
+  expenditures: { cash: number; orangeMoney: number; afrimoney: number; total: number; items: any[] };
+  netExpected: { cash: number; orangeMoney: number; afrimoney: number; total: number };
+  reconciliation: {
     actualCash: number;
-    variance: number;
+    actualOrangeMoney: number;
+    actualAfrimoney: number;
+    actualTotal: number;
+    cashVariance: number;
+    orangeMoneyVariance: number;
+    afrimoneyVariance: number;
+    totalVariance: number;
     status: string;
-  };
+    submittedBy: string;
+    notes?: string;
+  } | null;
 }
 
 interface RevenueReport {

@@ -17,6 +17,17 @@ export interface ServiceFinancials {
   outstanding: number;
   orders: number;
   byPaymentMethod: { method: string; count: number; total: number }[];
+  reconciliation: {
+    submitted: boolean;
+    status: string;
+    submittedBy: string;
+    notes: string;
+    income: { cash: number; orangeMoney: number; afrimoney: number; total: number };
+    expenditures: { cash: number; orangeMoney: number; afrimoney: number; total: number };
+    netExpected: { cash: number; orangeMoney: number; afrimoney: number; total: number };
+    actual: { cash: number; orangeMoney: number; afrimoney: number; total: number };
+    variance: { cash: number; orangeMoney: number; afrimoney: number; total: number };
+  } | null;
 }
 
 export interface UnifiedDashboard {
@@ -202,8 +213,11 @@ export class FinanceAggregationService {
       outstanding: cafCredit.totalBalanceDue,
       orders: cafRevenue.salesCount,
       byPaymentMethod: [],
+      reconciliation: null,
     };
 
+    const emrRecon = externalData?.emr?.dailyReport?.reconciliation;
+    const emrDaily = externalData?.emr?.dailyReport;
     const emr: ServiceFinancials = {
       revenue: emrRevenue,
       expenses: emrExpenses,
@@ -211,8 +225,21 @@ export class FinanceAggregationService {
       outstanding: emrOutstanding,
       orders: emrOrders,
       byPaymentMethod: emrByMethod,
+      reconciliation: emrDaily ? {
+        submitted: !!emrRecon,
+        status: emrRecon?.status || 'not_submitted',
+        submittedBy: emrRecon?.submittedBy || '',
+        notes: emrRecon?.notes || '',
+        income: emrDaily.income || { cash: 0, orangeMoney: 0, afrimoney: 0, total: 0 },
+        expenditures: emrDaily.expenditures || { cash: 0, orangeMoney: 0, afrimoney: 0, total: 0 },
+        netExpected: emrDaily.netExpected || { cash: 0, orangeMoney: 0, afrimoney: 0, total: 0 },
+        actual: emrRecon ? { cash: emrRecon.actualCash, orangeMoney: emrRecon.actualOrangeMoney, afrimoney: emrRecon.actualAfrimoney, total: emrRecon.actualTotal } : { cash: 0, orangeMoney: 0, afrimoney: 0, total: 0 },
+        variance: emrRecon ? { cash: emrRecon.cashVariance, orangeMoney: emrRecon.orangeMoneyVariance, afrimoney: emrRecon.afrimoneyVariance, total: emrRecon.totalVariance } : { cash: 0, orangeMoney: 0, afrimoney: 0, total: 0 },
+      } : null,
     };
 
+    const labRecon = externalData?.lab?.dailyReport?.reconciliation;
+    const labDaily = externalData?.lab?.dailyReport;
     const lab: ServiceFinancials = {
       revenue: labRevenue,
       expenses: labExpenses,
@@ -220,6 +247,17 @@ export class FinanceAggregationService {
       outstanding: labOutstanding,
       orders: labOrders,
       byPaymentMethod: labByMethod,
+      reconciliation: labDaily ? {
+        submitted: !!labRecon,
+        status: labRecon?.status || 'not_submitted',
+        submittedBy: labRecon?.submittedBy || '',
+        notes: labRecon?.notes || '',
+        income: labDaily.income || { cash: 0, orangeMoney: 0, afrimoney: 0, total: 0 },
+        expenditures: labDaily.expenditures || { cash: 0, orangeMoney: 0, afrimoney: 0, total: 0 },
+        netExpected: labDaily.netExpected || { cash: 0, orangeMoney: 0, afrimoney: 0, total: 0 },
+        actual: labRecon ? { cash: labRecon.actualCash, orangeMoney: labRecon.actualOrangeMoney, afrimoney: labRecon.actualAfrimoney, total: labRecon.actualTotal } : { cash: 0, orangeMoney: 0, afrimoney: 0, total: 0 },
+        variance: labRecon ? { cash: labRecon.cashVariance, orangeMoney: labRecon.orangeMoneyVariance, afrimoney: labRecon.afrimoneyVariance, total: labRecon.totalVariance } : { cash: 0, orangeMoney: 0, afrimoney: 0, total: 0 },
+      } : null,
     };
 
     return {
