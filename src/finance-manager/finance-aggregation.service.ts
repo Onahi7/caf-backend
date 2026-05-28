@@ -275,7 +275,13 @@ export class FinanceAggregationService {
 
   private async getRevenue(filter: Record<string, any>): Promise<UnifiedDashboard['revenue']> {
     const [result] = await this.saleModel.aggregate([
-      { $match: { ...filter, status: { $ne: 'returned' } } },
+      {
+        $match: {
+          ...filter,
+          status: { $ne: 'returned' },
+          terminalId: { $nin: ['emr-integration', 'lab-dispensary'] },
+        },
+      },
       {
         $group: {
           _id: null,
@@ -353,9 +359,10 @@ export class FinanceAggregationService {
   }
 
   private async getCreditOutstanding(branchFilter: Record<string, any>): Promise<UnifiedDashboard['creditOutstanding']> {
+    const emrLabFilter = { terminalId: { $nin: ['emr-integration', 'lab-dispensary'] } };
     const [result, overdue] = await Promise.all([
       this.saleModel.aggregate([
-        { $match: { ...branchFilter, saleType: 'credit' } },
+        { $match: { ...branchFilter, ...emrLabFilter, saleType: 'credit' } },
         {
           $group: {
             _id: null,
@@ -366,7 +373,7 @@ export class FinanceAggregationService {
         },
       ]).exec(),
       this.saleModel.aggregate([
-        { $match: { ...branchFilter, saleType: 'credit', paymentStatus: 'overdue' } },
+        { $match: { ...branchFilter, ...emrLabFilter, saleType: 'credit', paymentStatus: 'overdue' } },
         {
           $group: {
             _id: null,
@@ -456,7 +463,7 @@ export class FinanceAggregationService {
   private async getByBranch(dateFilter: Record<string, any>): Promise<UnifiedDashboard['byBranch']> {
     const [salesByBranch, expensesByBranch] = await Promise.all([
       this.saleModel.aggregate([
-        { $match: { ...dateFilter, status: { $ne: 'returned' } } },
+        { $match: { ...dateFilter, status: { $ne: 'returned' }, terminalId: { $nin: ['emr-integration', 'lab-dispensary'] } } },
         {
           $group: {
             _id: '$branchId',
@@ -501,7 +508,7 @@ export class FinanceAggregationService {
 
   private async getByPaymentMethod(filter: Record<string, any>): Promise<UnifiedDashboard['byPaymentMethod']> {
     const result = await this.saleModel.aggregate([
-      { $match: { ...filter, status: { $ne: 'returned' } } },
+      { $match: { ...filter, status: { $ne: 'returned' }, terminalId: { $nin: ['emr-integration', 'lab-dispensary'] } } },
       {
         $group: {
           _id: '$paymentMethod',
