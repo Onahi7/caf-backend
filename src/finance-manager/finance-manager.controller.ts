@@ -8,6 +8,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import { FinanceManagerService } from './finance-manager.service.js';
+import { FinanceAggregationService } from './finance-aggregation.service.js';
 import {
   CreateReconciliationDto, ReviewReconciliationDto, ReconciliationFilterDto,
 } from './dto/reconciliation.dto.js';
@@ -24,7 +25,22 @@ const FINANCE_ROLES = [UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.F
 @Controller('finance-manager')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class FinanceManagerController {
-  constructor(private readonly service: FinanceManagerService) {}
+  constructor(
+    private readonly service: FinanceManagerService,
+    private readonly aggregation: FinanceAggregationService,
+  ) {}
+
+  // ─── Unified Dashboard ──────────────────────────────────
+  @Get('unified-dashboard')
+  @Roles(...FINANCE_ROLES)
+  async getUnifiedDashboard(
+    @Query('branchId') branchId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const dashboard = await this.aggregation.getUnifiedDashboard(branchId, startDate, endDate);
+    return apiResponse(dashboard);
+  }
 
   // ─── Dashboard ────────────────────────────────────────────
   @Get('dashboard')
