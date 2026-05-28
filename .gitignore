@@ -43,6 +43,14 @@ lerna-debug.log*
 # Database seed scripts (may contain credentials)
 src/database/seed-service-accounts.ts
 src/database/fix-lab-user.ts
+src/database/fix-caf-users.js
+src/database/setup-congo-cross.js
+src/database/migrate-emr-branches.js
+
+# Documentation with secrets
+DEPLOYMENT.md
+CONGO-CROSS-SETUP.md
+DOCUMENTATION.md
 
 # Temp
 *.swp
