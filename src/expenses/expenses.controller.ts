@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { ExpensesService } from './expenses.service.js';
 import { CreateExpenseDto } from './dto/create-expense.dto.js';
 import { ExpenseFilterDto } from './dto/expense-filter.dto.js';
@@ -29,6 +30,7 @@ import { apiResponse, apiListResponse, apiMessageResponse } from '../common/util
 import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
 
+@ApiTags('Expenses')
 @Controller('expenses')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ExpensesController {

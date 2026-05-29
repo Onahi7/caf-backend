@@ -11,6 +11,7 @@ import {
   TransferDocument,
 } from '../transfers/schemas/transfer.schema.js';
 import { Product, ProductDocument } from '../products/schemas/product.schema.js';
+import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 import {
   SalesReportDto,
   SalesReportResult,
@@ -45,6 +46,7 @@ export class ReportsService {
     @InjectModel(Sale.name) private saleModel: Model<SaleDocument>,
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     @InjectModel(Transfer.name) private transferModel: Model<TransferDocument>,
+    @InjectModel(Branch.name) private branchModel: Model<BranchDocument>,
   ) {}
 
   /**
@@ -749,6 +751,231 @@ export class ReportsService {
     return {
       summary,
       transfers: formattedTransfers,
+    };
+  }
+
+  /**
+   * Get HQ dashboard summary across all active branches.
+   * Aggregates inventory, sales, transfers, low stock, and expiry data
+   * in a single efficient query instead of N×3 per-branch calls.
+   */
+  async getHQDashboardSummary() {
+    this.logger.log('Generating HQ dashboard summary');
+
+    const branches = await this.branchModel
+      .find({ isActive: { $ne: false } })
+      .select('_id name')
+      .lean();
+
+    const branchIds = branches.map((b) => b._id);
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    // Aggregate all data in parallel
+    const [inventoryAgg, salesAgg, pendingTransfers, lowStockProducts, expiryBatches] =
+      await Promise.all([
+        // Inventory by branch
+        this.productModel.aggregate([
+          { $match: { branchId: { $in: branchIds }, isActive: true } },
+          {
+            $group: {
+              _id: '$branchId',
+              totalProducts: { $sum: 1 },
+              totalQuantity: { $sum: '$quantityAvailable' },
+              totalValue: {
+                $sum: { $multiply: ['$quantityAvailable', '$costPrice'] },
+              },
+              lowStockItems: {
+                $sum: {
+                  $cond: [
+                    {
+                      $lte: [
+                        '$quantityAvailable',
+                        { $max: [1, { $ifNull: ['$reorderLevel', 10] }] },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+
+        // Sales by branch (last 30 days)
+        this.saleModel.aggregate([
+          {
+            $match: {
+              branchId: { $in: branchIds },
+              status: 'completed',
+              createdAt: { $gte: thirtyDaysAgo },
+            },
+          },
+          {
+            $group: {
+              _id: '$branchId',
+              totalSales: { $sum: 1 },
+              totalRevenue: { $sum: '$total' },
+            },
+          },
+        ]),
+
+        // Pending transfers
+        this.transferModel
+          .find({ status: 'pending' })
+          .populate('sourceBranchId', 'name')
+          .populate('destinationBranchId', 'name')
+          .populate('productId', 'name')
+          .populate('requestedBy', 'firstName lastName')
+          .sort({ createdAt: -1 })
+          .lean(),
+
+        // Low stock products across all branches
+        this.productModel.aggregate([
+          {
+            $match: {
+              branchId: { $in: branchIds },
+              isActive: true,
+              quantityAvailable: {
+                $gt: 0,
+                $lte: { $max: [1, { $ifNull: ['$reorderLevel', 10] }] },
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: 'branches',
+              localField: 'branchId',
+              foreignField: '_id',
+              as: 'branch',
+            },
+          },
+          { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
+          {
+            $project: {
+              _id: 1,
+              branchName: '$branch.name',
+              productName: '$name',
+              sku: 1,
+              quantityAvailable: 1,
+              reorderLevel: 1,
+            },
+          },
+          { $sort: { quantityAvailable: 1 } },
+        ]),
+
+        // Expiring batches (next 30 days)
+        this.productModel.aggregate([
+          {
+            $match: {
+              branchId: { $in: branchIds },
+              isActive: true,
+              expiryDate: { $gte: now, $lte: thirtyDaysFromNow },
+            },
+          },
+          {
+            $lookup: {
+              from: 'branches',
+              localField: 'branchId',
+              foreignField: '_id',
+              as: 'branch',
+            },
+          },
+          { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
+          {
+            $project: {
+              _id: 1,
+              branchName: '$branch.name',
+              productName: '$name',
+              lotNumber: { $ifNull: ['$lotNumber', 'N/A'] },
+              expiryDate: 1,
+              daysUntilExpiry: {
+                $divide: [
+                  { $subtract: ['$expiryDate', now] },
+                  1000 * 60 * 60 * 24,
+                ],
+              },
+              quantityAvailable: 1,
+            },
+          },
+          { $sort: { daysUntilExpiry: 1 } },
+        ]),
+      ]);
+
+    // Build inventory summary
+    const inventory = branches.map((branch) => {
+      const agg = inventoryAgg.find(
+        (a) => a._id?.toString() === branch._id.toString(),
+      );
+      return {
+        branchId: branch._id.toString(),
+        branchName: branch.name,
+        totalProducts: agg?.totalProducts ?? 0,
+        totalQuantity: agg?.totalQuantity ?? 0,
+        totalValue: agg?.totalValue ?? 0,
+        lowStockItems: agg?.lowStockItems ?? 0,
+      };
+    });
+
+    // Build sales summary
+    const sales = branches.map((branch) => {
+      const agg = salesAgg.find(
+        (a) => a._id?.toString() === branch._id.toString(),
+      );
+      const totalSales = agg?.totalSales ?? 0;
+      const totalRevenue = agg?.totalRevenue ?? 0;
+      return {
+        branchId: branch._id.toString(),
+        branchName: branch.name,
+        totalSales,
+        totalRevenue,
+        averageOrderValue: totalSales > 0 ? totalRevenue / totalSales : 0,
+      };
+    });
+
+    // Format pending transfers
+    const pendingTransferRows = pendingTransfers.map((transfer: any) => ({
+      _id: transfer._id.toString(),
+      sourceBranchName: transfer.sourceBranchId?.name || 'Unknown',
+      destinationBranchName: transfer.destinationBranchId?.name || 'Unknown',
+      productName: transfer.productId?.name || 'Unknown',
+      quantity: transfer.quantity,
+      requestedByName: [transfer.requestedBy?.firstName, transfer.requestedBy?.lastName]
+        .filter(Boolean)
+        .join(' ') || 'Unknown',
+      createdAt: transfer.createdAt,
+    }));
+
+    // Format low stock alerts
+    const lowStockAlerts = lowStockProducts.map((item: any) => ({
+      id: `${item._id}`,
+      branchName: item.branchName || 'Unknown',
+      productName: item.productName,
+      sku: item.sku || 'N/A',
+      currentStock: item.quantityAvailable,
+      reorderLevel: item.reorderLevel ?? 10,
+    }));
+
+    // Format expiry alerts
+    const expiryAlerts = expiryBatches.map((item: any) => ({
+      batchId: item._id.toString(),
+      branchName: item.branchName || 'Unknown',
+      productName: item.productName,
+      lotNumber: item.lotNumber,
+      expiryDate: item.expiryDate,
+      daysUntilExpiry: Math.ceil(item.daysUntilExpiry),
+      quantityAvailable: item.quantityAvailable,
+    }));
+
+    return {
+      inventory,
+      sales,
+      pendingTransfers: pendingTransferRows,
+      lowStockAlerts,
+      expiryAlerts,
     };
   }
 }

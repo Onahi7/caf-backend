@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Res,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -13,6 +14,7 @@ import { CreateDeliveryNoteDto, DeliveryNoteFilterDto, MarkDeliveredDto } from '
 import { apiResponse, apiListResponse } from '../common/utils/api-response.util.js';
 import { assignResolvedBranchId } from '../common/utils/branch-scope.util.js';
 
+@ApiTags('Delivery Notes')
 @Controller('delivery-notes')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DeliveryNotesController {

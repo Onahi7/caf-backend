@@ -9,6 +9,7 @@ import {
   UseInterceptors,
   BadRequestException,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { ShiftsService } from './shifts.service.js';
 import { SalesService } from '../sales/sales.service.js';
 import { ExpensesService } from '../expenses/expenses.service.js';
@@ -30,6 +31,7 @@ import { apiResponse, apiListResponse } from '../common/utils/api-response.util.
 import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
 
+@ApiTags('Shifts')
 @Controller('shifts')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ShiftsController {

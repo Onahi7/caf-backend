@@ -8,6 +8,7 @@ import {
   NotFoundException,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -21,6 +22,7 @@ import type { CurrentUserData } from './decorators/current-user.decorator.js';
 import { UsersService } from '../users/users.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 
+@ApiTags('Auth')
 @Controller('auth')
 @SkipThrottle() // individual routes opt-in or override below
 export class AuthController {

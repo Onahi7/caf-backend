@@ -12,6 +12,7 @@ import {
   HttpStatus,
   Res,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -42,6 +43,7 @@ import { ReceiptData, ReceiptItem } from '../email/interfaces/email.interface.js
  * REST API endpoints for POS operations
  * Requirements: 6.3, 6.4, 11.1, 11.4, 1.4, 2.7, 5.5, 6.1, 6.3
  */
+@ApiTags('Sales')
 @Controller('sales')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SalesController {

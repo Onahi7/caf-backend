@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Res,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -15,6 +16,7 @@ import {
 import { apiResponse, apiListResponse } from '../common/utils/api-response.util.js';
 import { assignResolvedBranchId, requireResolvedBranchId } from '../common/utils/branch-scope.util.js';
 
+@ApiTags('Proforma Invoices')
 @Controller('proforma-invoices')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ProformaInvoicesController {

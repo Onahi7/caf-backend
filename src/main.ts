@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
@@ -98,10 +99,40 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   const port = configService.get<number>('PORT', 3000);
+
+  // Swagger / OpenAPI documentation
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('CAREFARM POS API')
+    .setDescription('Pharmacy Point-of-Sale system API. Authenticate via /api/auth/login to get a Bearer token, then click Authorize below.')
+    .setVersion('1.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Enter your JWT access token',
+      },
+      'access-token',
+    )
+    .addServer('http://localhost:3000', 'Local Development')
+    .addServer('https://carefam-00c1641bcdf9.herokuapp.com', 'Production')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+      docExpansion: 'none',
+      filter: true,
+      showRequestDuration: true,
+    },
+  });
+
   await app.listen(port);
 
   logger.log(`🚀 Application is running on: http://localhost:${port}`);
   logger.log(`🌐 CORS enabled for: ${allAllowedOrigins.join(', ')}`);
   logger.log(`📡 API endpoint: http://localhost:${port}/api`);
+  logger.log(`📖 Swagger docs: http://localhost:${port}/docs`);
 }
 bootstrap();

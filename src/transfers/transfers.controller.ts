@@ -9,6 +9,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { TransfersService } from './transfers.service.js';
 import { CreateTransferDto } from './dto/create-transfer.dto.js';
 import {
@@ -31,6 +32,7 @@ import { IdempotencyInterceptor } from '../common/interceptors/idempotency.inter
  * REST endpoints for inter-branch transfer management
  * Requirements: 4.1, 4.5, 10.4
  */
+@ApiTags('Transfers')
 @Controller('transfers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TransfersController {

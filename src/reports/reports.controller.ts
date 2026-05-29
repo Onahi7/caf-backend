@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -37,6 +38,7 @@ import {
  * Handles report generation and export endpoints
  * Requirements: 12.1, 13.1, 14.1, 14.2, 14.3
  */
+@ApiTags('Reports')
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ReportsController {
@@ -584,5 +586,17 @@ export class ReportsController {
       `attachment; filename=purchase-report-${from}-${to}.csv`,
     );
     return res.send(csv);
+  }
+
+  /**
+   * GET /reports/hq-summary
+   * Get aggregated HQ dashboard data across all branches.
+   * Replaces N×3 per-branch API calls with a single efficient query.
+   */
+  @Get('hq-summary')
+  @Roles(UserRole.SUPER_ADMIN)
+  async getHQDashboardSummary(@CurrentUser() user: CurrentUserData) {
+    this.logger.log(`HQ dashboard summary requested by user: ${user.userId}`);
+    return this.reportsService.getHQDashboardSummary();
   }
 }

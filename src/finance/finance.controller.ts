@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -12,6 +13,7 @@ import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
 import type { FinanceTransactionDocument } from './schemas/finance-transaction.schema.js';
 
+@ApiTags('Finance')
 @Controller('finance/transactions')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class FinanceController {

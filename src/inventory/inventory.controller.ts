@@ -8,6 +8,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { InventoryService } from './inventory.service.js';
 import { StockMovementFilterDto } from './dto/stock-movement-filter.dto.js';
 import { InventoryAdjustmentDto } from './dto/inventory-adjustment.dto.js';
@@ -25,6 +26,7 @@ import { IdempotencyInterceptor } from '../common/interceptors/idempotency.inter
  * Handles stock movement queries and inventory adjustments
  * Requirements: 3.1, 3.3, 11.2, 11.3
  */
+@ApiTags('Inventory')
 @Controller('inventory')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class InventoryController {

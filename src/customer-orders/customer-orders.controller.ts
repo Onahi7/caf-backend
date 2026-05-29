@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Param, Body, Query, UseGuards, UseInterceptors,
   UploadedFile, BadRequestException,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -13,6 +14,7 @@ import { CustomerOrdersService } from './customer-orders.service.js';
 import { UpdateCustomerOrderDto, CustomerOrderFilterDto } from './dto/create-customer-order.dto.js';
 import { apiResponse, apiListResponse } from '../common/utils/api-response.util.js';
 
+@ApiTags('Customer Orders')
 @Controller('customer-orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CustomerOrdersController {

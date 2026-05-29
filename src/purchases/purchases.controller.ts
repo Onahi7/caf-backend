@@ -10,6 +10,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PurchasesService, ReceiveResult } from './purchases.service.js';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto.js';
 import { ReceivePurchaseOrderDto } from './dto/receive-purchase-order.dto.js';
@@ -24,6 +25,7 @@ import { IdempotencyInterceptor } from '../common/interceptors/idempotency.inter
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 
+@ApiTags('Purchases')
 @Controller('purchase-orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PurchasesController {

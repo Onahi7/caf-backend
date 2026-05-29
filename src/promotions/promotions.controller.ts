@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PromotionsService } from './promotions.service.js';
 import { CreatePromotionDto } from './dto/create-promotion.dto.js';
 import { UpdatePromotionDto } from './dto/update-promotion.dto.js';
@@ -20,6 +21,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 
+@ApiTags('Promotions')
 @Controller('promotions')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PromotionsController {

@@ -15,6 +15,7 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -39,6 +40,7 @@ import { requireResolvedBranchId, resolveBranchId } from '../common/utils/branch
 import { ProductExcelService } from './product-excel.service.js';
 import { RequestAnalysisService } from './request-analysis.service.js';
 
+@ApiTags('Products')
 @Controller('products')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ProductsController {

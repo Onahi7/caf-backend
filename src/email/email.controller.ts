@@ -9,6 +9,7 @@ import {
   NotFoundException,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { EmailService } from './email.service';
 import { SendReceiptDto } from './dto/send-receipt.dto';
 import {
@@ -33,6 +34,7 @@ import { ReceiptData, ReceiptItem } from './interfaces/email.interface';
  * Handles email-related endpoints
  * Requirements: 4.1, 4.2, 4.3
  */
+@ApiTags('Email')
 @Controller('email')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EmailController {

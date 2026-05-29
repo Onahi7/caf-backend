@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { BatchesService } from './batches.service.js';
 import { CreateBatchDto } from './dto/create-batch.dto.js';
 import { UpdateBatchDto } from './dto/update-batch.dto.js';
@@ -23,6 +24,7 @@ import {
 } from '../common/utils/branch-scope.util.js';
 import { apiResponse, apiListResponse } from '../common/utils/api-response.util.js';
 
+@ApiTags('Batches')
 @Controller('batches')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BatchesController {

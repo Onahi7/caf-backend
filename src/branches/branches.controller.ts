@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { BranchesService } from './branches.service.js';
 import { CreateBranchDto, BranchConfigDto } from './dto/create-branch.dto.js';
@@ -19,6 +20,7 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 
+@ApiTags('Branches')
 @Controller('branches')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BranchesController {

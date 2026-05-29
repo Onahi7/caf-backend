@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Patch, Param, Body, Query, UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -23,6 +24,7 @@ import { apiResponse, apiListResponse } from '../common/utils/api-response.util.
 
 const FINANCE_ROLES = [UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.FINANCE_MANAGER];
 
+@ApiTags('Finance Manager')
 @Controller('finance-manager')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class FinanceManagerController {
