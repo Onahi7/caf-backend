@@ -6,6 +6,7 @@ import {
   UseGuards,
   HttpStatus,
   Logger,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -464,9 +465,17 @@ export class ReportsController {
     @Query('saleId') saleId: string,
     @Query('items') itemsJson: string,
   ) {
+    if (!itemsJson) {
+      throw new BadRequestException('items query parameter is required (JSON array)');
+    }
     this.logger.log(`Calculating COGS for sale ${saleId} requested by ${user.userId}`);
 
-    const items = JSON.parse(itemsJson);
+    let items: Array<{ productId: string; batchId: string; quantity: number }>;
+    try {
+      items = JSON.parse(itemsJson);
+    } catch {
+      throw new BadRequestException('items must be a valid JSON array');
+    }
     return this.valuationService.calculateCOGS(saleId, items);
   }
 

@@ -92,6 +92,8 @@ async function bootstrap() {
       transformOptions: {
         enableImplicitConversion: true,
       },
+      // Strip empty query params so @IsOptional @IsMongoId doesn't reject them
+      forbidUnknownValues: false,
     }),
   );
 

@@ -1,5 +1,6 @@
 import {
   Controller, Get, Post, Patch, Param, Body, Query, UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -71,6 +72,9 @@ export class FinanceManagerController {
   @Get('dashboard')
   @Roles(...FINANCE_ROLES)
   async getDashboard(@Query('branchId') branchId: string) {
+    if (!branchId) {
+      throw new BadRequestException('branchId is required');
+    }
     const dashboard = await this.service.getDashboard(branchId);
     return apiResponse(dashboard);
   }

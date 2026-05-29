@@ -288,12 +288,16 @@ export class FinanceManagerService {
     recentReconciliations: ReconciliationDocument[];
     recentCashEntries: CashEntryDocument[];
   }> {
+    const defaultRecon = { pending: 0, approved: 0, rejected: 0, totalDiscrepancy: 0 };
+    const defaultSalary = { totalEmployees: 0, totalBase: 0, totalAllowances: 0, totalDeductions: 0, totalNet: 0, pendingCount: 0, paidCount: 0 };
+    const defaultCash = { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalSalary: 0, netCash: 0, byCategory: [] as any[] };
+
     const [reconciliation, salary, cash, recentReconciliations, recentCashEntries] = await Promise.all([
-      this.getReconciliationStats(branchId),
-      this.getSalaryStats(branchId),
-      this.getCashSummary(branchId),
-      this.reconModel.find({ branchId: new Types.ObjectId(branchId) }).sort({ createdAt: -1 }).limit(5).populate('createdBy', 'firstName lastName').exec(),
-      this.cashModel.find({ branchId: new Types.ObjectId(branchId), isActive: true }).sort({ entryDate: -1 }).limit(10).populate('recordedBy', 'firstName lastName').exec(),
+      this.getReconciliationStats(branchId).catch((e) => { this.logger.warn(`Reconciliation stats failed: ${e.message}`); return defaultRecon; }),
+      this.getSalaryStats(branchId).catch((e) => { this.logger.warn(`Salary stats failed: ${e.message}`); return defaultSalary; }),
+      this.getCashSummary(branchId).catch((e) => { this.logger.warn(`Cash summary failed: ${e.message}`); return defaultCash; }),
+      this.reconModel.find({ branchId: new Types.ObjectId(branchId) }).sort({ createdAt: -1 }).limit(5).exec().catch((e) => { this.logger.warn(`Recent reconciliations failed: ${e.message}`); return []; }),
+      this.cashModel.find({ branchId: new Types.ObjectId(branchId), isActive: true }).sort({ entryDate: -1 }).limit(10).exec().catch((e) => { this.logger.warn(`Recent cash entries failed: ${e.message}`); return []; }),
     ]);
     return { reconciliation, salary, cash, recentReconciliations, recentCashEntries };
   }
