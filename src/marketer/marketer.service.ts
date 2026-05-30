@@ -83,8 +83,8 @@ export class MarketerService {
       await session.withTransaction(async () => {
         const updatedProduct = await this.productModel.findOneAndUpdate(
           {
-            _id: dto.productId,
-            branchId: dto.branchId,
+            _id: new Types.ObjectId(dto.productId),
+            branchId: new Types.ObjectId(dto.branchId),
             quantityAvailable: { $gte: dto.assignedQuantity },
           },
           { $inc: { quantityAvailable: -dto.assignedQuantity } },
