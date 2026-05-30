@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, Types } from 'mongoose';
@@ -34,6 +35,8 @@ export interface ReceiveResult {
  */
 @Injectable()
 export class PurchasesService {
+  private readonly logger = new Logger(PurchasesService.name);
+
   constructor(
     private readonly purchasesRepository: PurchasesRepository,
     private readonly inventoryService: InventoryService,
@@ -167,7 +170,8 @@ export class PurchasesService {
           (item) => item.productId.toString() === receivedItem.productId,
         );
 
-        const updatedProduct = await this.productModel
+        // Try to find existing product at this branch
+        let updatedProduct = await this.productModel
           .findOneAndUpdate(
             {
               _id: new Types.ObjectId(receivedItem.productId),
@@ -192,17 +196,79 @@ export class PurchasesService {
           )
           .exec();
 
+        // If product doesn't exist at this branch, create it
         if (!updatedProduct) {
-          throw new NotFoundException(
-            `Product ${receivedItem.productId} not found for this branch`,
-          );
+          const sourceProduct = await this.productModel.findById(receivedItem.productId).lean().exec();
+          
+          if (sourceProduct) {
+            // Create a copy of the product for this branch
+            const newProductData = {
+              branchId: new Types.ObjectId(purchaseOrder.branchId.toString()),
+              name: sourceProduct.name,
+              sku: sourceProduct.sku,
+              barcode: sourceProduct.barcode || `BAR-${Date.now()}`,
+              category: sourceProduct.category || 'general',
+              brand: sourceProduct.brand || 'Unknown',
+              unit: sourceProduct.unit || 'unit',
+              reorderLevel: sourceProduct.reorderLevel || 0,
+              maxStockLevel: sourceProduct.maxStockLevel || 0,
+              quantityAvailable: receivedItem.receivedQuantity,
+              quantityInitial: receivedItem.receivedQuantity,
+              basePrice: receivedItem.sellingPrice || 0,
+              costPrice: (receivedItem.purchasePrice ?? poItem!.unitPrice) || 0,
+              suggestedRetailPrice: receivedItem.sellingPrice || 0,
+              markupPercentage: 0,
+              requiresPrescription: sourceProduct.requiresPrescription || false,
+              isControlled: sourceProduct.isControlled || false,
+              packSizes: sourceProduct.packSizes || [],
+              supplierId: purchaseOrder.supplierId,
+              supplyDate: receivedItem.supplyDate ? new Date(receivedItem.supplyDate) : new Date(),
+              expiryDate: receivedItem.expiryDate ? new Date(receivedItem.expiryDate) : undefined,
+              isActive: true,
+            };
+
+            const [created] = await this.productModel.create([newProductData], { session });
+            updatedProduct = created;
+            this.logger.log(`Auto-created product "${sourceProduct.name}" at branch ${purchaseOrder.branchId}`);
+          } else {
+            // Source product also doesn't exist — create a minimal product
+            const minimalProduct = {
+              branchId: new Types.ObjectId(purchaseOrder.branchId.toString()),
+              name: `Product ${receivedItem.productId}`,
+              sku: `SKU-${Date.now()}`,
+              barcode: `BAR-${Date.now()}`,
+              category: 'general',
+              brand: 'Unknown',
+              unit: 'unit',
+              reorderLevel: 0,
+              maxStockLevel: 0,
+              quantityAvailable: receivedItem.receivedQuantity,
+              quantityInitial: receivedItem.receivedQuantity,
+              basePrice: receivedItem.sellingPrice || 0,
+              costPrice: receivedItem.purchasePrice ?? 0,
+              suggestedRetailPrice: receivedItem.sellingPrice || 0,
+              markupPercentage: 0,
+              requiresPrescription: false,
+              isControlled: false,
+              packSizes: [],
+              supplierId: purchaseOrder.supplierId,
+              supplyDate: receivedItem.supplyDate ? new Date(receivedItem.supplyDate) : new Date(),
+              expiryDate: receivedItem.expiryDate ? new Date(receivedItem.expiryDate) : undefined,
+              isActive: true,
+            };
+
+            const [created] = await this.productModel.create([minimalProduct], { session });
+            updatedProduct = created;
+            this.logger.log(`Auto-created minimal product at branch ${purchaseOrder.branchId}`);
+          }
         }
+
         productsUpdated++;
 
         // Create stock movement for the purchase
         await this.inventoryService.recordPurchaseMovement(
           purchaseOrder.branchId.toString(),
-          receivedItem.productId,
+          updatedProduct._id.toString(),
           receivedItem.receivedQuantity,
           receiveDto.receivedBy,
           id,
