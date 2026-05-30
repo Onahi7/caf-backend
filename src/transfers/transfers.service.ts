@@ -2,12 +2,15 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, Types } from 'mongoose';
 import { TransfersRepository } from './transfers.repository.js';
 import { BranchesRepository } from '../branches/branches.repository.js';
 import { InventoryService } from '../inventory/inventory.service.js';
+import { AuditService } from '../audit/audit.service.js';
+import { AuditResource } from '../audit/schemas/audit-log.schema.js';
 import { CreateTransferDto } from './dto/create-transfer.dto.js';
 import {
   ApproveTransferDto,
@@ -20,103 +23,90 @@ import {
   TransferType,
 } from './schemas/transfer.schema.js';
 import { Product, ProductDocument } from '../products/schemas/product.schema.js';
+import { User, UserDocument } from '../users/schemas/user.schema.js';
 
-/**
- * TransfersService
- * Business logic for inter-branch transfers with approval workflow
- * Requirements: 4.1, 4.2, 4.5
- * Properties: 15, 16, 17, 18
- */
 @Injectable()
 export class TransfersService {
+  private readonly logger = new Logger(TransfersService.name);
+
   constructor(
     private readonly transfersRepository: TransfersRepository,
     private readonly branchesRepository: BranchesRepository,
     private readonly inventoryService: InventoryService,
+    private readonly auditService: AuditService,
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
   ) {}
 
   /**
    * Create a transfer request
-   * Requirements: 4.1
-   * Property 15: Transfer structure completeness
-   * Property 17: Transfer type support
    */
   async createTransferRequest(
     dto: CreateTransferDto,
     requestedBy: string,
   ): Promise<TransferDocument> {
-    // Validate source and destination branches exist
     const [sourceBranch, destinationBranch] = await Promise.all([
       this.branchesRepository.findById(dto.sourceBranchId),
       this.branchesRepository.findById(dto.destinationBranchId),
     ]);
 
     if (!sourceBranch) {
-      throw new NotFoundException(
-        `Source branch ${dto.sourceBranchId} not found`,
-      );
+      throw new NotFoundException(`Source branch ${dto.sourceBranchId} not found`);
     }
-
     if (!destinationBranch) {
-      throw new NotFoundException(
-        `Destination branch ${dto.destinationBranchId} not found`,
-      );
+      throw new NotFoundException(`Destination branch ${dto.destinationBranchId} not found`);
     }
-
     if (dto.sourceBranchId === dto.destinationBranchId) {
-      throw new BadRequestException(
-        'Source and destination branches must be different',
-      );
+      throw new BadRequestException('Source and destination branches must be different');
     }
 
     const product = await this.productModel.findById(dto.productId).exec();
     if (!product) {
       throw new NotFoundException(`Product ${dto.productId} not found`);
     }
-
     if (product.branchId.toString() !== dto.sourceBranchId) {
-      throw new BadRequestException(
-        'Product does not belong to the source branch',
-      );
+      throw new BadRequestException('Product does not belong to the source branch');
     }
-
-    // Validate sufficient quantity
     if (product.quantityAvailable < dto.quantity) {
       throw new BadRequestException(
         `Insufficient quantity. Available: ${product.quantityAvailable}, Requested: ${dto.quantity}`,
       );
     }
 
-    // Determine transfer type
-    const transferType = this.determineTransferType(
-      sourceBranch,
-      destinationBranch,
+    const transferType = this.determineTransferType(sourceBranch, destinationBranch);
+    const transfer = await this.transfersRepository.create(dto, requestedBy, transferType);
+
+    // Audit: transfer requested
+    const requester = await this.userModel.findById(requestedBy).select('username firstName lastName').lean().exec();
+    const requesterName = requester ? `${requester.firstName} ${requester.lastName}` : requestedBy;
+    await this.auditService.logCreate(
+      requestedBy,
+      requesterName,
+      AuditResource.TRANSFER,
+      transfer._id.toString(),
+      { quantity: dto.quantity, productName: product.name, sourceBranch: sourceBranch.name, destinationBranch: destinationBranch.name },
+      dto.sourceBranchId,
     );
 
-    return this.transfersRepository.create(dto, requestedBy, transferType);
+    this.logger.log(`Transfer ${transfer._id} requested by ${requesterName}: ${dto.quantity} x ${product.name}`);
+
+    return transfer;
   }
 
-  /**
-   * Determine transfer type based on source and destination branches
-   * Property 17: Transfer type support
-   */
   private determineTransferType(
     sourceBranch: { isHeadquarters: boolean },
     destinationBranch: { isHeadquarters: boolean },
   ): TransferType {
-    // HQ is treated as the main outlet in current operational model.
-    // Keep transfer classification uniform for simpler reporting and workflows.
-    if (sourceBranch.isHeadquarters || destinationBranch.isHeadquarters) {
-      return TransferType.OUTLET_TO_OUTLET;
+    if (sourceBranch.isHeadquarters && !destinationBranch.isHeadquarters) {
+      return TransferType.HQ_TO_OUTLET;
+    }
+    if (!sourceBranch.isHeadquarters && destinationBranch.isHeadquarters) {
+      return TransferType.OUTLET_TO_HQ;
     }
     return TransferType.OUTLET_TO_OUTLET;
   }
 
-  /**
-   * Get all transfers with optional filtering
-   */
   async findAll(filter?: TransferFilterDto): Promise<TransferDocument[]> {
     if (filter && Object.keys(filter).length > 0) {
       return this.transfersRepository.findWithFilter(filter);
@@ -124,9 +114,6 @@ export class TransfersService {
     return this.transfersRepository.findAll();
   }
 
-  /**
-   * Get a transfer by ID
-   */
   async findById(id: string): Promise<TransferDocument> {
     const transfer = await this.transfersRepository.findById(id);
     if (!transfer) {
@@ -135,27 +122,17 @@ export class TransfersService {
     return transfer;
   }
 
-  /**
-   * Get pending transfers
-   * Requirements: 10.4
-   * Property 43: Pending transfer visibility
-   */
   async findPending(): Promise<TransferDocument[]> {
     return this.transfersRepository.findPending();
   }
 
-  /**
-   * Get pending transfers for a specific branch
-   */
   async findPendingForBranch(branchId: string): Promise<TransferDocument[]> {
     return this.transfersRepository.findPendingForBranch(branchId);
   }
 
   /**
-   * Approve and execute a transfer
-   * Requirements: 4.2, 4.5
-   * Property 16: Transfer atomicity
-   * Property 18: Transfer approval workflow
+   * Approve and execute a transfer.
+   * If the product doesn't exist at the destination, it will be created there.
    */
   async approveTransfer(
     transferId: string,
@@ -164,52 +141,29 @@ export class TransfersService {
   ): Promise<TransferDocument> {
     const transfer = await this.findById(transferId);
 
-    // Validate transfer is pending
     if (transfer.status !== TransferStatus.PENDING) {
-      throw new BadRequestException(
-        `Transfer is not pending. Current status: ${transfer.status}`,
-      );
+      throw new BadRequestException(`Transfer is not pending. Current status: ${transfer.status}`);
     }
 
-    const sourceProduct = await this.productModel
-      .findById(transfer.productId)
-      .exec();
+    const sourceProduct = await this.productModel.findById(transfer.productId).exec();
     if (!sourceProduct) {
       throw new NotFoundException('Transfer product no longer exists');
     }
 
     if (sourceProduct.quantityAvailable < transfer.quantity) {
       throw new BadRequestException(
-        `Insufficient quantity in product stock. Available: ${sourceProduct.quantityAvailable}, Required: ${transfer.quantity}`,
+        `Insufficient quantity. Available: ${sourceProduct.quantityAvailable}, Required: ${transfer.quantity}`,
       );
     }
 
-    const destinationProduct = await this.productModel
-      .findOne({
-        branchId: transfer.destinationBranchId,
-        sku: sourceProduct.sku,
-      })
-      .exec();
-    if (!destinationProduct) {
-      throw new NotFoundException(
-        `Matching product with SKU ${sourceProduct.sku} not found in destination branch`,
-      );
-    }
-
-    // Execute transfer within a transaction
-    // Property 16: Transfer atomicity
     const session = await this.connection.startSession();
     session.startTransaction();
 
     try {
       // 1. Approve the transfer
-      await this.transfersRepository.approve(
-        transferId,
-        approvedBy,
-        dto.notes,
-        session,
-      );
+      await this.transfersRepository.approve(transferId, approvedBy, dto.notes, session);
 
+      // 2. Deduct from source
       const updatedSource = await this.productModel
         .findOneAndUpdate(
           {
@@ -222,24 +176,29 @@ export class TransfersService {
         .exec();
 
       if (!updatedSource) {
-        throw new BadRequestException(
-          `Insufficient quantity in product stock. Available stock changed before approval.`,
-        );
+        throw new BadRequestException('Insufficient quantity. Stock changed before approval.');
       }
 
-      // 3. Create stock movement for source (transfer out)
+      // 3. Record source stock movement
       await this.inventoryService.recordTransferMovement(
         transfer.sourceBranchId.toString(),
         transfer.productId.toString(),
         transfer.quantity,
         approvedBy,
         transferId,
-        true, // isSource
+        true,
         session,
       );
 
-      await this.productModel
-        .findByIdAndUpdate(
+      // 4. Find or create destination product
+      let destinationProduct = await this.productModel
+        .findOne({ branchId: transfer.destinationBranchId, sku: sourceProduct.sku })
+        .session(session)
+        .exec();
+
+      if (destinationProduct) {
+        // Product exists at destination — increment stock
+        await this.productModel.findByIdAndUpdate(
           destinationProduct._id,
           {
             $inc: { quantityAvailable: transfer.quantity },
@@ -253,32 +212,75 @@ export class TransfersService {
             },
           },
           { new: true, session },
-        )
-        .exec();
+        ).exec();
+      } else {
+        // Product doesn't exist at destination — create it
+        const newProductData = {
+          branchId: new Types.ObjectId(transfer.destinationBranchId.toString()),
+          name: sourceProduct.name,
+          sku: sourceProduct.sku,
+          barcode: sourceProduct.barcode,
+          category: sourceProduct.category,
+          brand: sourceProduct.brand,
+          unit: sourceProduct.unit,
+          reorderLevel: sourceProduct.reorderLevel,
+          maxStockLevel: sourceProduct.maxStockLevel,
+          quantityAvailable: transfer.quantity,
+          quantityInitial: transfer.quantity,
+          basePrice: sourceProduct.basePrice,
+          costPrice: sourceProduct.costPrice,
+          suggestedRetailPrice: sourceProduct.suggestedRetailPrice,
+          markupPercentage: sourceProduct.markupPercentage,
+          requiresPrescription: sourceProduct.requiresPrescription,
+          isControlled: sourceProduct.isControlled,
+          packSizes: sourceProduct.packSizes,
+          supplierId: sourceProduct.supplierId,
+          supplyDate: sourceProduct.supplyDate,
+          expiryDate: sourceProduct.expiryDate,
+          isActive: true,
+        };
 
-      // 5. Create stock movement for destination (transfer in)
+        const [created] = await this.productModel.create([newProductData], { session });
+        destinationProduct = created;
+
+        this.logger.log(`Created product "${sourceProduct.name}" (${sourceProduct.sku}) at destination branch ${transfer.destinationBranchId}`);
+      }
+
+      // 5. Record destination stock movement
       await this.inventoryService.recordTransferMovement(
         transfer.destinationBranchId.toString(),
         destinationProduct._id.toString(),
         transfer.quantity,
         approvedBy,
         transferId,
-        false, // isSource = false (destination)
+        false,
         session,
       );
 
       // 6. Mark transfer as completed
-      const completedTransfer = await this.transfersRepository.complete(
-        transferId,
-        session,
-      );
+      const completedTransfer = await this.transfersRepository.complete(transferId, session);
 
       await session.commitTransaction();
 
+      // Audit: transfer approved and completed
+      const approver = await this.userModel.findById(approvedBy).select('username firstName lastName').lean().exec();
+      const approverName = approver ? `${approver.firstName} ${approver.lastName}` : approvedBy;
+      await this.auditService.logUpdate(
+        approvedBy,
+        approverName,
+        AuditResource.TRANSFER,
+        transferId,
+        { status: 'pending' },
+        { status: 'completed', quantity: transfer.quantity, productName: sourceProduct.name },
+        transfer.sourceBranchId.toString(),
+      );
+
+      this.logger.log(`Transfer ${transferId} approved by ${approverName}: ${transfer.quantity} x ${sourceProduct.name}`);
+
       return completedTransfer!;
     } catch (error) {
-      // Property 16: Rollback all changes on failure
       await session.abortTransaction();
+      this.logger.error(`Transfer ${transferId} approval failed: ${error instanceof Error ? error.message : error}`);
       throw error;
     } finally {
       await session.endSession();
@@ -287,7 +289,6 @@ export class TransfersService {
 
   /**
    * Reject a transfer request
-   * Property 18: Transfer approval workflow
    */
   async rejectTransfer(
     transferId: string,
@@ -296,11 +297,8 @@ export class TransfersService {
   ): Promise<TransferDocument> {
     const transfer = await this.findById(transferId);
 
-    // Validate transfer is pending
     if (transfer.status !== TransferStatus.PENDING) {
-      throw new BadRequestException(
-        `Transfer is not pending. Current status: ${transfer.status}`,
-      );
+      throw new BadRequestException(`Transfer is not pending. Current status: ${transfer.status}`);
     }
 
     const rejectedTransfer = await this.transfersRepository.reject(
@@ -310,12 +308,24 @@ export class TransfersService {
       dto.notes,
     );
 
+    // Audit: transfer rejected
+    const rejector = await this.userModel.findById(rejectedBy).select('username firstName lastName').lean().exec();
+    const rejectorName = rejector ? `${rejector.firstName} ${rejector.lastName}` : rejectedBy;
+    await this.auditService.logUpdate(
+      rejectedBy,
+      rejectorName,
+      AuditResource.TRANSFER,
+      transferId,
+      { status: 'pending' },
+      { status: 'rejected', rejectionReason: dto.rejectionReason },
+      transfer.sourceBranchId.toString(),
+    );
+
+    this.logger.log(`Transfer ${transferId} rejected by ${rejectorName}: ${dto.rejectionReason}`);
+
     return rejectedTransfer!;
   }
 
-  /**
-   * Get transfer statistics
-   */
   async getTransferStats(): Promise<{
     pending: number;
     approved: number;
