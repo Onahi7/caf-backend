@@ -65,7 +65,14 @@ export class Product {
   @Prop({ default: 0 })
   maxStockLevel!: number;
 
-  @Prop({ required: true, default: 0 })
+  @Prop({
+    required: true,
+    default: 0,
+    validate: {
+      validator: (v: number) => v >= 0,
+      message: 'quantityAvailable cannot be negative',
+    },
+  })
   quantityAvailable!: number;
 
   @Prop({ required: true, default: 0 })

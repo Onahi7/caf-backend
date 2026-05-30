@@ -17,7 +17,14 @@ export class Batch {
   @Prop({ required: true, index: true })
   expiryDate!: Date;
 
-  @Prop({ required: true, default: 0 })
+  @Prop({
+    required: true,
+    default: 0,
+    validate: {
+      validator: (v: number) => v >= 0,
+      message: 'quantityAvailable cannot be negative',
+    },
+  })
   quantityAvailable!: number;
 
   @Prop({ required: true })

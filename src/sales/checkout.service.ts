@@ -548,16 +548,23 @@ let session;
         (sum, b) => sum + b.quantity,
         0,
       );
-      await this.productModel
-        .updateOne(
+      const updated = await this.productModel
+        .findOneAndUpdate(
           {
             _id: new Types.ObjectId(selection.productId),
             branchId: new Types.ObjectId(branchId),
+            quantityAvailable: { $gte: totalQuantity },
           },
           { $inc: { quantityAvailable: -totalQuantity } },
           { session },
         )
         .exec();
+
+      if (!updated) {
+        throw new BadRequestException(
+          `Insufficient product-level stock for ${selection.productId}: need ${totalQuantity} units`,
+        );
+      }
     }
   }
 

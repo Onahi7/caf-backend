@@ -151,6 +151,14 @@ export class InventoryService {
         );
       }
 
+      if (updatedProduct.quantityAvailable < 0) {
+        await session.abortTransaction();
+        session.endSession();
+        throw new BadRequestException(
+          `Adjustment would result in negative stock for product ${dto.productId}: ${updatedProduct.quantityAvailable}`,
+        );
+      }
+
       const newQuantity = updatedProduct.quantityAvailable;
 
       if (
