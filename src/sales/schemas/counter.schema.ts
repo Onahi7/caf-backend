@@ -16,6 +16,3 @@ export class Counter {
 
 export type CounterDocument = HydratedDocument<Counter>;
 export const CounterSchema = SchemaFactory.createForClass(Counter);
-
-// Ensure the _id is unique
-CounterSchema.index({ _id: 1 }, { unique: true });

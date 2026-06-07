@@ -75,7 +75,7 @@ export const AdvanceItemSchema = SchemaFactory.createForClass(AdvanceItem);
 
 @Schema({ timestamps: true })
 export class EmployeeAdvance {
-  @Prop({ required: true, maxlength: 100, index: true })
+  @Prop({ required: true, maxlength: 100 })
   referenceNumber!: string;
 
   @Prop({ required: true, type: Types.ObjectId, ref: 'User', index: true })

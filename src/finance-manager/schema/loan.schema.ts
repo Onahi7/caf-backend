@@ -50,7 +50,7 @@ export const LoanRepaymentSchema = SchemaFactory.createForClass(LoanRepayment);
 
 @Schema({ timestamps: true })
 export class Loan {
-  @Prop({ required: true, maxlength: 100, index: true })
+  @Prop({ required: true, maxlength: 100 })
   referenceNumber!: string;
 
   @Prop({ required: true, enum: LoanDirection })

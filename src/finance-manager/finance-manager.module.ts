@@ -22,11 +22,13 @@ import { EmployeeAdvanceService } from './employee-advance.service.js';
 import { FinanceManagerController } from './finance-manager.controller.js';
 import { LoansAdvancesController } from './loans-advances.controller.js';
 import { WebSocketModule } from '../websocket/websocket.module.js';
+import { AuditModule } from '../audit/audit.module.js';
 
 @Module({
   imports: [
     HttpModule.register({ timeout: 15000, maxRedirects: 3 }),
     WebSocketModule,
+    AuditModule,
     MongooseModule.forFeature([
       { name: Reconciliation.name, schema: ReconciliationSchema },
       { name: Salary.name, schema: SalarySchema },

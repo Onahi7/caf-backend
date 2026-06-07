@@ -21,10 +21,9 @@ export class WebAuthnChallenge {
   pendingCredentialId?: string;
 
   // Auto-expire after 5 minutes
-  // expiresAt is enforced via TTL index below
+  // expiresAt is enforced via TTL index from @Prop({ expires: 0 })
   @Prop({ required: true, expires: 0 })
   expiresAt!: Date;
 }
 
 export const WebAuthnChallengeSchema = SchemaFactory.createForClass(WebAuthnChallenge);
-WebAuthnChallengeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
