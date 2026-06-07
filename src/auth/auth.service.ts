@@ -55,10 +55,30 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    const tokens = await this.issueTokensForUser(user);
+
+    try {
+      await this.auditService.logLogin(user._id.toString(), user.username);
+    } catch (auditError) {
+      const auditMessage =
+        auditError instanceof Error ? auditError.message : 'Unknown audit error';
+      this.logger.warn(`Login audit failed for ${user.username}: ${auditMessage}`);
+    }
+
+    this.logger.log(`User ${user.username} logged in successfully`);
+
+    return tokens;
+  }
+
+  /**
+   * Issue a fresh access+refresh token pair for an already-validated user.
+   * Used by both password login and WebAuthn login flows.
+   */
+  async issueTokensForUser(user: { _id: { toString(): string }; username: string; email: string; firstName: string; lastName: string; role: string; branchId?: { toString(): string } }): Promise<TokenResponseDto> {
     const payload: JwtPayload = {
       sub: user._id.toString(),
       username: user.username,
-      role: user.role,
+      role: user.role as JwtPayload['role'],
       branchId: user.branchId?.toString(),
     };
 
@@ -79,22 +99,11 @@ export class AuthService {
       },
     );
 
-    // Store refresh token in Redis with expiration
     await this.redisService.set(
       `refresh_token:${user._id.toString()}`,
       refreshToken,
       this.REFRESH_TOKEN_EXPIRY,
     );
-
-    try {
-      await this.auditService.logLogin(user._id.toString(), user.username);
-    } catch (auditError) {
-      const auditMessage =
-        auditError instanceof Error ? auditError.message : 'Unknown audit error';
-      this.logger.warn(`Login audit failed for ${user.username}: ${auditMessage}`);
-    }
-
-    this.logger.log(`User ${user.username} logged in successfully`);
 
     return {
       user: {
@@ -103,7 +112,7 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role,
+        role: user.role as JwtPayload['role'],
         branchId: user.branchId?.toString(),
       },
       accessToken,

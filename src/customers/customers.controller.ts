@@ -36,7 +36,7 @@ export class CustomersController {
   }
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER, UserRole.MARKETER)
   create(@Body() createCustomerDto: CreateCustomerDto) {
     return this.customersService
       .create(createCustomerDto)
@@ -49,6 +49,7 @@ export class CustomersController {
     UserRole.BRANCH_MANAGER,
     UserRole.CASHIER,
     UserRole.AUDITOR,
+    UserRole.MARKETER,
   )
   async findAll(
     @Query('search') search?: string,

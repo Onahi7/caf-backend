@@ -168,7 +168,7 @@ export class MarketerService {
       this.assignmentModel
         .find(query)
         .populate('marketerId', 'firstName lastName username branchId')
-        .populate('productId', 'name sku branchId')
+        .populate('productId', 'name sku brand branchId')
         .populate('branchId', 'name code')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -363,6 +363,7 @@ export class MarketerService {
       totalAmount,
       customerName: dto.customerName,
       customerPhone: dto.customerPhone,
+      customerId: dto.customerId ? new Types.ObjectId(dto.customerId) : undefined,
       notes: dto.notes,
       soldAt: new Date(),
     });
@@ -402,7 +403,7 @@ export class MarketerService {
     const [data, total] = await Promise.all([
       this.saleModel
         .find(query)
-        .populate('productId', 'name sku')
+        .populate('productId', 'name sku brand')
         .populate('marketerId', 'firstName lastName username')
         .sort({ soldAt: -1, createdAt: -1 })
         .skip(skip)

@@ -107,12 +107,21 @@ export class ReceiptService {
     doc.font('Helvetica');
     for (const item of sale.items) {
       const productName = item.productId?.name || 'Unknown Product';
+      const brand = item.productId?.brand?.trim();
+      const showBrand = brand && brand.toLowerCase() !== 'unknown';
       const itemY = doc.y;
-      
+
       doc.text(productName, 50, itemY, { width: 200, continued: false });
       doc.text(item.quantity.toString(), 250, itemY, { width: 60, align: 'right', continued: false });
       doc.text(CurrencyUtil.formatWithoutSymbol(item.unitPrice), 310, itemY, { width: 80, align: 'right', continued: false });
       doc.text(CurrencyUtil.formatWithoutSymbol(item.subtotal), 390, itemY, { width: 100, align: 'right', continued: false });
+
+      if (showBrand) {
+        doc.moveDown(0.2);
+        doc.fontSize(8).fillColor('gray');
+        doc.text(`Brand: ${brand}`, 50, doc.y, { width: 200 });
+        doc.fontSize(10).fillColor('black');
+      }
       
       // Batch info (smaller font)
       if (item.lotNumber || item.expiryDate) {

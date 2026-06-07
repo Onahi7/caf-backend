@@ -5,6 +5,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
+import { StepUpTokenService } from './services/step-up-token.service.js';
+import { StepUpGuard } from './guards/step-up.guard.js';
 import { UsersModule } from '../users/users.module.js';
 import { RedisModule } from '../redis/redis.module.js';
 import { AuditModule } from '../audit/audit.module.js';
@@ -34,7 +36,7 @@ import { AuditModule } from '../audit/audit.module.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService, PassportModule, JwtModule],
+  providers: [AuthService, JwtStrategy, StepUpTokenService, StepUpGuard],
+  exports: [AuthService, PassportModule, JwtModule, StepUpTokenService, StepUpGuard],
 })
 export class AuthModule {}

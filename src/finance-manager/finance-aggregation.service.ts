@@ -290,7 +290,7 @@ export class FinanceAggregationService {
         $match: {
           ...filter,
           status: { $ne: 'returned' },
-          terminalId: { $nin: ['emr-integration', 'lab-dispensary'] },
+          terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] },
         },
       },
       {
@@ -370,7 +370,7 @@ export class FinanceAggregationService {
   }
 
   private async getCreditOutstanding(branchFilter: Record<string, any>): Promise<UnifiedDashboard['creditOutstanding']> {
-    const emrLabFilter = { terminalId: { $nin: ['emr-integration', 'lab-dispensary'] } };
+    const emrLabFilter = { terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] } };
     const [result, overdue] = await Promise.all([
       this.saleModel.aggregate([
         { $match: { ...branchFilter, ...emrLabFilter, saleType: 'credit' } },
@@ -403,6 +403,72 @@ export class FinanceAggregationService {
       overdueCount: o.overdueCount,
       overdueAmount: o.overdueAmount,
     };
+  }
+
+  async getReceivablesAging(branchFilter: Record<string, any>, asOf: Date = new Date()): Promise<{
+    asOf: Date;
+    totalOutstanding: number;
+    openInvoiceCount: number;
+    buckets: {
+      label: string;
+      range: { from: number; to: number | null };
+      count: number;
+      amount: number;
+    }[];
+  }> {
+    const emrLabFilter = { terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] } };
+    const matchBase = {
+      ...branchFilter,
+      ...emrLabFilter,
+      saleType: 'credit',
+      paymentStatus: { $in: ['unpaid', 'partial', 'overdue'] },
+      balanceDue: { $gt: 0 },
+    };
+
+    const ranges = [
+      { label: '0-30 days', min: 0, max: 30 },
+      { label: '31-60 days', min: 31, max: 60 },
+      { label: '61-90 days', min: 61, max: 90 },
+      { label: '90+ days', min: 91, max: null as number | null },
+    ];
+
+    const buckets = await Promise.all(
+      ranges.map(async (range) => {
+        const match = { ...matchBase };
+        const daysOldExpr = {
+          $divide: [
+            { $subtract: [asOf, { $ifNull: ['$dueDate', '$createdAt'] }] },
+            1000 * 60 * 60 * 24,
+          ],
+        };
+        if (range.max === null) {
+          (match as any).$expr = { $gte: [daysOldExpr, range.min] };
+        } else {
+          (match as any).$expr = { $and: [{ $gte: [daysOldExpr, range.min] }, { $lte: [daysOldExpr, range.max] }] };
+        }
+        const [result] = await this.saleModel.aggregate([
+          { $match: match },
+          {
+            $group: {
+              _id: null,
+              count: { $sum: 1 },
+              amount: { $sum: '$balanceDue' },
+            },
+          },
+        ]).exec();
+        return {
+          label: range.label,
+          range: { from: range.min, to: range.max },
+          count: result?.count ?? 0,
+          amount: result?.amount ?? 0,
+        };
+      }),
+    );
+
+    const totalOutstanding = buckets.reduce((s, b) => s + b.amount, 0);
+    const openInvoiceCount = buckets.reduce((s, b) => s + b.count, 0);
+
+    return { asOf, totalOutstanding, openInvoiceCount, buckets };
   }
 
   private async getMarketerData(branchFilter: Record<string, any>): Promise<UnifiedDashboard['marketer']> {
@@ -474,7 +540,7 @@ export class FinanceAggregationService {
   private async getByBranch(dateFilter: Record<string, any>): Promise<UnifiedDashboard['byBranch']> {
     const [salesByBranch, expensesByBranch] = await Promise.all([
       this.saleModel.aggregate([
-        { $match: { ...dateFilter, status: { $ne: 'returned' }, terminalId: { $nin: ['emr-integration', 'lab-dispensary'] } } },
+        { $match: { ...dateFilter, status: { $ne: 'returned' }, terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] } } },
         {
           $group: {
             _id: '$branchId',
@@ -519,7 +585,7 @@ export class FinanceAggregationService {
 
   private async getByPaymentMethod(filter: Record<string, any>): Promise<UnifiedDashboard['byPaymentMethod']> {
     const result = await this.saleModel.aggregate([
-      { $match: { ...filter, status: { $ne: 'returned' }, terminalId: { $nin: ['emr-integration', 'lab-dispensary'] } } },
+      { $match: { ...filter, status: { $ne: 'returned' }, terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] } } },
       {
         $group: {
           _id: '$paymentMethod',

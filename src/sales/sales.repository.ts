@@ -73,6 +73,7 @@ export class SalesRepository {
       prescriptionStatus?: PrescriptionStatus;
       customerName?: string;
       customerPhone?: string;
+      customerId?: Types.ObjectId;
       patientId?: string;
       patientName?: string;
       sourceSystem?: string;
@@ -102,6 +103,7 @@ export class SalesRepository {
       prescriptionStatus: saleData.prescriptionStatus,
       customerName: saleData.customerName,
       customerPhone: saleData.customerPhone,
+      customerId: saleData.customerId,
       patientId: saleData.patientId,
       patientName: saleData.patientName,
       sourceSystem: saleData.sourceSystem,

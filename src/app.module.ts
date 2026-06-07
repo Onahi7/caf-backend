@@ -35,6 +35,10 @@ import { CustomerOrdersModule } from './customer-orders/customer-orders.module.j
 import { ProformaInvoicesModule } from './proforma-invoices/proforma-invoices.module.js';
 import { DeliveryNotesModule } from './delivery-notes/delivery-notes.module.js';
 import { FinanceManagerModule } from './finance-manager/finance-manager.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
+import { SavedReportsModule } from './saved-reports/saved-reports.module.js';
+import { RecurringInvoicesModule } from './recurring-invoices/recurring-invoices.module.js';
+import { WebAuthnModule } from './webauthn/webauthn.module.js';
 
 @Module({
   imports: [
@@ -80,6 +84,10 @@ import { FinanceManagerModule } from './finance-manager/finance-manager.module.j
     ProformaInvoicesModule,
     DeliveryNotesModule,
     FinanceManagerModule,
+    NotificationsModule,
+    SavedReportsModule,
+    RecurringInvoicesModule,
+    WebAuthnModule,
   ],
   controllers: [AppController],
   providers: [

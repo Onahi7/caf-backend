@@ -9,6 +9,8 @@ import { BatchesModule } from '../batches/batches.module.js';
 import { BranchesModule } from '../branches/branches.module.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
 import { WebSocketModule } from '../websocket/websocket.module.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
+import { UsersModule } from '../users/users.module.js';
 
 /**
  * Jobs Module
@@ -28,6 +30,8 @@ export class JobsModule {
       BranchesModule,
       InventoryModule,
       WebSocketModule,
+      NotificationsModule,
+      UsersModule,
     ];
 
     if (redisEnabled) {

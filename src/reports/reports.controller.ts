@@ -492,25 +492,14 @@ export class ReportsController {
     @Query('to') to: string,
     @Query('groupBy') _groupBy: string = 'day',
   ) {
-    // Enforce branch scoping
-    resolveBranchId(user, branchId);
+    const resolvedBranchId = resolveBranchId(user, branchId);
     this.logger.log(`Generating customer report from ${from} to ${to}`);
-
-    // Return mock data for now - implement actual logic later
-    return {
-      totalCustomers: 0,
-      activeCustomers: 0,
-      newCustomers: 0,
-      totalLoyaltyPoints: 0,
-      topCustomers: [],
-      byPeriod: [],
-      segmentation: {
-        highValue: 0,
-        medium: 0,
-        low: 0,
-        inactive: 0,
-      },
-    };
+    return this.reportsService.generateCustomerReport({
+      branchId: resolvedBranchId,
+      from,
+      to,
+      groupBy: _groupBy as 'day' | 'week' | 'month',
+    });
   }
 
   /**
@@ -528,11 +517,26 @@ export class ReportsController {
     @Query('format') _format: string = 'csv',
     @Res() res: Response,
   ) {
-    resolveBranchId(user, branchId);
+    const resolvedBranchId = resolveBranchId(user, branchId);
     this.logger.log(`Exporting customer report from ${from} to ${to}`);
 
-    // Return empty CSV for now
-    const csv = 'Customer Name,Total Purchases,Purchase Count,Loyalty Points\n';
+    const report = await this.reportsService.generateCustomerReport({
+      branchId: resolvedBranchId,
+      from,
+      to,
+      groupBy: _groupBy as 'day' | 'week' | 'month',
+    });
+    const csvRows = report.topCustomers.map((customer) =>
+      [
+        customer.customerName,
+        customer.totalPurchases,
+        customer.purchaseCount,
+        customer.loyaltyPoints,
+      ]
+        .map((value) => JSON.stringify(value ?? ''))
+        .join(','),
+    );
+    const csv = ['Customer Name,Total Purchases,Purchase Count,Loyalty Points', ...csvRows].join('\n');
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader(
@@ -558,15 +562,12 @@ export class ReportsController {
     const resolvedBranchId = resolveBranchId(user, branchId);
     this.logger.log(`Generating purchase report from ${from} to ${to} for branch ${resolvedBranchId}`);
 
-    // Return mock data for now
-    return {
-      totalPurchases: 0,
-      totalAmount: 0,
-      totalItems: 0,
-      bySupplier: [],
-      byProduct: [],
-      byPeriod: [],
-    };
+    return this.reportsService.generatePurchaseReport({
+      branchId: resolvedBranchId,
+      from,
+      to,
+      groupBy: _groupBy as 'day' | 'week' | 'month',
+    });
   }
 
   /**
@@ -584,10 +585,21 @@ export class ReportsController {
     @Query('format') _format: string = 'csv',
     @Res() res: Response,
   ) {
-    resolveBranchId(user, branchId);
+    const resolvedBranchId = resolveBranchId(user, branchId);
     this.logger.log(`Exporting purchase report from ${from} to ${to}`);
 
-    const csv = 'Supplier,Purchase Count,Total Amount\n';
+    const report = await this.reportsService.generatePurchaseReport({
+      branchId: resolvedBranchId,
+      from,
+      to,
+      groupBy: _groupBy as 'day' | 'week' | 'month',
+    });
+    const csvRows = report.bySupplier.map((supplier) =>
+      [supplier.supplierName, supplier.purchaseCount, supplier.totalAmount]
+        .map((value) => JSON.stringify(value ?? ''))
+        .join(','),
+    );
+    const csv = ['Supplier,Purchase Count,Total Amount', ...csvRows].join('\n');
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader(

@@ -1,11 +1,15 @@
-import { IsString, IsNumber, IsOptional, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, IsMongoId, MaxLength, IsIn } from 'class-validator';
 
 export class DailyFinancePushDto {
   @IsString()
+  @IsIn(['emr', 'lab', 'EMR', 'LAB'])
   source!: string;
 
   @IsString()
   date!: string;
+
+  @IsMongoId()
+  branchId!: string;
 
   @IsNumber()
   @Min(0)
@@ -45,5 +49,6 @@ export class DailyFinancePushDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(1000)
   notes?: string;
 }

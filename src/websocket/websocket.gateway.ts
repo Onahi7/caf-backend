@@ -18,6 +18,8 @@ import type {
   BatchUpdateEvent,
   SaleUpdateEvent,
   TransferUpdateEvent,
+  ReconciliationVarianceEvent,
+  NotificationCreatedEvent,
 } from './events.service.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { PAYMENT_METHOD_LABELS } from '../common/constants/payment-methods.constant.js';
@@ -207,6 +209,10 @@ export class WebSocketGateway
       client.data.role = payload.role;
       client.data.branchId = payload.branchId;
 
+      // Join user-specific room (for notifications)
+      await client.join(`user:${payload.sub}`);
+      this.logger.log(`Client ${client.id} joined user room: ${payload.sub}`);
+
       // Join branch-specific room if user has a branch
       if (payload.branchId) {
         await client.join(`branch:${payload.branchId}`);
@@ -385,6 +391,60 @@ export class WebSocketGateway
       },
     );
   }
+
+  /**
+   * Listen to reconciliation variance events and broadcast to branch room
+   */
+  @OnEvent('reconciliation.variance')
+  handleReconciliationVarianceEvent(event: ReconciliationVarianceEvent) {
+    this.broadcastReconciliationVariance(event.branchId, {
+      reconciliationId: event.reconciliationId,
+      branchId: event.branchId,
+      period: event.period,
+      source: event.source,
+      expectedCash: event.expectedCash,
+      actualCash: event.actualCash,
+      discrepancy: event.discrepancy,
+      severity: event.severity,
+      createdBy: event.createdBy,
+      timestamp: event.timestamp,
+    });
+  }
+
+  /**
+   * Broadcast reconciliation variance to branch room and super-admin room
+   */
+  broadcastReconciliationVariance(branchId: string, payload: ReconciliationVarianceDto) {
+    this.server.to(`branch:${branchId}`).emit('reconciliation:variance', payload);
+    this.server.to('branch:all').emit('reconciliation:variance', payload);
+    this.logger.warn(
+      `Reconciliation variance alert broadcast: branch ${branchId} period ${payload.period} discrepancy ${payload.discrepancy} (${payload.severity})`,
+    );
+  }
+
+  /**
+   * Broadcast notification to the specific user's room
+   */
+  broadcastNotification(userId: string, payload: NotificationDto) {
+    this.server.to(`user:${userId}`).emit('notification:new', payload);
+    this.logger.debug(`Broadcasted notification to user: ${userId}`);
+  }
+
+  /**
+   * Listen to notification.created events and broadcast to user
+   */
+  @OnEvent('notification.created')
+  handleNotificationCreatedEvent(event: NotificationCreatedEvent) {
+    this.broadcastNotification(event.userId, {
+      notificationId: event.notificationId,
+      type: event.type,
+      title: event.title,
+      message: event.message,
+      severity: event.severity,
+      link: event.link,
+      createdAt: event.createdAt,
+    });
+  }
 }
 
 /**
@@ -442,8 +502,31 @@ export interface TransferUpdateDto {
   sourceBranchId: string;
   destinationBranchId: string;
   productId: string;
-  batchId?: string;
+  batchId: string;
   quantity: number;
   status: 'pending' | 'approved' | 'rejected' | 'completed';
   timestamp: Date;
+}
+
+export interface ReconciliationVarianceDto {
+  reconciliationId: string;
+  branchId: string;
+  period: string;
+  source: 'caf' | 'emr' | 'lab';
+  expectedCash: number;
+  actualCash: number;
+  discrepancy: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  createdBy: string;
+  timestamp: Date;
+}
+
+export interface NotificationDto {
+  notificationId: string;
+  type: string;
+  title: string;
+  message: string;
+  severity: 'info' | 'warning' | 'error' | 'critical';
+  link?: string;
+  createdAt: Date;
 }

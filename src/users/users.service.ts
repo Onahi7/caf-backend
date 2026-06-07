@@ -65,6 +65,13 @@ export class UsersService {
     return this.usersRepository.findByBranch(branchId);
   }
 
+  async findNotificationRecipients(
+    branchId: string | undefined,
+    roles: string[],
+  ): Promise<UserDocument[]> {
+    return this.usersRepository.findNotificationRecipients(branchId, roles);
+  }
+
   async update(
     id: string,
     updateUserDto: UpdateUserDto,

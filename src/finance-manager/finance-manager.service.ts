@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectConnection } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import {
   Reconciliation, ReconciliationDocument, ReconciliationStatus,
 } from './schema/reconciliation.schema.js';
@@ -8,11 +9,14 @@ import {
   Salary, SalaryDocument, SalaryStatus,
 } from './schema/salary.schema.js';
 import {
-  CashEntry, CashEntryDocument,
+  CashEntry, CashEntryDocument, CashEntryType, CashEntryCategory,
 } from './schema/cash-entry.schema.js';
+import { EmployeeAdvanceService } from './employee-advance.service.js';
 import { CreateReconciliationDto, ReviewReconciliationDto, ReconciliationFilterDto } from './dto/reconciliation.dto.js';
 import { CreateSalaryDto, UpdateSalaryDto, SalaryFilterDto } from './dto/salary.dto.js';
 import { CreateCashEntryDto, CashEntryFilterDto } from './dto/cash-entry.dto.js';
+import { DailyFinancePushDto } from './dto/daily-finance-push.dto.js';
+import { EventsService } from '../websocket/events.service.js';
 
 
 @Injectable()
@@ -20,9 +24,12 @@ export class FinanceManagerService {
   private readonly logger = new Logger(FinanceManagerService.name);
 
   constructor(
+    @InjectConnection() private readonly connection: Connection,
     @InjectModel(Reconciliation.name) private readonly reconModel: Model<ReconciliationDocument>,
     @InjectModel(Salary.name) private readonly salaryModel: Model<SalaryDocument>,
     @InjectModel(CashEntry.name) private readonly cashModel: Model<CashEntryDocument>,
+    private readonly advanceService: EmployeeAdvanceService,
+    private readonly eventsService: EventsService,
   ) {}
 
   // ─── Reconciliation ───────────────────────────────────────
@@ -36,7 +43,31 @@ export class FinanceManagerService {
       createdBy: new Types.ObjectId(userId),
     });
     this.logger.log(`Reconciliation created: ${dto.source} ${dto.period} for branch ${dto.branchId}`);
+
+    const absDisc = Math.abs(discrepancy);
+    if (absDisc > 1) {
+      const severity = this.varianceSeverity(absDisc);
+      this.eventsService.emitReconciliationVariance({
+        reconciliationId: recon._id.toString(),
+        branchId: recon.branchId.toString(),
+        period: recon.period,
+        source: recon.source,
+        expectedCash: recon.expectedCash,
+        actualCash: recon.actualCash,
+        discrepancy: recon.discrepancy,
+        severity,
+        createdBy: userId,
+        timestamp: new Date(),
+      });
+    }
     return recon;
+  }
+
+  private varianceSeverity(abs: number): 'low' | 'medium' | 'high' | 'critical' {
+    if (abs >= 10000) return 'critical';
+    if (abs >= 1000) return 'high';
+    if (abs >= 100) return 'medium';
+    return 'low';
   }
 
   async findAllReconciliations(filter: ReconciliationFilterDto): Promise<ReconciliationDocument[]> {
@@ -66,7 +97,7 @@ export class FinanceManagerService {
     return recon.save();
   }
 
-  async getReconciliationStats(branchId: string): Promise<{
+  async getReconciliationStats(branchId?: string): Promise<{
     pending: number;
     approved: number;
     rejected: number;
@@ -144,17 +175,60 @@ export class FinanceManagerService {
     return salary.save();
   }
 
-  async markSalaryPaid(id: string, paymentDate?: string): Promise<SalaryDocument> {
+  async markSalaryPaid(id: string, paymentDate?: string, userId?: string): Promise<SalaryDocument> {
     const salary = await this.findSalaryById(id);
     if (salary.status !== SalaryStatus.APPROVED) {
       throw new BadRequestException('Salary must be approved before marking as paid');
     }
-    salary.status = SalaryStatus.PAID;
-    salary.paymentDate = paymentDate ? new Date(paymentDate) : new Date();
-    return salary.save();
+
+    const actorId = userId ?? salary.approvedBy?.toString() ?? salary.createdBy.toString();
+
+    const deduction = await this.advanceService.recordSalaryDeduction(
+      salary.employeeId.toString(),
+      salary.branchId.toString(),
+      salary.period,
+      id,
+    );
+
+    const session = await this.connection.startSession();
+    session.startTransaction();
+
+    try {
+      if (deduction.totalDeducted > 0) {
+        const netPayable = salary.netSalary;
+        const actualPayout = Math.max(0, netPayable - deduction.totalDeducted);
+        salary.deductions = (salary.deductions || 0) + deduction.totalDeducted;
+        salary.netSalary = actualPayout;
+
+        this.logger.log(
+          `Salary ${id} auto-deducted ${deduction.totalDeducted} from ${deduction.advancesUpdated} advance(s). Net payout: ${actualPayout}`,
+        );
+      }
+
+      salary.status = SalaryStatus.PAID;
+      salary.paymentDate = paymentDate ? new Date(paymentDate) : new Date();
+      const saved = await salary.save({ session });
+
+      await this.advanceService.applySalaryDeduction(
+        salary.employeeId.toString(),
+        salary.branchId.toString(),
+        deduction,
+        id,
+        actorId,
+        session,
+      );
+
+      await session.commitTransaction();
+      return saved;
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
   }
 
-  async getSalaryStats(branchId: string, period?: string): Promise<{
+  async getSalaryStats(branchId?: string, period?: string): Promise<{
     totalEmployees: number;
     totalBase: number;
     totalAllowances: number;
@@ -184,6 +258,51 @@ export class FinanceManagerService {
     ]).exec();
 
     return stats[0] || { totalEmployees: 0, totalBase: 0, totalAllowances: 0, totalDeductions: 0, totalNet: 0, pendingCount: 0, paidCount: 0 };
+  }
+
+  async previewSalaryPayroll(id: string): Promise<{
+    salaryId: string;
+    employeeId: string;
+    branchId: string;
+    period: string;
+    baseSalary: number;
+    allowances: number;
+    manualDeductions: number;
+    advanceDeduction: number;
+    netSalary: number;
+    actualPayout: number;
+    status: SalaryStatus;
+    advanceDetails: {
+      advanceId: string;
+      referenceNumber: string;
+      amountDeducted: number;
+    }[];
+  }> {
+    const salary = await this.findSalaryById(id);
+    const deduction = await this.advanceService.recordSalaryDeduction(
+      salary.employeeId.toString(),
+      salary.branchId.toString(),
+      salary.period,
+      id,
+    );
+
+    const baseNet = salary.baseSalary + (salary.allowances || 0) - (salary.deductions || 0);
+    const actualPayout = Math.max(0, baseNet - deduction.totalDeducted);
+
+    return {
+      salaryId: salary._id.toString(),
+      employeeId: salary.employeeId.toString(),
+      branchId: salary.branchId.toString(),
+      period: salary.period,
+      baseSalary: salary.baseSalary,
+      allowances: salary.allowances || 0,
+      manualDeductions: salary.deductions || 0,
+      advanceDeduction: deduction.totalDeducted,
+      netSalary: baseNet,
+      actualPayout,
+      status: salary.status,
+      advanceDetails: deduction.details,
+    };
   }
 
   // ─── Cash Entries ─────────────────────────────────────────
@@ -229,11 +348,12 @@ export class FinanceManagerService {
     return entry.save();
   }
 
-  async getCashSummary(branchId: string, startDate?: string, endDate?: string): Promise<{
+  async getCashSummary(branchId?: string, startDate?: string, endDate?: string): Promise<{
     totalIncome: number;
     totalExpense: number;
     totalTransfer: number;
     totalLoan: number;
+    totalAdvance: number;
     totalSalary: number;
     netCash: number;
     byCategory: { category: string; total: number; count: number }[];
@@ -255,6 +375,7 @@ export class FinanceManagerService {
           totalExpense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
           totalTransfer: { $sum: { $cond: [{ $eq: ['$type', 'transfer'] }, '$amount', 0] } },
           totalLoan: { $sum: { $cond: [{ $eq: ['$type', 'loan'] }, '$amount', 0] } },
+          totalAdvance: { $sum: { $cond: [{ $eq: ['$type', 'advance'] }, '$amount', 0] } },
           totalSalary: { $sum: { $cond: [{ $eq: ['$type', 'salary'] }, '$amount', 0] } },
         },
       },
@@ -272,10 +393,10 @@ export class FinanceManagerService {
       { $sort: { total: -1 } },
     ]).exec();
 
-    const s = summary[0] || { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalSalary: 0 };
+    const s = summary[0] || { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalAdvance: 0, totalSalary: 0 };
     return {
       ...s,
-      netCash: s.totalIncome - s.totalExpense - s.totalTransfer - s.totalLoan - s.totalSalary,
+      netCash: s.totalIncome - s.totalExpense - s.totalTransfer - s.totalLoan - s.totalAdvance - s.totalSalary,
       byCategory: byCategory.map((c: any) => ({ category: c._id, total: c.total, count: c.count })),
     };
   }
@@ -290,7 +411,7 @@ export class FinanceManagerService {
   }> {
     const defaultRecon = { pending: 0, approved: 0, rejected: 0, totalDiscrepancy: 0 };
     const defaultSalary = { totalEmployees: 0, totalBase: 0, totalAllowances: 0, totalDeductions: 0, totalNet: 0, pendingCount: 0, paidCount: 0 };
-    const defaultCash = { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalSalary: 0, netCash: 0, byCategory: [] as any[] };
+    const defaultCash = { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalAdvance: 0, totalSalary: 0, netCash: 0, byCategory: [] as any[] };
 
     const [reconciliation, salary, cash, recentReconciliations, recentCashEntries] = await Promise.all([
       this.getReconciliationStats(branchId).catch((e) => { this.logger.warn(`Reconciliation stats failed: ${e.message}`); return defaultRecon; }),
@@ -302,29 +423,19 @@ export class FinanceManagerService {
     return { reconciliation, salary, cash, recentReconciliations, recentCashEntries };
   }
 
-  async receiveFinancePush(dto: any, userId: string): Promise<any> {
+  async receiveFinancePush(dto: DailyFinancePushDto, userId: string): Promise<CashEntryDocument> {
     const source = dto.source?.toLowerCase();
     if (!['emr', 'lab'].includes(source)) {
       throw new BadRequestException('Source must be "emr" or "lab"');
     }
 
     const cashEntry = await this.cashModel.create({
-      type: 'income',
-      category: 'sales',
-      branchId: new Types.ObjectId(dto.source === 'emr' ? 'emr' : 'lab'),
+      type: CashEntryType.INCOME,
+      category: CashEntryCategory.SALES,
+      branchId: new Types.ObjectId(dto.branchId),
       amount: dto.totalRevenue || 0,
       description: `${source.toUpperCase()} Daily Finance Push - ${dto.date}`,
-      notes: JSON.stringify({
-        totalExpenses: dto.totalExpenses,
-        netIncome: dto.netIncome,
-        cashCollected: dto.cashCollected,
-        orangeMoneyCollected: dto.orangeMoneyCollected,
-        afrimoneyCollected: dto.afrimoneyCollected,
-        outstandingBalance: dto.outstandingBalance,
-        orderCount: dto.orderCount,
-        submittedBy: dto.submittedBy,
-        pushNotes: dto.notes,
-      }),
+      notes: dto.notes?.slice(0, 1000),
       recordedBy: new Types.ObjectId(userId),
       entryDate: new Date(dto.date),
     });

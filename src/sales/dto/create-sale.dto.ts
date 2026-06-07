@@ -151,6 +151,10 @@ export class CreateSaleDto {
   @MaxLength(30)
   customerPhone?: string;
 
+  @IsMongoId()
+  @IsOptional()
+  customerId?: string;
+
   @IsString()
   @IsOptional()
   @MaxLength(100)

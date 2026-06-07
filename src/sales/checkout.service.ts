@@ -187,6 +187,7 @@ let session;
           prescriptionStatus,
           customerName: dto.customerName,
           customerPhone: dto.customerPhone,
+          customerId: dto.customerId ? new Types.ObjectId(dto.customerId) : undefined,
           patientId: dto.patientId,
           patientName: dto.patientName,
           sourceSystem: dto.sourceSystem,
@@ -442,12 +443,6 @@ let session;
       if (dto.paymentMethod !== PaymentMethod.CREDIT) {
         throw new BadRequestException(
           'Credit sales must use the credit payment method',
-        );
-      }
-
-      if (!dto.customerName?.trim()) {
-        throw new BadRequestException(
-          'Customer name is required for credit sales',
         );
       }
 

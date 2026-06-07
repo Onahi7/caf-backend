@@ -13,6 +13,12 @@ import {
 import { Product, ProductDocument } from '../products/schemas/product.schema.js';
 import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 import {
+  PurchaseOrder,
+  PurchaseOrderDocument,
+  PurchaseOrderStatus,
+} from '../purchases/schemas/purchase-order.schema.js';
+import { Customer, CustomerDocument } from '../customers/schemas/customer.schema.js';
+import {
   SalesReportDto,
   SalesReportResult,
   SalesReportGroupBy,
@@ -47,7 +53,27 @@ export class ReportsService {
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     @InjectModel(Transfer.name) private transferModel: Model<TransferDocument>,
     @InjectModel(Branch.name) private branchModel: Model<BranchDocument>,
+    @InjectModel(PurchaseOrder.name)
+    private purchaseOrderModel: Model<PurchaseOrderDocument>,
+    @InjectModel(Customer.name) private customerModel: Model<CustomerDocument>,
   ) {}
+
+  private idFilter(id?: string) {
+    if (!id) return undefined;
+    return Types.ObjectId.isValid(id) ? { $in: [new Types.ObjectId(id), id] } : id;
+  }
+
+  private dateMatch(from?: string, to?: string) {
+    if (!from && !to) return undefined;
+    const createdAt: Record<string, Date> = {};
+    if (from) createdAt.$gte = new Date(from);
+    if (to) {
+      const end = new Date(to);
+      end.setHours(23, 59, 59, 999);
+      createdAt.$lte = end;
+    }
+    return createdAt;
+  }
 
   /**
    * Get dashboard statistics for a branch
@@ -172,7 +198,14 @@ export class ReportsService {
         expiredCount: expiredProducts.length,
         todaySales: todaySalesAmount,
         todaySalesCount,
-        totalProducts: inStockProducts.length,
+        totalProducts: products.length,
+        totalInventoryValue: products.reduce(
+          (sum, product) =>
+            sum +
+            Math.max(0, product.quantityAvailable || 0) *
+              (product.costPrice || 0),
+          0,
+        ),
         totalCustomers: activeCustomers.length,
         expiringSoon: expiringSoonProducts.length,
         lowStockProducts: lowStockProducts.length,
@@ -194,12 +227,11 @@ export class ReportsService {
 
     // Build match stage
     const matchStage: Record<string, unknown> = {};
-    if (dto.branchId) {
-      matchStage.branchId = dto.branchId;
-    }
-    if (dto.cashierId) {
-      matchStage.cashierId = dto.cashierId;
-    }
+    const branchFilter = this.idFilter(dto.branchId);
+    if (branchFilter) matchStage.branchId = branchFilter;
+
+    const cashierFilter = this.idFilter(dto.cashierId);
+    if (cashierFilter) matchStage.cashierId = cashierFilter;
     if (dto.startDate || dto.endDate) {
       matchStage.createdAt = {};
       if (dto.startDate) {
@@ -211,9 +243,8 @@ export class ReportsService {
     }
 
     // Filter by product if specified
-    if (dto.productId) {
-      matchStage['items.productId'] = dto.productId;
-    }
+    const productFilter = this.idFilter(dto.productId);
+    if (productFilter) matchStage['items.productId'] = productFilter;
 
     // Calculate summary statistics
     const summaryPipeline = [
@@ -536,6 +567,267 @@ export class ReportsService {
         ).length,
       },
       items: filteredItems,
+    };
+  }
+
+  async generateCustomerReport(dto: {
+    branchId?: string;
+    from?: string;
+    to?: string;
+    groupBy?: 'day' | 'week' | 'month';
+  }) {
+    const saleMatch: Record<string, unknown> = {
+      status: { $in: ['completed', 'partially_returned'] },
+      $or: [
+        { customerPhone: { $exists: true, $nin: [null, ''] } },
+        { customerName: { $exists: true, $nin: [null, ''] } },
+      ],
+    };
+
+    const branchFilter = this.idFilter(dto.branchId);
+    if (branchFilter) saleMatch.branchId = branchFilter;
+
+    const periodMatch = this.dateMatch(dto.from, dto.to);
+    const periodSaleMatch = { ...saleMatch };
+    if (periodMatch) periodSaleMatch.createdAt = periodMatch;
+
+    const identityExpression = {
+      $ifNull: ['$customerPhone', '$customerName'],
+    };
+
+    const [totalCustomers, activeAgg, topCustomers, periodAgg] = await Promise.all([
+      this.saleModel
+        .aggregate([
+          { $match: saleMatch },
+          { $group: { _id: identityExpression } },
+          { $count: 'count' },
+        ])
+        .then((rows) => rows[0]?.count ?? 0),
+      this.saleModel.aggregate([
+        { $match: periodSaleMatch },
+        {
+          $group: {
+            _id: identityExpression,
+            purchaseCount: { $sum: 1 },
+            totalPurchases: { $sum: '$total' },
+            customerName: { $last: '$customerName' },
+            customerPhone: { $last: '$customerPhone' },
+          },
+        },
+      ]),
+      this.saleModel.aggregate([
+        { $match: periodSaleMatch },
+        {
+          $group: {
+            _id: identityExpression,
+            customerName: { $last: '$customerName' },
+            customerPhone: { $last: '$customerPhone' },
+            totalPurchases: { $sum: '$total' },
+            purchaseCount: { $sum: 1 },
+          },
+        },
+        { $sort: { totalPurchases: -1 } },
+        { $limit: 10 },
+      ]),
+      this.saleModel.aggregate([
+        { $match: periodSaleMatch },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format:
+                  dto.groupBy === 'month'
+                    ? '%Y-%m'
+                    : dto.groupBy === 'week'
+                      ? '%G-W%V'
+                      : '%Y-%m-%d',
+                date: '$createdAt',
+              },
+            },
+            totalPurchases: { $sum: '$total' },
+            customers: { $addToSet: identityExpression },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+    ]);
+
+    const activeCustomers = activeAgg.length;
+    const segmentation = activeAgg.reduce(
+      (acc, customer) => {
+        if (customer.purchaseCount > 10) acc.highValue += 1;
+        else if (customer.purchaseCount >= 5) acc.medium += 1;
+        else if (customer.purchaseCount >= 1) acc.low += 1;
+        return acc;
+      },
+      { highValue: 0, medium: 0, low: 0, inactive: 0 },
+    );
+    segmentation.inactive = Math.max(totalCustomers - activeCustomers, 0);
+
+    const newCustomers =
+      periodMatch && !dto.branchId
+        ? await this.customerModel.countDocuments({ createdAt: periodMatch })
+        : activeCustomers;
+
+    const loyaltyByCustomer = new Map(
+      await this.customerModel
+        .find({}, { firstName: 1, lastName: 1, phone: 1, loyaltyPoints: 1 })
+        .lean()
+        .then((customers) =>
+          customers.flatMap((customer) => {
+            const name = `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim();
+            return [
+              customer.phone ? [customer.phone, customer.loyaltyPoints ?? 0] : undefined,
+              name ? [name, customer.loyaltyPoints ?? 0] : undefined,
+            ].filter(Boolean) as [string, number][];
+          }),
+        ),
+    );
+
+    return {
+      totalCustomers,
+      activeCustomers,
+      newCustomers,
+      totalLoyaltyPoints: Array.from(loyaltyByCustomer.values()).reduce(
+        (sum, points) => sum + points,
+        0,
+      ),
+      topCustomers: topCustomers.map((customer) => ({
+        customerId: String(customer._id),
+        customerName: customer.customerName || customer.customerPhone || 'Walk-in Customer',
+        totalPurchases: customer.totalPurchases,
+        purchaseCount: customer.purchaseCount,
+        loyaltyPoints: loyaltyByCustomer.get(String(customer._id)) ?? 0,
+      })),
+      byPeriod: periodAgg.map((period) => ({
+        date: period._id,
+        newCustomers: period.customers?.length ?? 0,
+        totalPurchases: period.totalPurchases,
+      })),
+      segmentation,
+    };
+  }
+
+  async generatePurchaseReport(dto: {
+    branchId?: string;
+    from?: string;
+    to?: string;
+    groupBy?: 'day' | 'week' | 'month';
+  }) {
+    const match: Record<string, unknown> = {
+      status: { $ne: PurchaseOrderStatus.CANCELLED },
+    };
+    const branchFilter = this.idFilter(dto.branchId);
+    if (branchFilter) match.branchId = branchFilter;
+    const createdAt = this.dateMatch(dto.from, dto.to);
+    if (createdAt) match.createdAt = createdAt;
+
+    const [summaryRows, bySupplier, byProduct, byPeriod] = await Promise.all([
+      this.purchaseOrderModel.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: null,
+            totalPurchases: { $sum: 1 },
+            totalAmount: { $sum: '$totalAmount' },
+            totalItems: { $sum: { $sum: '$items.quantity' } },
+          },
+        },
+      ]),
+      this.purchaseOrderModel.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: '$supplierId',
+            purchaseCount: { $sum: 1 },
+            totalAmount: { $sum: '$totalAmount' },
+          },
+        },
+        {
+          $lookup: {
+            from: 'suppliers',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'supplier',
+          },
+        },
+        { $unwind: { path: '$supplier', preserveNullAndEmptyArrays: true } },
+        { $sort: { totalAmount: -1 } },
+      ]),
+      this.purchaseOrderModel.aggregate([
+        { $match: match },
+        { $unwind: '$items' },
+        {
+          $group: {
+            _id: '$items.productId',
+            quantity: { $sum: '$items.quantity' },
+            totalAmount: {
+              $sum: { $multiply: ['$items.quantity', '$items.unitPrice'] },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: 'products',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'product',
+          },
+        },
+        { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+        { $sort: { totalAmount: -1 } },
+        { $limit: 20 },
+      ]),
+      this.purchaseOrderModel.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format:
+                  dto.groupBy === 'month'
+                    ? '%Y-%m'
+                    : dto.groupBy === 'week'
+                      ? '%G-W%V'
+                      : '%Y-%m-%d',
+                date: '$createdAt',
+              },
+            },
+            purchaseCount: { $sum: 1 },
+            amount: { $sum: '$totalAmount' },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+    ]);
+
+    const summary = summaryRows[0] ?? {
+      totalPurchases: 0,
+      totalAmount: 0,
+      totalItems: 0,
+    };
+
+    return {
+      totalPurchases: summary.totalPurchases,
+      totalAmount: summary.totalAmount,
+      totalItems: summary.totalItems,
+      bySupplier: bySupplier.map((supplier) => ({
+        supplierId: String(supplier._id),
+        supplierName: supplier.supplier?.name ?? 'Unknown Supplier',
+        purchaseCount: supplier.purchaseCount,
+        totalAmount: supplier.totalAmount,
+      })),
+      byProduct: byProduct.map((product) => ({
+        productId: String(product._id),
+        productName: product.product?.name ?? 'Unknown Product',
+        quantity: product.quantity,
+        totalAmount: product.totalAmount,
+      })),
+      byPeriod: byPeriod.map((period) => ({
+        date: period._id,
+        purchaseCount: period.purchaseCount,
+        amount: period.amount,
+      })),
     };
   }
 

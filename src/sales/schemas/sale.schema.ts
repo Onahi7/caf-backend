@@ -275,6 +275,9 @@ export class Sale {
   @Prop()
   customerPhone?: string;
 
+  @Prop({ type: Types.ObjectId, ref: 'Customer', index: true })
+  customerId?: Types.ObjectId;
+
   /**
    * Patient linkage (for EMR/LAB pharmacy sales)
    */

@@ -20,7 +20,7 @@ export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.MARKETER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.FINANCE_MANAGER, UserRole.MARKETER)
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
   async create(
@@ -34,6 +34,7 @@ export class FinanceController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
+    UserRole.FINANCE_MANAGER,
     UserRole.AUDITOR,
     UserRole.MARKETER,
   )
@@ -48,6 +49,7 @@ export class FinanceController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
+    UserRole.FINANCE_MANAGER,
     UserRole.AUDITOR,
     UserRole.MARKETER,
   )

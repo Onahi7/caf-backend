@@ -63,6 +63,26 @@ export class UsersRepository {
       .exec();
   }
 
+  /**
+   * Find users who should receive notifications for a given branch + role list.
+   * - If branchId is given, returns users in that branch with the specified roles.
+   * - If branchId is undefined, returns super_admins (cross-branch notifications).
+   */
+  async findNotificationRecipients(
+    branchId: string | undefined,
+    roles: string[],
+  ): Promise<UserDocument[]> {
+    const roleQuery = { $in: roles };
+    if (branchId) {
+      return this.userModel
+        .find({ branchId: new Types.ObjectId(branchId), role: roleQuery, isActive: { $ne: false } })
+        .exec();
+    }
+    return this.userModel
+      .find({ role: roleQuery, isActive: { $ne: false } })
+      .exec();
+  }
+
   async update(
     id: string,
     updateUserDto: UpdateUserDto,

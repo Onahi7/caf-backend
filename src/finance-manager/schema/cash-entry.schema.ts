@@ -9,6 +9,7 @@ export enum CashEntryType {
   TRANSFER = 'transfer',
   LOAN = 'loan',
   SALARY = 'salary',
+  ADVANCE = 'advance',
   OTHER = 'other',
 }
 
@@ -25,6 +26,7 @@ export enum CashEntryCategory {
   INSURANCE = 'insurance',
   TAX = 'tax',
   PETTY_CASH = 'petty_cash',
+  STAFF_ADVANCE = 'staff_advance',
   OTHER = 'other',
 }
 

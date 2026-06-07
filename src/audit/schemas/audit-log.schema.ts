@@ -30,6 +30,12 @@ export enum AuditResource {
   REPORT = 'report',
   EXPENSE = 'expense',
   PROMOTION = 'promotion',
+  SALARY = 'salary',
+  RECONCILIATION = 'reconciliation',
+  LOAN = 'loan',
+  ADVANCE = 'advance',
+  CASH_ENTRY = 'cash_entry',
+  WEBAUTHN_CREDENTIAL = 'webauthn_credential',
 }
 
 @Schema({ timestamps: true, collection: 'audit_logs' })

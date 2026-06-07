@@ -44,6 +44,26 @@ export class EventsService {
     this.logger.debug(`Emitting transfer update event: ${data.transferId}`);
     this.eventEmitter.emit('transfer.updated', data);
   }
+
+  /**
+   * Emit reconciliation variance event when discrepancy exceeds threshold
+   */
+  emitReconciliationVariance(data: ReconciliationVarianceEvent) {
+    this.logger.warn(
+      `Emitting reconciliation variance alert: branch ${data.branchId} period ${data.period} discrepancy ${data.discrepancy}`,
+    );
+    this.eventEmitter.emit('reconciliation.variance', data);
+  }
+
+  /**
+   * Emit notification created event (for in-app bell)
+   */
+  emitNotificationCreated(data: NotificationCreatedEvent) {
+    this.logger.debug(
+      `Emitting notification created: type=${data.type} user=${data.userId}`,
+    );
+    this.eventEmitter.emit('notification.created', data);
+  }
 }
 
 /**
@@ -94,4 +114,29 @@ export interface TransferUpdateEvent {
   quantity: number;
   status: 'pending' | 'approved' | 'rejected' | 'completed';
   timestamp: Date;
+}
+
+export interface ReconciliationVarianceEvent {
+  reconciliationId: string;
+  branchId: string;
+  period: string;
+  source: 'caf' | 'emr' | 'lab';
+  expectedCash: number;
+  actualCash: number;
+  discrepancy: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  createdBy: string;
+  timestamp: Date;
+}
+
+export interface NotificationCreatedEvent {
+  notificationId: string;
+  userId: string;
+  branchId?: string;
+  type: string;
+  title: string;
+  message: string;
+  severity: 'info' | 'warning' | 'error' | 'critical';
+  link?: string;
+  createdAt: Date;
 }

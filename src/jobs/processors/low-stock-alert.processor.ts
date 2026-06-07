@@ -7,6 +7,10 @@ import {
 } from '../../inventory/inventory.service.js';
 import { BranchesService } from '../../branches/branches.service.js';
 import { EventsService } from '../../websocket/events.service.js';
+import { NotificationsService } from '../../notifications/notifications.service.js';
+import { UsersService } from '../../users/users.service.js';
+import { UserRole } from '../../users/schemas/user.schema.js';
+import { NotificationSeverity, NotificationType } from '../../notifications/schemas/notification.schema.js';
 
 /**
  * LowStockAlertProcessor
@@ -22,6 +26,8 @@ export class LowStockAlertProcessor {
     private readonly inventoryService: InventoryService,
     private readonly branchesService: BranchesService,
     private readonly eventsService: EventsService,
+    private readonly notificationsService: NotificationsService,
+    private readonly usersService: UsersService,
   ) {}
 
   /**
@@ -55,6 +61,9 @@ export class LowStockAlertProcessor {
 
       // Emit alerts via WebSocket (grouped by branch)
       await this.emitAlerts(allAlerts);
+
+      // Create in-app notifications for branch managers and super admins
+      await this.createNotifications(allAlerts);
 
       this.logger.log(
         `Low stock check completed. Generated ${allAlerts.length} alerts`,
@@ -94,6 +103,104 @@ export class LowStockAlertProcessor {
         updateType: 'adjustment',
         timestamp: new Date(),
       });
+    }
+  }
+
+  /**
+   * Create in-app notifications for branch managers (per-branch) and super admins (cross-branch).
+   * Uses upsert-by-resource so a low-stock product doesn't spam multiple notifications.
+   */
+  private async createNotifications(alerts: LowStockAlert[]) {
+    if (alerts.length === 0) return;
+
+    // Group by branch
+    const byBranch = new Map<string, LowStockAlert[]>();
+    for (const a of alerts) {
+      const list = byBranch.get(a.branchId) || [];
+      list.push(a);
+      byBranch.set(a.branchId, list);
+    }
+
+    // Recipients: branch managers per branch + all super admins
+    const superAdmins = await this.usersService.findNotificationRecipients(
+      undefined,
+      [UserRole.SUPER_ADMIN],
+    );
+
+    for (const [branchId, branchAlerts] of byBranch) {
+      const branchManagers = await this.usersService.findNotificationRecipients(
+        branchId,
+        [UserRole.BRANCH_MANAGER],
+      );
+      const recipients = [...branchManagers, ...superAdmins];
+      if (recipients.length === 0) continue;
+
+      const top = branchAlerts[0];
+      const total = branchAlerts.length;
+      const message =
+        total === 1
+          ? `${top.productName} is below reorder level (${top.currentStock} / ${top.reorderLevel})`
+          : `${total} products are below reorder level in this branch (top: ${top.productName} — ${top.currentStock}/${top.reorderLevel})`;
+
+      for (const user of recipients) {
+        for (const alert of branchAlerts.slice(0, 5)) {
+          // Limit to top 5 to avoid spam
+          try {
+            await this.notificationsService.create({
+              userId: user._id.toString(),
+              branchId,
+              type: NotificationType.LOW_STOCK,
+              severity:
+                alert.currentStock <= 0
+                  ? NotificationSeverity.CRITICAL
+                  : NotificationSeverity.WARNING,
+              title: alert.currentStock <= 0 ? 'Out of stock' : 'Low stock',
+              message: `${alert.productName} — ${alert.currentStock} left (reorder at ${alert.reorderLevel})`,
+              link: '/admin/inventory',
+              resourceId: alert.productId,
+              resourceType: 'Product',
+              metadata: {
+                currentStock: alert.currentStock,
+                reorderLevel: alert.reorderLevel,
+                branchName: alert.branchName,
+              },
+            });
+          } catch (err) {
+            this.logger.warn(
+              `Failed to create low-stock notification: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+        // Aggregate summary notification
+        if (total > 1) {
+          try {
+            await this.notificationsService.create({
+              userId: user._id.toString(),
+              branchId,
+              type: NotificationType.LOW_STOCK,
+              severity: NotificationSeverity.WARNING,
+              title: `${total} low-stock products`,
+              message,
+              link: '/admin/inventory',
+              resourceId: undefined,
+              resourceType: 'LowStockSummary',
+              metadata: {
+                branchId,
+                count: total,
+                productIds: branchAlerts.map((a) => a.productId),
+              },
+            });
+          } catch (err) {
+            this.logger.warn(
+              `Failed to create low-stock summary: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+      }
     }
   }
 }

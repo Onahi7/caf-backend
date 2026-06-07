@@ -37,6 +37,9 @@ export class MarketerSale {
   @Prop()
   customerPhone?: string;
 
+  @Prop({ type: Types.ObjectId, ref: 'Customer', index: true })
+  customerId?: Types.ObjectId;
+
   @Prop()
   notes?: string;
 

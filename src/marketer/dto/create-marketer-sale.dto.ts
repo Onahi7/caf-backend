@@ -19,6 +19,10 @@ export class CreateMarketerSaleDto {
   customerPhone?: string;
 
   @IsOptional()
+  @IsMongoId()
+  customerId?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(300)
   notes?: string;

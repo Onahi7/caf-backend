@@ -16,6 +16,11 @@ import {
   StockMovement,
   StockMovementSchema,
 } from '../inventory/schemas/stock-movement.schema.js';
+import {
+  PurchaseOrder,
+  PurchaseOrderSchema,
+} from '../purchases/schemas/purchase-order.schema.js';
+import { Customer, CustomerSchema } from '../customers/schemas/customer.schema.js';
 
 @Module({
   imports: [
@@ -26,6 +31,8 @@ import {
       { name: Branch.name, schema: BranchSchema },
       { name: Transfer.name, schema: TransferSchema },
       { name: StockMovement.name, schema: StockMovementSchema },
+      { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
+      { name: Customer.name, schema: CustomerSchema },
     ]),
   ],
   controllers: [ReportsController],
