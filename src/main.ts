@@ -8,6 +8,26 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+
+  // Prevent unhandled Redis/connection errors from crashing the process
+  process.on('unhandledRejection', (reason: unknown) => {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    if (msg.includes('max requests limit') || msg.includes('ECONNREFUSED') || msg.includes('ReplyError') || msg.includes('SimpleError')) {
+      logger.warn(`Suppressed unhandled Redis error: ${msg}`);
+      return;
+    }
+    logger.error(`Unhandled rejection: ${msg}`, reason instanceof Error ? reason.stack : undefined);
+  });
+
+  process.on('uncaughtException', (err: Error) => {
+    const msg = err?.message ?? '';
+    if (msg.includes('max requests limit') || msg.includes('ReplyError') || msg.includes('SimpleError')) {
+      logger.warn(`Suppressed uncaught Redis exception: ${msg}`);
+      return;
+    }
+    logger.error(`Uncaught exception: ${msg}`, err.stack);
+  });
+
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 

@@ -142,18 +142,19 @@ export class WebSocketGateway
       const redisPassword = this.configService.get<string>('REDIS_PASSWORD');
 
       this.pubClient = redisUrl
-        ? createClient({ url: redisUrl })
+        ? createClient({ url: redisUrl, disableOfflineQueue: true })
         : createClient({
             socket:
               this.configService.get<string>('REDIS_TLS') === 'true'
                 ? { host: redisHost, port: redisPort, tls: true }
                 : { host: redisHost, port: redisPort },
             password: redisPassword,
+            disableOfflineQueue: true,
           });
 
       this.subClient = this.pubClient.duplicate();
 
-      // Handle Redis connection errors
+      // Handle Redis connection errors — log but do not propagate
       this.pubClient.on('error', (err: Error) => {
         this.logger.error('Redis Pub Client Error:', err);
       });
@@ -162,7 +163,7 @@ export class WebSocketGateway
         this.logger.error('Redis Sub Client Error:', err);
       });
 
-      // Connect Redis clients
+      // Connect Redis clients — if this fails, skip Redis adapter gracefully
       await Promise.all([this.pubClient.connect(), this.subClient.connect()]);
 
       // Set up Redis adapter for Socket.io
@@ -177,7 +178,10 @@ export class WebSocketGateway
 
       this.logger.log('Redis adapter configured for Socket.io');
     } catch (error) {
-      this.logger.error('Failed to initialize Redis adapter:', error);
+      this.logger.error('Failed to initialize Redis adapter — running without Redis:', error);
+      // Clean up partially connected clients
+      try { this.pubClient?.disconnect?.(); } catch {}
+      try { this.subClient?.disconnect?.(); } catch {}
       // Continue without Redis adapter (single instance mode)
     }
   }

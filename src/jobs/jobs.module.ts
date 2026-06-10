@@ -70,9 +70,13 @@ export class JobsModule {
               redis: {
                 ...redisOptions,
                 maxRetriesPerRequest: 1,
-                enableReadyCheck: false,
-                enableOfflineQueue: true,
+                enableReadyCheck: true,
+                enableOfflineQueue: false,
                 connectTimeout: 5000,
+                retryStrategy: (times: number) => {
+                  if (times > 3) return null;
+                  return Math.min(times * 50, 2000);
+                },
               },
               defaultJobOptions: {
                 removeOnComplete: 100,
