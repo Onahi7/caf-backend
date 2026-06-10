@@ -134,24 +134,13 @@ export class WebSocketGateway
       const redisUrl =
         this.configService.get<string>('REDIS_URL') ||
         this.configService.get<string>('KV_URL');
-      const redisHost = this.configService.get<string>(
-        'REDIS_HOST',
-        'localhost',
-      );
-      const redisPort = this.configService.get<number>('REDIS_PORT', 6379);
-      const redisPassword = this.configService.get<string>('REDIS_PASSWORD');
 
-      this.pubClient = redisUrl
-        ? createClient({ url: redisUrl, disableOfflineQueue: true })
-        : createClient({
-            socket:
-              this.configService.get<string>('REDIS_TLS') === 'true'
-                ? { host: redisHost, port: redisPort, tls: true }
-                : { host: redisHost, port: redisPort },
-            password: redisPassword,
-            disableOfflineQueue: true,
-          });
+      if (!redisUrl) {
+        this.logger.log('No Redis URL configured - running in single instance mode');
+        return;
+      }
 
+      this.pubClient = createClient({ url: redisUrl, disableOfflineQueue: true });
       this.subClient = this.pubClient.duplicate();
 
       // Handle Redis connection errors — log but do not propagate
@@ -178,10 +167,13 @@ export class WebSocketGateway
 
       this.logger.log('Redis adapter configured for Socket.io');
     } catch (error) {
-      this.logger.error('Failed to initialize Redis adapter — running without Redis:', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to initialize Redis adapter — running without Redis: ${msg}`);
       // Clean up partially connected clients
-      try { this.pubClient?.disconnect?.(); } catch {}
-      try { this.subClient?.disconnect?.(); } catch {}
+      try { await this.pubClient?.disconnect?.(); } catch {}
+      try { await this.subClient?.disconnect?.(); } catch {}
+      this.pubClient = undefined as any;
+      this.subClient = undefined as any;
       // Continue without Redis adapter (single instance mode)
     }
   }

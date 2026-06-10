@@ -9,23 +9,33 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
-  // Prevent unhandled Redis/connection errors from crashing the process
+  // Prevent unhandled Redis/connection errors from crashing the process.
+  // When registered, Node.js will NOT auto-exit on uncaughtException.
+  const isRedisError = (msg: string) =>
+    msg.includes('max requests limit') ||
+    msg.includes('ECONNREFUSED') ||
+    msg.includes('ReplyError') ||
+    msg.includes('SimpleError') ||
+    msg.includes('Connection');
+
   process.on('unhandledRejection', (reason: unknown) => {
     const msg = reason instanceof Error ? reason.message : String(reason);
-    if (msg.includes('max requests limit') || msg.includes('ECONNREFUSED') || msg.includes('ReplyError') || msg.includes('SimpleError')) {
-      logger.warn(`Suppressed unhandled Redis error: ${msg}`);
+    if (isRedisError(msg)) {
+      logger.warn(`Suppressed unhandled Redis rejection: ${msg}`);
       return;
     }
     logger.error(`Unhandled rejection: ${msg}`, reason instanceof Error ? reason.stack : undefined);
   });
 
   process.on('uncaughtException', (err: Error) => {
-    const msg = err?.message ?? '';
-    if (msg.includes('max requests limit') || msg.includes('ReplyError') || msg.includes('SimpleError')) {
+    const msg = err?.message ?? String(err);
+    if (isRedisError(msg)) {
       logger.warn(`Suppressed uncaught Redis exception: ${msg}`);
       return;
     }
     logger.error(`Uncaught exception: ${msg}`, err.stack);
+    // For non-Redis errors, let the default handler run
+    process.exit(1);
   });
 
   const app = await NestFactory.create(AppModule);
