@@ -29,6 +29,20 @@ export class ReconciliationItem {
 
 export const ReconciliationItemSchema = SchemaFactory.createForClass(ReconciliationItem);
 
+@Schema({ _id: false })
+export class PaymentBreakdown {
+  @Prop({ default: 0, min: 0 })
+  cash!: number;
+
+  @Prop({ default: 0, min: 0 })
+  orangeMoney!: number;
+
+  @Prop({ default: 0, min: 0 })
+  afrimoney!: number;
+}
+
+export const PaymentBreakdownSchema = SchemaFactory.createForClass(PaymentBreakdown);
+
 @Schema({ timestamps: true })
 export class Reconciliation {
   @Prop({ required: true, enum: ReconciliationSource, index: true })
@@ -57,6 +71,15 @@ export class Reconciliation {
 
   @Prop({ default: false })
   hasDiscrepancy!: boolean;
+
+  @Prop({ type: PaymentBreakdownSchema })
+  expectedPaymentBreakdown?: PaymentBreakdown;
+
+  @Prop({ type: PaymentBreakdownSchema })
+  actualPaymentBreakdown?: PaymentBreakdown;
+
+  @Prop({ type: PaymentBreakdownSchema })
+  paymentDiscrepancy?: PaymentBreakdown;
 
   @Prop({ required: true, enum: ReconciliationStatus, default: ReconciliationStatus.PENDING })
   status!: ReconciliationStatus;

@@ -35,13 +35,26 @@ export class FinanceManagerService {
   // ─── Reconciliation ───────────────────────────────────────
   async createReconciliation(dto: CreateReconciliationDto, userId: string): Promise<ReconciliationDocument> {
     const discrepancy = dto.actualCash - dto.expectedCash;
-    const recon = await this.reconModel.create({
+
+    const createData: Record<string, any> = {
       ...dto,
       items: dto.items || [],
       discrepancy,
       hasDiscrepancy: Math.abs(discrepancy) > 0.01,
       createdBy: new Types.ObjectId(userId),
-    });
+    };
+
+    if (dto.expectedPaymentBreakdown && dto.actualPaymentBreakdown) {
+      createData.expectedPaymentBreakdown = dto.expectedPaymentBreakdown;
+      createData.actualPaymentBreakdown = dto.actualPaymentBreakdown;
+      createData.paymentDiscrepancy = {
+        cash: (dto.actualPaymentBreakdown.cash || 0) - (dto.expectedPaymentBreakdown.cash || 0),
+        orangeMoney: (dto.actualPaymentBreakdown.orangeMoney || 0) - (dto.expectedPaymentBreakdown.orangeMoney || 0),
+        afrimoney: (dto.actualPaymentBreakdown.afrimoney || 0) - (dto.expectedPaymentBreakdown.afrimoney || 0),
+      };
+    }
+
+    const recon = await this.reconModel.create(createData);
     this.logger.log(`Reconciliation created: ${dto.source} ${dto.period} for branch ${dto.branchId}`);
 
     const absDisc = Math.abs(discrepancy);
@@ -76,11 +89,11 @@ export class FinanceManagerService {
     if (filter.source) query.source = filter.source;
     if (filter.period) query.period = filter.period;
     if (filter.status) query.status = filter.status;
-    return this.reconModel.find(query).sort({ createdAt: -1 }).populate('createdBy', 'firstName lastName').populate('reviewedBy', 'firstName lastName').exec();
+    return this.reconModel.find(query).sort({ createdAt: -1 }).populate('createdBy', 'firstName lastName').populate('reviewedBy', 'firstName lastName').populate('branchId', 'name').exec();
   }
 
   async findReconciliationById(id: string): Promise<ReconciliationDocument> {
-    const recon = await this.reconModel.findById(id).populate('createdBy', 'firstName lastName').populate('reviewedBy', 'firstName lastName').exec();
+    const recon = await this.reconModel.findById(id).populate('createdBy', 'firstName lastName').populate('reviewedBy', 'firstName lastName').populate('branchId', 'name').exec();
     if (!recon) throw new NotFoundException(`Reconciliation ${id} not found`);
     return recon;
   }
@@ -94,6 +107,23 @@ export class FinanceManagerService {
     recon.reviewedBy = new Types.ObjectId(userId);
     recon.reviewedAt = new Date();
     if (dto.reviewNotes) recon.reviewNotes = dto.reviewNotes;
+
+    if (dto.actualCash !== undefined) {
+      recon.actualCash = dto.actualCash;
+      recon.discrepancy = dto.actualCash - recon.expectedCash;
+      recon.hasDiscrepancy = Math.abs(recon.discrepancy) > 0.01;
+    }
+
+    if (dto.actualPaymentBreakdown) {
+      recon.actualPaymentBreakdown = dto.actualPaymentBreakdown as any;
+      const expected = recon.expectedPaymentBreakdown || { cash: 0, orangeMoney: 0, afrimoney: 0 };
+      recon.paymentDiscrepancy = {
+        cash: (dto.actualPaymentBreakdown.cash || 0) - (expected.cash || 0),
+        orangeMoney: (dto.actualPaymentBreakdown.orangeMoney || 0) - (expected.orangeMoney || 0),
+        afrimoney: (dto.actualPaymentBreakdown.afrimoney || 0) - (expected.afrimoney || 0),
+      } as any;
+    }
+
     return recon.save();
   }
 

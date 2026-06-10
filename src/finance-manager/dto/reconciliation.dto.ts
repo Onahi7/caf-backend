@@ -15,6 +15,23 @@ export class ReconciliationItemDto {
   reference?: string;
 }
 
+export class PaymentBreakdownDto {
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  cash?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  orangeMoney?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  afrimoney?: number;
+}
+
 export class CreateReconciliationDto {
   @IsEnum(ReconciliationSource)
   source!: ReconciliationSource;
@@ -46,6 +63,16 @@ export class CreateReconciliationDto {
   @IsOptional()
   items?: ReconciliationItemDto[];
 
+  @ValidateNested()
+  @Type(() => PaymentBreakdownDto)
+  @IsOptional()
+  expectedPaymentBreakdown?: PaymentBreakdownDto;
+
+  @ValidateNested()
+  @Type(() => PaymentBreakdownDto)
+  @IsOptional()
+  actualPaymentBreakdown?: PaymentBreakdownDto;
+
   @IsString()
   @IsOptional()
   notes?: string;
@@ -58,6 +85,15 @@ export class ReviewReconciliationDto {
   @IsString()
   @IsOptional()
   reviewNotes?: string;
+
+  @ValidateNested()
+  @Type(() => PaymentBreakdownDto)
+  @IsOptional()
+  actualPaymentBreakdown?: PaymentBreakdownDto;
+
+  @IsNumber()
+  @IsOptional()
+  actualCash?: number;
 }
 
 export class ReconciliationFilterDto {
