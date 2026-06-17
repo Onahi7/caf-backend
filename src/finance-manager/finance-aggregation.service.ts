@@ -433,9 +433,16 @@ export class FinanceAggregationService {
 
   private async getCreditOutstanding(branchFilter: Record<string, any>): Promise<UnifiedDashboard['creditOutstanding']> {
     const emrLabFilter = { terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] } };
+    const openCreditFilter = {
+      ...branchFilter,
+      ...emrLabFilter,
+      saleType: 'credit',
+      paymentStatus: { $in: ['unpaid', 'partial', 'overdue'] },
+      balanceDue: { $gt: 0 },
+    };
     const [result, overdue] = await Promise.all([
       this.saleModel.aggregate([
-        { $match: { ...branchFilter, ...emrLabFilter, saleType: 'credit' } },
+        { $match: openCreditFilter },
         {
           $group: {
             _id: null,
@@ -446,7 +453,12 @@ export class FinanceAggregationService {
         },
       ]).exec(),
       this.saleModel.aggregate([
-        { $match: { ...branchFilter, ...emrLabFilter, saleType: 'credit', paymentStatus: 'overdue' } },
+        {
+          $match: {
+            ...openCreditFilter,
+            dueDate: { $lt: new Date() },
+          },
+        },
         {
           $group: {
             _id: null,
@@ -472,10 +484,12 @@ export class FinanceAggregationService {
     totalOutstanding: number;
     openInvoiceCount: number;
     buckets: {
+      bucket: string;
       label: string;
       range: { from: number; to: number | null };
       count: number;
       amount: number;
+      totalOutstanding: number;
     }[];
   }> {
     const emrLabFilter = { terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] } };
@@ -488,10 +502,10 @@ export class FinanceAggregationService {
     };
 
     const ranges = [
-      { label: '0-30 days', min: 0, max: 30 },
-      { label: '31-60 days', min: 31, max: 60 },
-      { label: '61-90 days', min: 61, max: 90 },
-      { label: '90+ days', min: 91, max: null as number | null },
+      { bucket: '0_30', label: '0-30 days', min: 0, max: 30 },
+      { bucket: '31_60', label: '31-60 days', min: 31, max: 60 },
+      { bucket: '61_90', label: '61-90 days', min: 61, max: 90 },
+      { bucket: '90_plus', label: '90+ days', min: 91, max: null as number | null },
     ];
 
     const buckets = await Promise.all(
@@ -519,10 +533,12 @@ export class FinanceAggregationService {
           },
         ]).exec();
         return {
+          bucket: range.bucket,
           label: range.label,
           range: { from: range.min, to: range.max },
           count: result?.count ?? 0,
           amount: result?.amount ?? 0,
+          totalOutstanding: result?.amount ?? 0,
         };
       }),
     );

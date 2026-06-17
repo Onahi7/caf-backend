@@ -2,9 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SalesController } from './sales.controller.js';
 import { SalesService } from './sales.service.js';
 import { CheckoutService } from './checkout.service.js';
+import { ReceiptService } from './receipt.service.js';
 import { PaymentMethod } from './schemas/sale.schema.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { getPaymentMethodLabel } from '../common/constants/payment-methods.constant.js';
+import { RedisService } from '../redis/redis.service.js';
+import { EmailService } from '../email/email.service.js';
 
 /**
  * Unit tests for SalesController
@@ -58,11 +61,22 @@ describe('SalesController', () => {
       checkStockAvailability: jest.fn(),
     };
 
+    const mockRedisService = {
+      get: jest.fn(),
+      set: jest.fn(),
+      del: jest.fn(),
+    };
+    const mockReceiptService = {};
+    const mockEmailService = {};
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SalesController],
       providers: [
         { provide: SalesService, useValue: mockSalesService },
         { provide: CheckoutService, useValue: mockCheckoutService },
+        { provide: RedisService, useValue: mockRedisService },
+        { provide: ReceiptService, useValue: mockReceiptService },
+        { provide: EmailService, useValue: mockEmailService },
       ],
     }).compile();
 
@@ -164,7 +178,14 @@ describe('SalesController', () => {
       salesService.findAll.mockResolvedValue([mockSale, mockSale] as any);
 
       // Act
-      const result = await controller.findAll({});
+      const result = await controller.findAll(
+        {
+          userId: '507f1f77bcf86cd799439014',
+          username: 'admin',
+          role: 'super_admin',
+        },
+        {},
+      );
 
       // Assert
       expect(result.data).toHaveLength(2);
