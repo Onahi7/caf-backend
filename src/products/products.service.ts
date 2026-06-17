@@ -10,7 +10,7 @@ import { ProductsRepository } from './products.repository.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { ProductSearchDto } from './dto/product-search.dto.js';
-import { Product, ProductDocument } from './schemas/product.schema.js';
+import { type ProductDocument } from './schemas/product.schema.js';
 import { Batch, BatchDocument } from '../batches/schemas/batch.schema.js';
 import { StockMovement, MovementType } from '../inventory/schemas/stock-movement.schema.js';
 import { InventoryService } from '../inventory/inventory.service.js';
@@ -26,7 +26,6 @@ export class ProductsService {
     private readonly auditService: AuditService,
     private readonly usersService: UsersService,
     @InjectConnection() private readonly connection: Connection,
-    @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
     @InjectModel(Batch.name) private readonly batchModel: Model<BatchDocument>,
     @InjectModel(StockMovement.name) private readonly stockMovementModel: Model<StockMovement>,
   ) {}
