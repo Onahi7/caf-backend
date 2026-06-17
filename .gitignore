@@ -56,3 +56,6 @@ DOCUMENTATION.md
 *.swp
 *.swo
 *~
+
+# Generated exports
+products-export-*.xlsx
