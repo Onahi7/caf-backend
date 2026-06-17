@@ -308,3 +308,4 @@ SaleSchema.index({ shiftId: 1, createdAt: -1 });
 SaleSchema.index({ cashierId: 1, createdAt: -1 });
 SaleSchema.index({ branchId: 1, status: 1 });
 SaleSchema.index({ branchId: 1, saleType: 1, paymentStatus: 1 });
+SaleSchema.index({ terminalId: 1 });

@@ -160,11 +160,31 @@ async function bootstrap() {
     },
   });
 
+  // Protect Swagger in production with basic auth
+  if (process.env.NODE_ENV === 'production') {
+    const swaggerUser = configService.get<string>('SWAGGER_USER', 'admin');
+    const swaggerPass = configService.get<string>('SWAGGER_PASS', 'carefarm-docs-2026');
+    app.use('/docs', (req: any, res: any, next: any) => {
+      const auth = req.headers.authorization;
+      if (!auth || !auth.startsWith('Basic ')) {
+        res.setHeader('WWW-Authenticate', 'Basic realm="API Docs"');
+        return res.status(401).send('Authentication required');
+      }
+      const decoded = Buffer.from(auth.split(' ')[1], 'base64').toString();
+      const [user, pass] = decoded.split(':');
+      if (user !== swaggerUser || pass !== swaggerPass) {
+        res.setHeader('WWW-Authenticate', 'Basic realm="API Docs"');
+        return res.status(401).send('Invalid credentials');
+      }
+      next();
+    });
+  }
+
   await app.listen(port);
 
-  logger.log(`🚀 Application is running on: http://localhost:${port}`);
-  logger.log(`🌐 CORS enabled for: ${allAllowedOrigins.join(', ')}`);
-  logger.log(`📡 API endpoint: http://localhost:${port}/api`);
-  logger.log(`📖 Swagger docs: http://localhost:${port}/docs`);
+  logger.log(`[server] Application is running on: http://localhost:${port}`);
+  logger.log(`[cors] CORS enabled for: ${allAllowedOrigins.join(', ')}`);
+  logger.log(`[api] API endpoint: http://localhost:${port}/api`);
+  logger.log(`[docs] Swagger docs: http://localhost:${port}/docs`);
 }
 bootstrap();

@@ -65,6 +65,13 @@ export class BatchesService {
       );
     }
 
+    // Warn if selling price is below purchase price
+    if (createBatchDto.sellingPrice < createBatchDto.purchasePrice) {
+      throw new BadRequestException(
+        `Selling price (${createBatchDto.sellingPrice}) is below purchase price (${createBatchDto.purchasePrice}). This would result in a loss.`,
+      );
+    }
+
     const session = await this.connection.startSession();
     let batch: BatchDocument | undefined;
     try {
@@ -84,9 +91,6 @@ export class BatchesService {
             $set: {
               supplierId: new Types.ObjectId(createBatchDto.supplierId),
               expiryDate,
-              costPrice: createBatchDto.purchasePrice,
-              basePrice: createBatchDto.sellingPrice,
-              suggestedRetailPrice: createBatchDto.sellingPrice,
             },
           },
           { new: true, session },

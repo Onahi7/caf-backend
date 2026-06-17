@@ -249,10 +249,13 @@ export class PricingService {
       (r) => r.markupPercentage > 0,
     ).length;
     const averageMarkup =
-      results.reduce((sum, r) => sum + (r.markupPercentage || 0), 0) /
-      totalProducts;
+      totalProducts > 0
+        ? results.reduce((sum, r) => sum + (r.markupPercentage || 0), 0) / totalProducts
+        : 0;
     const averageSellingPrice =
-      results.reduce((sum, r) => sum + r.avgSellingPrice, 0) / totalProducts;
+      totalProducts > 0
+        ? results.reduce((sum, r) => sum + r.avgSellingPrice, 0) / totalProducts
+        : 0;
 
     const priceRanges = [
       {

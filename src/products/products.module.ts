@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Product, ProductSchema } from './schemas/product.schema.js';
 import { Batch, BatchSchema } from '../batches/schemas/batch.schema.js';
+import { StockMovement, StockMovementSchema } from '../inventory/schemas/stock-movement.schema.js';
 import { ProductsRepository } from './products.repository.js';
 import { ProductsService } from './products.service.js';
 import { ProductsController } from './products.controller.js';
@@ -19,6 +20,7 @@ import { SuppliersModule } from '../suppliers/suppliers.module.js';
     MongooseModule.forFeature([
       { name: Product.name, schema: ProductSchema },
       { name: Batch.name, schema: BatchSchema },
+      { name: StockMovement.name, schema: StockMovementSchema },
     ]),
     InventoryModule,
     AuditModule,

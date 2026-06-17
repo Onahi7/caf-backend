@@ -13,6 +13,7 @@ import { FinanceTransaction, FinanceTransactionSchema } from '../finance/schemas
 import { MarketerSale, MarketerSaleSchema } from '../marketer/schemas/marketer-sale.schema.js';
 import { MarketerProductAssignment, MarketerProductAssignmentSchema } from '../marketer/schemas/marketer-product-assignment.schema.js';
 import { PurchaseOrder, PurchaseOrderSchema } from '../purchases/schemas/purchase-order.schema.js';
+import { Branch, BranchSchema } from '../branches/schemas/branch.schema.js';
 import { StockMovement, StockMovementSchema } from '../inventory/schemas/stock-movement.schema.js';
 import { FinanceManagerService } from './finance-manager.service.js';
 import { FinanceAggregationService } from './finance-aggregation.service.js';
@@ -42,6 +43,7 @@ import { AuditModule } from '../audit/audit.module.js';
       { name: MarketerSale.name, schema: MarketerSaleSchema },
       { name: MarketerProductAssignment.name, schema: MarketerProductAssignmentSchema },
       { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
+      { name: Branch.name, schema: BranchSchema },
       { name: StockMovement.name, schema: StockMovementSchema },
     ]),
   ],

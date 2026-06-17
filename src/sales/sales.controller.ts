@@ -158,6 +158,8 @@ export class SalesController {
 
   @Post(':id/payments')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  @UseGuards(IdempotencyGuard)
+  @UseInterceptors(IdempotencyInterceptor)
   @HttpCode(HttpStatus.OK)
   async recordPayment(
     @Param('id') saleId: string,

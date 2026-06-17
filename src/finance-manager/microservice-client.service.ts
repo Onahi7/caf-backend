@@ -73,7 +73,7 @@ export class MicroserviceClientService {
     private readonly http: HttpService,
   ) {}
 
-  // ─── Authentication ──────────────────────────────────────
+  // --- Authentication --------------------------------------
 
   private async getEmrToken(): Promise<string> {
     if (this.emrToken && Date.now() < this.emrToken.expiresAt) {
@@ -161,7 +161,7 @@ export class MicroserviceClientService {
     }
   }
 
-  // ─── EMR Endpoints ───────────────────────────────────────
+  // --- EMR Endpoints ---------------------------------------
 
   async getEmrPaymentStats(): Promise<PaymentStats | null> {
     return this.emrGet<PaymentStats>('/orders/stats/payment');
@@ -188,7 +188,7 @@ export class MicroserviceClientService {
     return this.emrGet<RevenueReport>('/admin/revenue');
   }
 
-  // ─── LAB Endpoints ───────────────────────────────────────
+  // --- LAB Endpoints ---------------------------------------
 
   async getLabPaymentStats(): Promise<PaymentStats | null> {
     return this.labGet<PaymentStats>('/orders/stats/payment');
@@ -215,7 +215,7 @@ export class MicroserviceClientService {
     return this.labGet<RevenueReport>('/reports/revenue');
   }
 
-  // ─── Combined Fetch ──────────────────────────────────────
+  // --- Combined Fetch --------------------------------------
 
   async getAllFinancialData(): Promise<{
     emr: {

@@ -4,11 +4,15 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { ProductsRepository } from './products.repository.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { ProductSearchDto } from './dto/product-search.dto.js';
-import { ProductDocument } from './schemas/product.schema.js';
+import { Product, ProductDocument } from './schemas/product.schema.js';
+import { Batch, BatchDocument } from '../batches/schemas/batch.schema.js';
+import { StockMovement, MovementType } from '../inventory/schemas/stock-movement.schema.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { UsersService } from '../users/users.service.js';
@@ -21,6 +25,10 @@ export class ProductsService {
     private readonly inventoryService: InventoryService,
     private readonly auditService: AuditService,
     private readonly usersService: UsersService,
+    @InjectConnection() private readonly connection: Connection,
+    @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
+    @InjectModel(Batch.name) private readonly batchModel: Model<BatchDocument>,
+    @InjectModel(StockMovement.name) private readonly stockMovementModel: Model<StockMovement>,
   ) {}
 
   private generateSku(name: string): string {
@@ -266,15 +274,43 @@ export class ProductsService {
     });
 
     if ((initialStock ?? 0) > 0) {
-      await this.inventoryService.recordPurchaseMovement(
-        String(product.branchId),
-        String(product._id),
-        initialStock!,
-        userId ?? 'system',
-        undefined,
-        undefined,
-        'Opening stock from product creation',
-      );
+      const session = await this.connection.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const lotNumber = createProductDto.initialLotNumber || `OPEN-${Date.now().toString(36).toUpperCase()}`;
+          const expiryDate = initialExpiryDate ? new Date(initialExpiryDate) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+          const effectiveSellingPrice = productPayload.suggestedRetailPrice ?? productPayload.basePrice ?? 0;
+
+          const batchDocs = await this.batchModel.create([{
+            productId: product._id,
+            branchId: new Types.ObjectId(product.branchId.toString()),
+            lotNumber,
+            expiryDate,
+            quantityAvailable: initialStock!,
+            quantityInitial: initialStock!,
+            purchasePrice: productPayload.costPrice || 0,
+            sellingPrice: effectiveSellingPrice,
+            supplierId: new Types.ObjectId(effectiveSupplierId!),
+            isExpired: false,
+            isDepleted: false,
+          }], { session });
+
+          await this.stockMovementModel.create([{
+            branchId: new Types.ObjectId(product.branchId.toString()),
+            productId: product._id,
+            batchId: batchDocs[0]._id,
+            quantity: initialStock!,
+            movementType: MovementType.PURCHASE,
+            reason: 'Opening stock from product creation',
+            userId: new Types.ObjectId(userId ?? '000000000000000000000000'),
+            referenceId: batchDocs[0]._id,
+            referenceType: 'Batch',
+            timestamp: new Date(),
+          }], { session });
+        });
+      } finally {
+        await session.endSession();
+      }
     }
 
     // Audit log: product creation

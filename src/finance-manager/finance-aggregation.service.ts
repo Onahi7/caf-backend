@@ -8,6 +8,8 @@ import { FinanceTransaction, FinanceTransactionDocument } from '../finance/schem
 import { MarketerSale, MarketerSaleDocument } from '../marketer/schemas/marketer-sale.schema.js';
 import { MarketerProductAssignment, MarketerProductAssignmentDocument } from '../marketer/schemas/marketer-product-assignment.schema.js';
 import { PurchaseOrder, PurchaseOrderDocument } from '../purchases/schemas/purchase-order.schema.js';
+import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
+import { CashEntry, CashEntryDocument } from './schema/cash-entry.schema.js';
 import { MicroserviceClientService } from './microservice-client.service.js';
 
 export interface ServiceFinancials {
@@ -45,6 +47,14 @@ export interface UnifiedDashboard {
     byCategory: { category: string; total: number; count: number }[];
   };
   cashPosition: {
+    totalIncome: number;
+    totalExpense: number;
+    totalTransfer: number;
+    totalLoan: number;
+    totalSalary: number;
+    totalAdvance: number;
+    netCash: number;
+    byCategory: { category: string; total: number; count: number }[];
     totalOpeningCash: number;
     totalClosingCash: number;
     totalExpectedCash: number;
@@ -117,6 +127,8 @@ export class FinanceAggregationService {
     @InjectModel(MarketerSale.name) private readonly marketerSaleModel: Model<MarketerSaleDocument>,
     @InjectModel(MarketerProductAssignment.name) private readonly assignmentModel: Model<MarketerProductAssignmentDocument>,
     @InjectModel(PurchaseOrder.name) private readonly purchaseModel: Model<PurchaseOrderDocument>,
+    @InjectModel(Branch.name) private readonly branchModel: Model<BranchDocument>,
+    @InjectModel(CashEntry.name) private readonly cashModel: Model<CashEntryDocument>,
     private readonly microserviceClient: MicroserviceClientService,
   ) {}
 
@@ -140,10 +152,10 @@ export class FinanceAggregationService {
     const [revenue, expenses, cashPosition, creditOutstanding, marketer, purchases, byBranch, byPaymentMethod, externalData] = await Promise.all([
       this.getRevenue(combinedFilter),
       this.getExpenses(combinedFilter, branchId),
-      this.getCashPosition(branchFilter),
+      this.getCashPosition(branchFilter, dateFilter),
       this.getCreditOutstanding(branchFilter),
       this.getMarketerData(branchFilter),
-      this.getPurchases(dateFilter),
+      this.getPurchases(dateFilter, branchFilter),
       this.getByBranch(dateFilter),
       this.getByPaymentMethod(combinedFilter),
       this.microserviceClient.getAllFinancialData().catch((err) => {
@@ -159,7 +171,7 @@ export class FinanceAggregationService {
     const netProfit = grossProfit - operatingExpenses;
     const margin = grossRevenue > 0 ? (netProfit / grossRevenue) * 100 : 0;
 
-    const externalServices = this.buildExternalServices(revenue, expenses, creditOutstanding, cashPosition, externalData);
+    const externalServices = this.buildExternalServices(revenue, expenses, creditOutstanding, cashPosition, byPaymentMethod, externalData);
 
     return {
       revenue,
@@ -187,6 +199,7 @@ export class FinanceAggregationService {
     cafExpenses: UnifiedDashboard['expenses'],
     cafCredit: UnifiedDashboard['creditOutstanding'],
     cafCashPosition: UnifiedDashboard['cashPosition'],
+    cafPaymentMethods: { method: string; count: number; total: number }[],
     externalData: { emr: any; lab: any } | null,
   ): UnifiedDashboard['externalServices'] {
     const emrRevenue = externalData?.emr?.paymentStats?.paidRevenue || externalData?.emr?.revenueReport?.totalRevenue || 0;
@@ -207,19 +220,23 @@ export class FinanceAggregationService {
       method: m.method, count: m.count, total: m.total,
     })) || [];
 
+    const cafCashTotal = cafPaymentMethods.filter(m => m.method === 'cash').reduce((s, m) => s + m.total, 0);
+    const cafOrangeTotal = cafPaymentMethods.filter(m => m.method === 'orange_money').reduce((s, m) => s + m.total, 0);
+    const cafAfriTotal = cafPaymentMethods.filter(m => m.method === 'africell_money').reduce((s, m) => s + m.total, 0);
+
     const caf: ServiceFinancials = {
       revenue: cafRevenue.netRevenue,
       expenses: cafExpenses.totalExpenses,
       profit: cafRevenue.netRevenue - cafExpenses.totalExpenses,
       outstanding: cafCredit.totalBalanceDue,
       orders: cafRevenue.salesCount,
-      byPaymentMethod: [],
+      byPaymentMethod: cafPaymentMethods,
       reconciliation: {
         submitted: cafCashPosition.closedShifts > 0,
         status: cafCashPosition.totalVariance === 0 ? 'balanced' : 'variance',
         submittedBy: '',
         notes: '',
-        income: { cash: cafRevenue.netRevenue, orangeMoney: 0, afrimoney: 0, total: cafRevenue.netRevenue },
+        income: { cash: cafCashTotal, orangeMoney: cafOrangeTotal, afrimoney: cafAfriTotal, total: cafRevenue.netRevenue },
         expenditures: { cash: cafExpenses.totalExpenses, orangeMoney: 0, afrimoney: 0, total: cafExpenses.totalExpenses },
         netExpected: { cash: cafCashPosition.totalExpectedCash, orangeMoney: 0, afrimoney: 0, total: cafCashPosition.totalExpectedCash },
         actual: { cash: cafCashPosition.totalClosingCash, orangeMoney: 0, afrimoney: 0, total: cafCashPosition.totalClosingCash },
@@ -343,10 +360,16 @@ export class FinanceAggregationService {
     };
   }
 
-  private async getCashPosition(branchFilter: Record<string, any>): Promise<UnifiedDashboard['cashPosition']> {
-    const [result, openCount, closedCount] = await Promise.all([
+  private async getCashPosition(branchFilter: Record<string, any>, dateFilter?: Record<string, any>): Promise<UnifiedDashboard['cashPosition']> {
+    const combinedFilter = { ...branchFilter, ...dateFilter };
+    const cashEntryFilter: Record<string, any> = { isActive: true, ...branchFilter };
+    if (dateFilter?.createdAt) {
+      cashEntryFilter.entryDate = dateFilter.createdAt;
+    }
+
+    const [result, openCount, closedCount, cashSummary, byCategory] = await Promise.all([
       this.shiftModel.aggregate([
-        { $match: branchFilter },
+        { $match: combinedFilter },
         {
           $group: {
             _id: null,
@@ -357,13 +380,52 @@ export class FinanceAggregationService {
           },
         },
       ]).exec(),
-      this.shiftModel.countDocuments({ ...branchFilter, status: 'open' }).exec(),
-      this.shiftModel.countDocuments({ ...branchFilter, status: 'closed' }).exec(),
+      this.shiftModel.countDocuments({ ...combinedFilter, status: 'open' }).exec(),
+      this.shiftModel.countDocuments({ ...combinedFilter, status: 'closed' }).exec(),
+      this.cashModel.aggregate([
+        { $match: cashEntryFilter },
+        {
+          $group: {
+            _id: null,
+            totalIncome: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
+            totalExpense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
+            totalTransfer: { $sum: { $cond: [{ $eq: ['$type', 'transfer'] }, '$amount', 0] } },
+            totalLoan: { $sum: { $cond: [{ $eq: ['$type', 'loan'] }, '$amount', 0] } },
+            totalAdvance: { $sum: { $cond: [{ $eq: ['$type', 'advance'] }, '$amount', 0] } },
+            totalSalary: { $sum: { $cond: [{ $eq: ['$type', 'salary'] }, '$amount', 0] } },
+          },
+        },
+      ]).exec(),
+      this.cashModel.aggregate([
+        { $match: cashEntryFilter },
+        {
+          $group: {
+            _id: '$category',
+            total: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { total: -1 } },
+      ]).exec(),
     ]);
 
     const r = result[0] || { totalOpeningCash: 0, totalClosingCash: 0, totalExpectedCash: 0, totalVariance: 0 };
+    const s = cashSummary[0] || { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalAdvance: 0, totalSalary: 0 };
+    const netCash = s.totalIncome - s.totalExpense - s.totalTransfer - s.totalLoan - s.totalAdvance - s.totalSalary;
+
     return {
-      ...r,
+      totalIncome: s.totalIncome,
+      totalExpense: s.totalExpense,
+      totalTransfer: s.totalTransfer,
+      totalLoan: s.totalLoan,
+      totalSalary: s.totalSalary,
+      totalAdvance: s.totalAdvance,
+      netCash,
+      byCategory: byCategory.map((c: any) => ({ category: c._id, total: c.total, count: c.count })),
+      totalOpeningCash: r.totalOpeningCash,
+      totalClosingCash: r.totalClosingCash,
+      totalExpectedCash: r.totalExpectedCash,
+      totalVariance: r.totalVariance,
       openShifts: openCount,
       closedShifts: closedCount,
     };
@@ -509,9 +571,10 @@ export class FinanceAggregationService {
     };
   }
 
-  private async getPurchases(dateFilter: Record<string, any>): Promise<UnifiedDashboard['purchases']> {
+  private async getPurchases(dateFilter: Record<string, any>, branchFilter?: Record<string, any>): Promise<UnifiedDashboard['purchases']> {
+    const combinedFilter = { ...dateFilter, ...branchFilter, status: { $ne: 'cancelled' } };
     const [result] = await this.purchaseModel.aggregate([
-      { $match: { ...dateFilter, status: { $ne: 'cancelled' } } },
+      { $match: combinedFilter },
       {
         $group: {
           _id: null,
@@ -538,7 +601,7 @@ export class FinanceAggregationService {
   }
 
   private async getByBranch(dateFilter: Record<string, any>): Promise<UnifiedDashboard['byBranch']> {
-    const [salesByBranch, expensesByBranch] = await Promise.all([
+    const [salesByBranch, expensesByBranch, branches] = await Promise.all([
       this.saleModel.aggregate([
         { $match: { ...dateFilter, status: { $ne: 'returned' }, terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] } } },
         {
@@ -558,7 +621,13 @@ export class FinanceAggregationService {
           },
         },
       ]).exec(),
+      this.branchModel.find({}, { _id: 1, name: 1 }).lean().exec(),
     ]);
+
+    const branchNameMap = new Map<string, string>();
+    for (const b of branches) {
+      branchNameMap.set(b._id.toString(), b.name);
+    }
 
     const branchMap = new Map<string, { revenue: number; expenses: number; salesCount: number }>();
 
@@ -575,7 +644,7 @@ export class FinanceAggregationService {
 
     return Array.from(branchMap.entries()).map(([branchId, data]) => ({
       branchId,
-      branchName: branchId,
+      branchName: branchNameMap.get(branchId) || branchId,
       revenue: data.revenue,
       expenses: data.expenses,
       profit: data.revenue - data.expenses,

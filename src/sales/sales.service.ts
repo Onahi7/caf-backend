@@ -348,7 +348,10 @@ export class SalesService {
       );
 
       if (saleItem) {
-        returnAmount += returnItem.quantity * saleItem.unitPrice;
+        const perBaseUnitPrice = saleItem.packSize?.quantityPerPack
+          ? saleItem.unitPrice / saleItem.packSize.quantityPerPack
+          : saleItem.unitPrice;
+        returnAmount += returnItem.quantity * perBaseUnitPrice;
       }
     }
 

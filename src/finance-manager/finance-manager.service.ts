@@ -32,7 +32,7 @@ export class FinanceManagerService {
     private readonly eventsService: EventsService,
   ) {}
 
-  // ─── Reconciliation ───────────────────────────────────────
+  // --- Reconciliation ---------------------------------------
   async createReconciliation(dto: CreateReconciliationDto, userId: string): Promise<ReconciliationDocument> {
     const discrepancy = dto.actualCash - dto.expectedCash;
 
@@ -152,7 +152,7 @@ export class FinanceManagerService {
     return allStats[0] || { pending: 0, approved: 0, rejected: 0, totalDiscrepancy: 0 };
   }
 
-  // ─── Salary ───────────────────────────────────────────────
+  // --- Salary -----------------------------------------------
   async createSalary(dto: CreateSalaryDto, userId: string): Promise<SalaryDocument> {
     const netSalary = dto.baseSalary + (dto.allowances || 0) - (dto.deductions || 0);
     const salary = await this.salaryModel.create({
@@ -335,7 +335,7 @@ export class FinanceManagerService {
     };
   }
 
-  // ─── Cash Entries ─────────────────────────────────────────
+  // --- Cash Entries -----------------------------------------
   async createCashEntry(dto: CreateCashEntryDto, userId: string): Promise<CashEntryDocument> {
     const entry = await this.cashModel.create({
       ...dto,
@@ -431,7 +431,7 @@ export class FinanceManagerService {
     };
   }
 
-  // ─── Dashboard ────────────────────────────────────────────
+  // --- Dashboard --------------------------------------------
   async getDashboard(branchId: string): Promise<{
     reconciliation: { pending: number; approved: number; rejected: number; totalDiscrepancy: number };
     salary: { totalEmployees: number; totalNet: number; pendingCount: number; paidCount: number };
@@ -453,24 +453,80 @@ export class FinanceManagerService {
     return { reconciliation, salary, cash, recentReconciliations, recentCashEntries };
   }
 
-  async receiveFinancePush(dto: DailyFinancePushDto, userId: string): Promise<CashEntryDocument> {
+  async receiveFinancePush(dto: DailyFinancePushDto, userId: string): Promise<{
+    revenueEntry: CashEntryDocument;
+    expenseEntry: CashEntryDocument | null;
+    summary: {
+      source: string;
+      date: string;
+      totalRevenue: number;
+      totalExpenses: number;
+      netIncome: number;
+      cashCollected: number;
+      orangeMoneyCollected: number;
+      afrimoneyCollected: number;
+      outstandingBalance: number;
+      orderCount: number;
+    };
+  }> {
     const source = dto.source?.toLowerCase();
     if (!['emr', 'lab'].includes(source)) {
       throw new BadRequestException('Source must be "emr" or "lab"');
     }
 
-    const cashEntry = await this.cashModel.create({
+    const branchObjectId = new Types.ObjectId(dto.branchId);
+    const entryDate = new Date(dto.date);
+    const sourceLabel = source.toUpperCase();
+
+    const revenueEntry = await this.cashModel.create({
       type: CashEntryType.INCOME,
       category: CashEntryCategory.SALES,
-      branchId: new Types.ObjectId(dto.branchId),
+      branchId: branchObjectId,
       amount: dto.totalRevenue || 0,
-      description: `${source.toUpperCase()} Daily Finance Push - ${dto.date}`,
-      notes: dto.notes?.slice(0, 1000),
+      description: `${sourceLabel} Daily Revenue - ${dto.date}`,
+      notes: [
+        dto.notes?.slice(0, 500),
+        `Payment breakdown: Cash=${dto.cashCollected || 0}, Orange=${dto.orangeMoneyCollected || 0}, Afri=${dto.afrimoneyCollected || 0}`,
+        `Orders: ${dto.orderCount || 0}, Outstanding: ${dto.outstandingBalance || 0}`,
+        dto.submittedBy ? `Submitted by: ${dto.submittedBy}` : undefined,
+      ].filter(Boolean).join(' | '),
       recordedBy: new Types.ObjectId(userId),
-      entryDate: new Date(dto.date),
+      entryDate,
     });
 
-    this.logger.log(`Finance push received from ${source.toUpperCase()} for ${dto.date}: Le ${dto.totalRevenue}`);
-    return cashEntry;
+    let expenseEntry: CashEntryDocument | null = null;
+    if (dto.totalExpenses && dto.totalExpenses > 0) {
+      expenseEntry = await this.cashModel.create({
+        type: CashEntryType.EXPENSE,
+        category: CashEntryCategory.OTHER,
+        branchId: branchObjectId,
+        amount: dto.totalExpenses,
+        description: `${sourceLabel} Daily Expenses - ${dto.date}`,
+        notes: `Net income: ${dto.netIncome || 0}`,
+        recordedBy: new Types.ObjectId(userId),
+        entryDate,
+      });
+    }
+
+    this.logger.log(
+      `Finance push received from ${sourceLabel} for ${dto.date}: Revenue=${dto.totalRevenue}, Expenses=${dto.totalExpenses}, Orders=${dto.orderCount}`,
+    );
+
+    return {
+      revenueEntry,
+      expenseEntry,
+      summary: {
+        source,
+        date: dto.date,
+        totalRevenue: dto.totalRevenue || 0,
+        totalExpenses: dto.totalExpenses || 0,
+        netIncome: dto.netIncome || 0,
+        cashCollected: dto.cashCollected || 0,
+        orangeMoneyCollected: dto.orangeMoneyCollected || 0,
+        afrimoneyCollected: dto.afrimoneyCollected || 0,
+        outstandingBalance: dto.outstandingBalance || 0,
+        orderCount: dto.orderCount || 0,
+      },
+    };
   }
 }

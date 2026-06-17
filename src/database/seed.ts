@@ -271,6 +271,16 @@ async function bootstrap() {
         branchId: asObjectId(branchByCode.LAB._id),
         isActive: true,
       },
+      {
+        username: 'svc_caffinance',
+        email: 'svc.finance@carefarm.example',
+        passwordHash,
+        firstName: 'CAF',
+        lastName: 'Finance',
+        role: UserRole.SUPER_ADMIN,
+        branchId: asObjectId(hq._id),
+        isActive: true,
+      },
     ];
 
     const users = await Promise.all(
