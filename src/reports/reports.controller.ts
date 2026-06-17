@@ -612,7 +612,7 @@ export class ReportsController {
   /**
    * GET /reports/hq-summary
    * Get aggregated HQ dashboard data across all branches.
-   * Replaces N×3 per-branch API calls with a single efficient query.
+   * Replaces Nx3 per-branch API calls with a single efficient query.
    */
   @Get('hq-summary')
   @Roles(UserRole.SUPER_ADMIN)

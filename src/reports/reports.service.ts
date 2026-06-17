@@ -1049,7 +1049,7 @@ export class ReportsService {
   /**
    * Get HQ dashboard summary across all active branches.
    * Aggregates inventory, sales, transfers, low stock, and expiry data
-   * in a single efficient query instead of N×3 per-branch calls.
+   * in a single efficient query instead of Nx3 per-branch calls.
    */
   async getHQDashboardSummary() {
     this.logger.log('Generating HQ dashboard summary');

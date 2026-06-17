@@ -64,7 +64,7 @@ export class RecurringInvoicesController {
 
   /**
    * Mark this template as run now (updates nextRunAt, runCount, etc.).
-   * Does NOT actually create a Sale — that's the caller's job.
+   * Does NOT actually create a Sale - that's the caller's job.
    */
   @Post(':id/run-now')
   async runNow(@Param('id') id: string, @Req() req: AuthedRequest) {

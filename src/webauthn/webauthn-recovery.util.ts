@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'crypto';
 
 const CODE_BYTES = 6;
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I, O, 0, 1 — easier to read
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I, O, 0, 1 - easier to read
 
 /**
  * Generate a single human-friendly recovery code:

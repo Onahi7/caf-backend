@@ -231,7 +231,7 @@ export class PurchasesService {
             updatedProduct = created;
             this.logger.log(`Auto-created product "${sourceProduct.name}" at branch ${purchaseOrder.branchId}`);
           } else {
-            // Source product also doesn't exist — create a minimal product
+            // Source product also doesn't exist - create a minimal product
             const minimalProduct = {
               branchId: new Types.ObjectId(purchaseOrder.branchId.toString()),
               name: `Product ${receivedItem.productId}`,

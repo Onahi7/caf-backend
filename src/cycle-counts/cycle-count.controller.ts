@@ -26,7 +26,7 @@ import { CycleCountStatus } from './schemas/cycle-count.schema.js';
 export class CycleCountController {
   constructor(private readonly service: CycleCountService) {}
 
-  /** POST /cycle-counts — create draft, snapshots all batches */
+  /** POST /cycle-counts - create draft, snapshots all batches */
   @Post()
   @Roles(
     UserRole.SUPER_ADMIN,
@@ -73,7 +73,7 @@ export class CycleCountController {
     };
   }
 
-  /** PATCH /cycle-counts/:id/submit — enter counted quantities */
+  /** PATCH /cycle-counts/:id/submit - enter counted quantities */
   @Patch(':id/submit')
   @Roles(
     UserRole.SUPER_ADMIN,
@@ -83,7 +83,7 @@ export class CycleCountController {
     return this.service.submit(id, dto);
   }
 
-  /** PATCH /cycle-counts/:id/approve — manager applies all variances */
+  /** PATCH /cycle-counts/:id/approve - manager applies all variances */
   @Patch(':id/approve')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   approve(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {

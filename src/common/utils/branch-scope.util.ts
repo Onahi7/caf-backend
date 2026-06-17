@@ -4,7 +4,7 @@ import { UserRole } from '../../users/schemas/user.schema.js';
 
 /**
  * Enforces branch scoping by role.
- * - SUPER_ADMIN: unrestricted — can request any branchId or none (cross-branch).
+ * - SUPER_ADMIN: unrestricted - can request any branchId or none (cross-branch).
  * - Everyone else: if they supply a branchId it must match their assigned branch;
  *   if they omit it their own branchId is used automatically.
  *

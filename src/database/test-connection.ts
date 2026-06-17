@@ -9,7 +9,7 @@ import { getConnectionToken } from '@nestjs/mongoose';
  * Usage: ts-node -r tsconfig-paths/register src/database/test-connection.ts
  */
 async function testConnection() {
-  console.log('🔌 Testing MongoDB connection...\n');
+  console.log('[db] Testing MongoDB connection...\n');
 
   try {
     // Create NestJS application
@@ -19,7 +19,7 @@ async function testConnection() {
     const connection = app.get<Connection>(getConnectionToken());
 
     // Test 1: Basic connection
-    console.log('✅ Test 1: Basic Connection');
+    console.log('OK Test 1: Basic Connection');
     console.log(`   Connected to: ${connection.host}`);
     console.log(`   Database: ${connection.name}`);
     console.log(
@@ -27,7 +27,7 @@ async function testConnection() {
     );
 
     // Test 2: Replica set configuration
-    console.log('✅ Test 2: Replica Set Configuration');
+    console.log('OK Test 2: Replica Set Configuration');
     const admin = connection.db!.admin();
     const replSetStatus = await admin.command({ replSetGetStatus: 1 });
     console.log(`   Replica Set: ${replSetStatus.set}`);
@@ -40,7 +40,7 @@ async function testConnection() {
     console.log();
 
     // Test 3: Transaction support
-    console.log('✅ Test 3: Transaction Support');
+    console.log('OK Test 3: Transaction Support');
     const session = await connection.startSession();
     console.log('   Session created successfully');
 
@@ -54,7 +54,7 @@ async function testConnection() {
     console.log('   Session ended\n');
 
     // Test 4: Write concern
-    console.log('✅ Test 4: Write Concern');
+    console.log('OK Test 4: Write Concern');
     const testCollection = connection.collection('_connection_test');
     const result = await testCollection.insertOne(
       { test: true, timestamp: new Date() },
@@ -65,16 +65,16 @@ async function testConnection() {
 
     // Cleanup
     await testCollection.deleteMany({ test: true });
-    console.log('✅ Cleanup completed\n');
+    console.log('OK Cleanup completed\n');
 
     console.log(
-      '🎉 All tests passed! MongoDB replica set is properly configured.\n',
+      'SUCCESS: All tests passed! MongoDB replica set is properly configured.\n',
     );
 
     await app.close();
     process.exit(0);
   } catch (error) {
-    console.error('❌ Connection test failed:', (error as Error).message);
+    console.error('ERROR Connection test failed:', (error as Error).message);
     console.error('\nTroubleshooting:');
     console.error(
       '1. Ensure Docker containers are running: docker-compose up -d',

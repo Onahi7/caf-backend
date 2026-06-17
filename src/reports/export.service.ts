@@ -267,7 +267,7 @@ export class ExportService {
         );
         doc.text(`  Batches: ${item.batchCount}`);
         if (item.isLowStock) {
-          doc.fillColor('red').text('  ⚠ LOW STOCK', { continued: false });
+          doc.fillColor('red').text('  (!) LOW STOCK', { continued: false });
           doc.fillColor('black');
         }
         doc.moveDown();
@@ -422,8 +422,8 @@ export class ExportService {
       report.expiringBatches.slice(0, 50).forEach((batch) => {
         doc.fontSize(10);
         const status = batch.isExpired
-          ? '❌ EXPIRED'
-          : `⚠ ${batch.daysUntilExpiry} days`;
+          ? 'ERROR EXPIRED'
+          : `(!) ${batch.daysUntilExpiry} days`;
         doc.text(`${batch.productName || 'Unknown'} - Lot: ${batch.lotNumber}`);
         doc.text(`  Branch: ${batch.branchName || 'Unknown'}`);
         doc.text(
@@ -572,7 +572,7 @@ export class ExportService {
         doc.fontSize(10);
         doc.text(`Transfer ID: ${transfer.transferId.substring(0, 8)}`);
         doc.text(
-          `  From: ${transfer.sourceBranchName} → To: ${transfer.destinationBranchName}`,
+          `  From: ${transfer.sourceBranchName} -> To: ${transfer.destinationBranchName}`,
         );
         doc.text(
           `  Product: ${transfer.productName}, Quantity: ${transfer.quantity}`,

@@ -42,7 +42,7 @@ export class FinanceManagerController {
     private readonly aggregation: FinanceAggregationService,
   ) {}
 
-  // ─── Unified Dashboard ──────────────────────────────────
+  // --- Unified Dashboard ----------------------------------
   @Get('unified-dashboard')
   @Roles(...FINANCE_ROLES)
   async getUnifiedDashboard(
@@ -56,7 +56,7 @@ export class FinanceManagerController {
     return apiResponse(dashboard);
   }
 
-  // ─── Cross-Check Reconciliation ────────────────────────
+  // --- Cross-Check Reconciliation ------------------------
   @Get('cross-check')
   @Roles(...FINANCE_ROLES)
   async getCrossCheck(
@@ -69,7 +69,7 @@ export class FinanceManagerController {
     return apiResponse(result);
   }
 
-  // ─── Receivables Aging ──────────────────────────────────
+  // --- Receivables Aging ----------------------------------
   @Get('receivables/aging')
   @Roles(...FINANCE_ROLES)
   async getReceivablesAging(
@@ -85,7 +85,7 @@ export class FinanceManagerController {
     return apiResponse(result);
   }
 
-  // ─── Finance Push (EMR/LAB → CAF) ─────────────────────
+  // --- Finance Push (EMR/LAB -> CAF) ---------------------
   @Post('finance-push')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.FINANCE_MANAGER)
   async receiveFinancePush(
@@ -96,7 +96,7 @@ export class FinanceManagerController {
     return apiResponse(result);
   }
 
-  // ─── Dashboard ────────────────────────────────────────────
+  // --- Dashboard --------------------------------------------
   @Get('dashboard')
   @Roles(...FINANCE_ROLES)
   async getDashboard(
@@ -108,7 +108,7 @@ export class FinanceManagerController {
     return apiResponse(dashboard);
   }
 
-  // ─── Reconciliation ──────────────────────────────────────
+  // --- Reconciliation --------------------------------------
   @Post('reconciliations')
   @Roles(...FINANCE_ROLES)
   @Audit({ action: AuditAction.CREATE, resource: AuditResource.RECONCILIATION, description: 'Created reconciliation' })
@@ -162,7 +162,7 @@ export class FinanceManagerController {
     return apiResponse(stats);
   }
 
-  // ─── Salaries ────────────────────────────────────────────
+  // --- Salaries --------------------------------------------
   @Post('salaries')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.FINANCE_MANAGER)
   @Audit({ action: AuditAction.CREATE, resource: AuditResource.SALARY, description: 'Created salary record' })
@@ -246,7 +246,7 @@ export class FinanceManagerController {
     return apiResponse(preview);
   }
 
-  // ─── Cash Entries ────────────────────────────────────────
+  // --- Cash Entries ----------------------------------------
   @Post('cash-entries')
   @Roles(...FINANCE_ROLES)
   @Audit({ action: AuditAction.CREATE, resource: AuditResource.CASH_ENTRY, description: 'Created cash entry' })

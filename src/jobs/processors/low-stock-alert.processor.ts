@@ -140,7 +140,7 @@ export class LowStockAlertProcessor {
       const message =
         total === 1
           ? `${top.productName} is below reorder level (${top.currentStock} / ${top.reorderLevel})`
-          : `${total} products are below reorder level in this branch (top: ${top.productName} — ${top.currentStock}/${top.reorderLevel})`;
+          : `${total} products are below reorder level in this branch (top: ${top.productName} - ${top.currentStock}/${top.reorderLevel})`;
 
       for (const user of recipients) {
         for (const alert of branchAlerts.slice(0, 5)) {
@@ -155,7 +155,7 @@ export class LowStockAlertProcessor {
                   ? NotificationSeverity.CRITICAL
                   : NotificationSeverity.WARNING,
               title: alert.currentStock <= 0 ? 'Out of stock' : 'Low stock',
-              message: `${alert.productName} — ${alert.currentStock} left (reorder at ${alert.reorderLevel})`,
+              message: `${alert.productName} - ${alert.currentStock} left (reorder at ${alert.reorderLevel})`,
               link: '/admin/inventory',
               resourceId: alert.productId,
               resourceType: 'Product',

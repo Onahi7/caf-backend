@@ -6,7 +6,7 @@ export type CycleCountDocument = CycleCount & Document;
 export enum CycleCountStatus {
   DRAFT = 'draft',       // created, counting in progress
   SUBMITTED = 'submitted', // all lines counted, awaiting review
-  APPROVED = 'approved',  // manager approved — adjustments applied
+  APPROVED = 'approved',  // manager approved - adjustments applied
   CANCELLED = 'cancelled',
 }
 

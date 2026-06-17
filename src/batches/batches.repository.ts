@@ -147,7 +147,7 @@ export class BatchesRepository {
     session?: ClientSession,
   ): Promise<BatchDocument | null> {
     // For deductions (quantityChange < 0) the filter enforces that enough stock
-    // exists ATOMICALLY — no other write can slip in between the check and the
+    // exists ATOMICALLY - no other write can slip in between the check and the
     // decrement because findOneAndUpdate is a single server-side operation.
     const filter: Record<string, unknown> = { _id: id };
     if (quantityChange < 0) {
@@ -179,7 +179,7 @@ export class BatchesRepository {
       )
       .exec();
 
-    // null means the filter didn't match → insufficient stock for deductions
+    // null means the filter didn't match -> insufficient stock for deductions
     if (!result && quantityChange < 0) {
       throw new BadRequestException(
         `Insufficient stock in batch ${id}: cannot deduct ${-quantityChange} units`,

@@ -80,7 +80,7 @@ async function sync() {
   console.log('\n=== Sample Results ===');
   const samples = await products.find({ quantityAvailable: { $gt: 0 } }).limit(10).toArray();
   for (const p of samples) {
-    console.log(`  ${p.name} (${p.sku}) → stock: ${p.quantityAvailable} | price: ${p.suggestedRetailPrice || p.basePrice || 0}`);
+    console.log(`  ${p.name} (${p.sku}) -> stock: ${p.quantityAvailable} | price: ${p.suggestedRetailPrice || p.basePrice || 0}`);
   }
 
   await mongoose.disconnect();

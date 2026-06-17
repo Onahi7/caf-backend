@@ -193,7 +193,7 @@ export class WebAuthnService {
     if (fmt !== 'none') {
       // For "none" format, the attestation statement is an empty CBOR map
       // We've consumed the first 4 bytes (the fmt string); the authData follows.
-      // Other formats we don't support — would require CBOR attestation parsing.
+      // Other formats we don't support - would require CBOR attestation parsing.
       // Bail safely:
       if (fmt === 'packed' || fmt === 'fido-u2f' || fmt === 'tpm' || fmt === 'android-key' || fmt === 'apple') {
         // For simplicity we accept any format but only extract authData
@@ -204,7 +204,7 @@ export class WebAuthnService {
 
     // Skip the attestation statement: for "none" it's a 0-length CBOR map,
     // for other formats it's a CBOR map of varying length. We need to find
-    // the end of the authData. Parse from the end backwards — authData is
+    // the end of the authData. Parse from the end backwards - authData is
     // the last element, but its length isn't known without decoding.
     // The simplest path: decode the whole attestation as CBOR.
     const att = decodeAttestationObject(attestation);
@@ -352,7 +352,7 @@ export class WebAuthnService {
 
   /**
    * Finish step-up: verify assertion and issue a short-lived step-up token.
-   * Does NOT issue new access/refresh tokens — the existing session is preserved.
+   * Does NOT issue new access/refresh tokens - the existing session is preserved.
    */
   async finishStepUp(
     userId: string,
@@ -514,7 +514,7 @@ export class WebAuthnService {
 
     // Counter check (clone detection)
     if (parsed.counter > 0 && parsed.counter <= credential.counter) {
-      // Counter didn't increment — possible cloned authenticator
+      // Counter didn't increment - possible cloned authenticator
       throw new UnauthorizedException(
         'Authenticator counter did not increment (possible clone)',
       );
@@ -715,7 +715,7 @@ export class WebAuthnService {
 
   private defaultDeviceName(flags: number): string {
     const date = new Date().toISOString().slice(0, 10);
-    return `Device registered ${date}${flags & 0x04 ? ' · UV' : ''}`;
+    return `Device registered ${date}${flags & 0x04 ? ' - UV' : ''}`;
   }
 }
 
@@ -731,7 +731,7 @@ function decodeAttestationObject(buf: Buffer): { fmt: string; authData: Buffer }
     throw new Error('Attestation object is not a CBOR map');
   }
   const fmt = value.get(3) as string | undefined;
-  // Find the bytes value of length 37+ (authData is always ≥ 37 bytes)
+  // Find the bytes value of length 37+ (authData is always >= 37 bytes)
   let foundAuthData: Buffer | undefined;
   for (const v of value.values()) {
     if (Buffer.isBuffer(v) && v.length >= 37) {
@@ -745,7 +745,7 @@ function decodeAttestationObject(buf: Buffer): { fmt: string; authData: Buffer }
   return { fmt: fmt ?? 'unknown', authData: foundAuthData };
 }
 
-// Re-declare the readCborValue from webauthn.util — but we can't import the private fn.
+// Re-declare the readCborValue from webauthn.util - but we can't import the private fn.
 // Instead, use a simplified decoder for the attestation object.
 function readCborValueAny(
   buf: Buffer,

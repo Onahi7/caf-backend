@@ -57,7 +57,7 @@ export const BatchSchema = SchemaFactory.createForClass(Batch);
 // Compound index for FEFO queries: branchId + productId + expiryDate
 BatchSchema.index({ branchId: 1, productId: 1, expiryDate: 1 });
 
-// Unique lot number per product per branch — prevents duplicate batches
+// Unique lot number per product per branch - prevents duplicate batches
 BatchSchema.index(
   { branchId: 1, productId: 1, lotNumber: 1 },
   { unique: true },

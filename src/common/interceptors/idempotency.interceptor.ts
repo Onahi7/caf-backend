@@ -15,9 +15,9 @@ import type { IdempotencyRecord } from '../guards/idempotency.guard.js';
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
- * IdempotencyInterceptor — after the handler emits its response, stores
+ * IdempotencyInterceptor - after the handler emits its response, stores
  * the body + status in Redis under the key set by IdempotencyGuard,
- * transitioning the record from `processing` → `complete`.
+ * transitioning the record from `processing` -> `complete`.
  *
  * Must be used together with @UseGuards(IdempotencyGuard).
  */

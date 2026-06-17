@@ -90,7 +90,7 @@ export class AuthController {
     return { message: 'Password changed successfully' };
   }
 
-  // ── Biometric endpoints ────────────────────────────────────────────────────
+  // -- Biometric endpoints ----------------------------------------------------
 
   @Post('biometric/register')
   @UseGuards(JwtAuthGuard)

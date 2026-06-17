@@ -100,7 +100,7 @@ export function generateReceiptEmailTemplate(data: ReceiptData): string {
                   <td colspan="2" style="padding-bottom: 16px;">
                     <p style="margin: 0; color: #6b7280; font-size: 14px;">Customer</p>
                     <p style="margin: 4px 0 0; color: #111827; font-size: 14px; font-weight: 600;">
-                      ${data.customerName || 'N/A'}${data.customerPhone ? ` • ${data.customerPhone}` : ''}
+                      ${data.customerName || 'N/A'}${data.customerPhone ? ` - ${data.customerPhone}` : ''}
                     </p>
                   </td>
                 </tr>

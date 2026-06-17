@@ -197,7 +197,7 @@ export class TransfersService {
         .exec();
 
       if (destinationProduct) {
-        // Product exists at destination — increment stock
+        // Product exists at destination - increment stock
         await this.productModel.findByIdAndUpdate(
           destinationProduct._id,
           {
@@ -214,7 +214,7 @@ export class TransfersService {
           { new: true, session },
         ).exec();
       } else {
-        // Product doesn't exist at destination — create it
+        // Product doesn't exist at destination - create it
         const newProductData = {
           branchId: new Types.ObjectId(transfer.destinationBranchId.toString()),
           name: sourceProduct.name,

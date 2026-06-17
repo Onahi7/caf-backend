@@ -21,7 +21,7 @@ interface JwtPayloadLike {
 }
 
 /**
- * AuditInterceptor — fires after a handler resolves to log an audit entry
+ * AuditInterceptor - fires after a handler resolves to log an audit entry
  * describing the action. Resolves the resourceId and payload dynamically
  * from the request/response so each route can declare exactly what to log.
  *

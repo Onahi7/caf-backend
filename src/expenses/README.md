@@ -6,18 +6,18 @@ The Expenses module tracks cash expenses during shifts for accounting and reconc
 ## Features
 
 ### Expense Management
-- ✅ Create expenses during active shifts
-- ✅ Categorize expenses (supplies, maintenance, utilities, petty cash, other)
-- ✅ Track expense details (amount, description, receipt number)
-- ✅ Soft delete with audit trail
-- ✅ Prevent modifications to closed shift expenses
+- OK Create expenses during active shifts
+- OK Categorize expenses (supplies, maintenance, utilities, petty cash, other)
+- OK Track expense details (amount, description, receipt number)
+- OK Soft delete with audit trail
+- OK Prevent modifications to closed shift expenses
 
 ### Reporting & Analytics
-- ✅ Get expenses by shift
-- ✅ Get expenses by branch
-- ✅ Calculate total expenses by shift
-- ✅ Aggregate expenses by category
-- ✅ Filter expenses by date range
+- OK Get expenses by shift
+- OK Get expenses by branch
+- OK Calculate total expenses by shift
+- OK Aggregate expenses by category
+- OK Filter expenses by date range
 
 ## Schema
 
@@ -67,10 +67,10 @@ Content-Type: application/json
 ```
 
 **Validation:**
-- ✅ Shift must exist and be open
-- ✅ Shift must belong to the specified branch
-- ✅ Amount must be between 0.01 and 1,000,000
-- ✅ Description is required (max 500 chars)
+- OK Shift must exist and be open
+- OK Shift must belong to the specified branch
+- OK Amount must be between 0.01 and 1,000,000
+- OK Description is required (max 500 chars)
 
 **Response:** `200 OK` with created expense document
 
@@ -170,9 +170,9 @@ Authorization: Bearer {token}
 ```
 
 **Validation:**
-- ✅ Expense must exist
-- ✅ Associated shift must still be open
-- ✅ Only super_admin or branch_manager can delete
+- OK Expense must exist
+- OK Associated shift must still be open
+- OK Only super_admin or branch_manager can delete
 
 **Response:** Deleted expense document with `isDeleted: true`
 

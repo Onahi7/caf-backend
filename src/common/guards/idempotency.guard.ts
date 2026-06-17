@@ -21,10 +21,10 @@ export interface IdempotencyRecord {
 }
 
 /**
- * IdempotencyGuard — extracts `X-Idempotency-Key` header, checks Redis:
- *  - Not found → allow request through (first attempt)
- *  - Found with status=processing → 409 Conflict (concurrent duplicate)
- *  - Found with status=complete → replay cached response immediately
+ * IdempotencyGuard - extracts `X-Idempotency-Key` header, checks Redis:
+ *  - Not found -> allow request through (first attempt)
+ *  - Found with status=processing -> 409 Conflict (concurrent duplicate)
+ *  - Found with status=complete -> replay cached response immediately
  *
  * After the handler runs, ResponseInterceptor stores the result.
  * Apply with @UseGuards(IdempotencyGuard) on any mutating endpoint.

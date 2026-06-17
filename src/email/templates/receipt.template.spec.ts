@@ -47,7 +47,7 @@ describe('Receipt Template', () => {
       const html = generateReceiptEmailTemplate(mockReceiptData);
 
       // Ensure no Naira symbols remain
-      expect(html).not.toContain('₦');
+      expect(html).not.toContain('NGN');
     });
 
     it('should format currency with thousand separators', () => {

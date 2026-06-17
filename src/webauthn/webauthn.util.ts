@@ -1,7 +1,7 @@
 import { createHash, randomBytes, createPublicKey, verify, createHmac } from 'crypto';
 
 /**
- * WebAuthn (FIDO2) crypto helpers — implements the spec without external libraries.
+ * WebAuthn (FIDO2) crypto helpers - implements the spec without external libraries.
  * References: https://www.w3.org/TR/webauthn-2/ and https://datatracker.ietf.org/doc/html/rfc9052
  */
 
@@ -96,7 +96,7 @@ export function verifyEcdsaSha256(
  * Minimal CBOR decoder supporting the subset we need:
  *   - unsigned int (major type 0)
  *   - byte string (major type 2)
- *   - text string (major type 3) — converted to UTF-8 string
+ *   - text string (major type 3) - converted to UTF-8 string
  *   - array (major type 4)
  *   - map (major type 5)
  *   - simple values (major type 7) including false, true, null
@@ -141,7 +141,7 @@ function readCborArg(
     length = Number(buf.readBigUInt64BE(offset));
     offset += 8;
   } else if (additional === 31) {
-    // indefinite length — not used in our subset
+    // indefinite length - not used in our subset
     throw new Error('CBOR indefinite length not supported');
   } else {
     throw new Error(`CBOR additional info ${additional} reserved`);
@@ -278,7 +278,7 @@ export function verifyClientData(
   if (obj.challenge !== expectedChallenge) {
     throw new Error('Challenge mismatch');
   }
-  // origin: web uses "origin" field; native uses "appid" (Android) — we accept both
+  // origin: web uses "origin" field; native uses "appid" (Android) - we accept both
   const origin = obj.origin ?? obj.appid ?? '';
   const crossOrigin = !!obj.crossOrigin;
   return { challenge: obj.challenge, type: obj.type, origin, crossOrigin };

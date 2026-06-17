@@ -232,7 +232,7 @@ export class AuthService {
     this.logger.log(`Password changed successfully for user ${user.username}`);
   }
 
-  // ── Biometric auth ──────────────────────────────────────────────────────────
+  // -- Biometric auth ----------------------------------------------------------
 
   private readonly BIOMETRIC_TOKEN_EXPIRY = 30 * 24 * 60 * 60; // 30 days
 

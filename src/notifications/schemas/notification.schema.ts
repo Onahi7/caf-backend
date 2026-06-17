@@ -74,7 +74,7 @@ export const NotificationSchema = SchemaFactory.createForClass(Notification);
 // Compound index for fetching user's recent notifications efficiently
 NotificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
 NotificationSchema.index({ userId: 1, createdAt: -1 });
-// Auto-expire read notifications after 30 days (sparse — only deletes read ones)
+// Auto-expire read notifications after 30 days (sparse - only deletes read ones)
 NotificationSchema.index(
   { readAt: 1 },
   { expireAfterSeconds: 30 * 24 * 60 * 60, partialFilterExpression: { read: true } },

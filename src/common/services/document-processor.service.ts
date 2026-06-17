@@ -235,23 +235,23 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 {"customerInfo":{"name":"","phone":"","email":"","address":""},"items":[{"name":"product name","quantity":0,"unitPrice":0}]}
 
 EXAMPLES of what to INCLUDE as items:
-- "Amoxicillin 500mg Capsule  100  $15.00"  → {"name":"Amoxicillin 500mg Capsule","quantity":100,"unitPrice":15.00}
-- "Paracetamol 250mg/5ml Syrup  50  $8.50" → {"name":"Paracetamol 250mg/5ml Syrup","quantity":50,"unitPrice":8.50}
-- "Metformin 850mg Tablet  200"              → {"name":"Metformin 850mg Tablet","quantity":200}
-- "IV Giving Set  30  $2.50"                 → {"name":"IV Giving Set","quantity":30,"unitPrice":2.50}
-- "Item: 001  Description: Amoxicillin  Qty: 100  Rate: 15.00" → {"name":"Amoxicillin","quantity":100,"unitPrice":15.00}
+- "Amoxicillin 500mg Capsule  100  $15.00"  -> {"name":"Amoxicillin 500mg Capsule","quantity":100,"unitPrice":15.00}
+- "Paracetamol 250mg/5ml Syrup  50  $8.50" -> {"name":"Paracetamol 250mg/5ml Syrup","quantity":50,"unitPrice":8.50}
+- "Metformin 850mg Tablet  200"              -> {"name":"Metformin 850mg Tablet","quantity":200}
+- "IV Giving Set  30  $2.50"                 -> {"name":"IV Giving Set","quantity":30,"unitPrice":2.50}
+- "Item: 001  Description: Amoxicillin  Qty: 100  Rate: 15.00" -> {"name":"Amoxicillin","quantity":100,"unitPrice":15.00}
 
 EXAMPLES of what to IGNORE (NOT items):
-- "Care Pharmacy" or "ABC Hospital" → this is the facility name, NOT a product
-- "PO #: PO-2024-001" → order reference
-- "Date: 2024-01-15" → date
-- "123 Main Street, Freetown" → address
-- "+232-77-123-456" → phone number
-- "Item | Description | Qty | Price" → column headers
-- "Total: $3,550.00" → summary total
-- "Terms: Net 30 Days" → payment terms
-- "Page 1 of 3" → page number
-- "Shipping Address:" → section header
+- "Care Pharmacy" or "ABC Hospital" -> this is the facility name, NOT a product
+- "PO #: PO-2024-001" -> order reference
+- "Date: 2024-01-15" -> date
+- "123 Main Street, Freetown" -> address
+- "+232-77-123-456" -> phone number
+- "Item | Description | Qty | Price" -> column headers
+- "Total: $3,550.00" -> summary total
+- "Terms: Net 30 Days" -> payment terms
+- "Page 1 of 3" -> page number
+- "Shipping Address:" -> section header
 
 RULES:
 1. IGNORE: company/facility names, addresses, phone numbers, emails, PO numbers, dates, terms & conditions, page numbers, headers, footers, column headers, totals, subtotals. These are NOT products.
@@ -259,7 +259,7 @@ RULES:
 3. Pharmaceutical products usually have a drug name, often with strength (mg, ml, %, IU) and dosage form (tablet, capsule, injection, syrup, cream, ointment).
 4. For customerInfo, only fill if you see a facility/hospital/clinic name clearly identified as the ordering party. Leave empty if unsure.
 5. quantity must be a number. Default to 1 only if the context clearly indicates a single item.
-6. unitPrice is optional — omit if not found (don't put 0).
+6. unitPrice is optional - omit if not found (don't put 0).
 7. If there are no clear product line items in the document, return an empty items array: {"customerInfo":{},"items":[]}
 
 Document text:

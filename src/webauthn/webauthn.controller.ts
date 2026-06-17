@@ -34,7 +34,7 @@ import { Throttle } from '@nestjs/throttler';
 export class WebAuthnController {
   constructor(private readonly service: WebAuthnService) {}
 
-  // ── Registration (requires password-authenticated session) ──────────────
+  // -- Registration (requires password-authenticated session) --------------
 
   @Post('register/start')
   @UseGuards(JwtAuthGuard)
@@ -71,7 +71,7 @@ export class WebAuthnController {
     );
   }
 
-  // ── Login (no auth required) ────────────────────────────────────────────
+  // -- Login (no auth required) --------------------------------------------
 
   @Post('login/start')
   @Throttle({ default: { ttl: 60000, limit: 10 } })
@@ -97,7 +97,7 @@ export class WebAuthnController {
     });
   }
 
-  // ── Recovery code login (no auth required, single-use) ─────────────────
+  // -- Recovery code login (no auth required, single-use) -----------------
 
   @Post('login/recovery')
   @Throttle({ default: { ttl: 60000, limit: 5 } })
@@ -106,7 +106,7 @@ export class WebAuthnController {
     return this.service.loginWithRecoveryCode(dto.username, dto.code);
   }
 
-  // ── Credential management (requires auth) ──────────────────────────────
+  // -- Credential management (requires auth) ------------------------------
 
   @Get('credentials')
   @UseGuards(JwtAuthGuard)
@@ -135,7 +135,7 @@ export class WebAuthnController {
     await this.service.revokeCredential(user.userId, id);
   }
 
-  // ── Recovery codes (requires auth) ─────────────────────────────────────
+  // -- Recovery codes (requires auth) -------------------------------------
 
   @Get('recovery-codes')
   @UseGuards(JwtAuthGuard)
@@ -153,7 +153,7 @@ export class WebAuthnController {
     return this.service.generateRecoveryCodes(user.userId);
   }
 
-  // ── Step-up auth (5min, single-use token for sensitive ops) ────────────
+  // -- Step-up auth (5min, single-use token for sensitive ops) ------------
 
   @Post('step-up/start')
   @UseGuards(JwtAuthGuard)
@@ -189,7 +189,7 @@ export class WebAuthnController {
     );
   }
 
-  // ── Admin: reset all credentials for a user ────────────────────────────
+  // -- Admin: reset all credentials for a user ----------------------------
 
   @Post('admin/reset-credentials/:userId')
   @UseGuards(JwtAuthGuard, RolesGuard)
