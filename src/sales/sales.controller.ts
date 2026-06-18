@@ -192,7 +192,12 @@ export class SalesController {
   }
 
   @Post(':id/payments')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.BRANCH_MANAGER,
+    UserRole.CASHIER,
+    UserRole.FINANCE_MANAGER,
+  )
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
   @HttpCode(HttpStatus.OK)
@@ -204,7 +209,7 @@ export class SalesController {
     const sale = await this.salesService.recordPayment(
       saleId,
       receivePaymentDto,
-      user.userId,
+      user,
     );
 
     return {

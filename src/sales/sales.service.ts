@@ -1,10 +1,13 @@
 import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Interval } from '@nestjs/schedule';
 import { Connection, Model, Types } from 'mongoose';
 import { SalesRepository } from './sales.repository.js';
 import { InventoryService } from '../inventory/inventory.service.js';
@@ -23,6 +26,16 @@ import {
 } from './schemas/sale.schema.js';
 import { EventsService } from '../websocket/events.service.js';
 import { Product, ProductDocument } from '../products/schemas/product.schema.js';
+import {
+  CashEntry,
+  CashEntryCategory,
+  CashEntryDocument,
+  CashEntryType,
+} from '../finance-manager/schema/cash-entry.schema.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
+import { UserRole } from '../users/schemas/user.schema.js';
+import { AuditService } from '../audit/audit.service.js';
+import { AuditResource } from '../audit/schemas/audit-log.schema.js';
 
 /**
  * Return processing result
@@ -41,16 +54,22 @@ export interface ReturnResult {
  * Properties: 44, 47, 48, 79, 80, 81
  */
 @Injectable()
-export class SalesService {
+export class SalesService implements OnModuleInit {
   private readonly logger = new Logger(SalesService.name);
 
   constructor(
     private readonly salesRepository: SalesRepository,
     private readonly inventoryService: InventoryService,
     private readonly eventsService: EventsService,
+    private readonly auditService: AuditService,
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
+    @InjectModel(CashEntry.name) private readonly cashEntryModel: Model<CashEntryDocument>,
   ) {}
+
+  onModuleInit(): void {
+    void this.markOverdueCreditSales();
+  }
 
   /**
    * Find sale by ID
@@ -80,6 +99,9 @@ export class SalesService {
    * Find sales with filtering
    */
   async findAll(filter?: SaleFilterDto): Promise<SaleDocument[]> {
+    if (!filter || filter.saleType === SaleType.CREDIT) {
+      await this.markOverdueCreditSales(filter?.branchId);
+    }
     return this.salesRepository.findWithFilter(filter || {});
   }
 
@@ -107,9 +129,16 @@ export class SalesService {
   async recordPayment(
     saleId: string,
     dto: ReceiveSalePaymentDto,
-    userId: string,
+    actor: CurrentUserData,
   ): Promise<SaleDocument> {
+    if (dto.paymentMethod === PaymentMethod.CREDIT) {
+      throw new BadRequestException(
+        'Recorded payments must use a real payment method',
+      );
+    }
+
     const sale = await this.findById(saleId);
+    this.assertCanManageSaleBranch(sale, actor);
 
     if (sale.saleType !== SaleType.CREDIT) {
       throw new BadRequestException(
@@ -121,46 +150,172 @@ export class SalesService {
       throw new BadRequestException('This sale has already been fully paid');
     }
 
-    if (dto.paymentMethod === PaymentMethod.CREDIT) {
-      throw new BadRequestException(
-        'Recorded payments must use a real payment method',
-      );
-    }
-
     if (dto.amount > sale.balanceDue) {
       throw new BadRequestException(
         `Payment exceeds outstanding balance of ${sale.balanceDue}`,
       );
     }
 
+    const nextAmountPaid = sale.amountPaid + dto.amount;
+    const nextBalanceDue = Math.max(0, sale.balanceDue - dto.amount);
+    const nextPaymentStatus = this.getCreditPaymentStatus(
+      nextBalanceDue,
+      nextAmountPaid,
+      sale.dueDate,
+    );
+    const paymentReceiptNumber = this.generateCreditPaymentReceiptNumber(sale);
     const payment: SalePaymentEntry = {
+      paymentReceiptNumber,
       amount: dto.amount,
       paymentMethod: dto.paymentMethod,
       paymentReference: dto.paymentReference,
-      receivedBy: new Types.ObjectId(userId),
+      receivedBy: new Types.ObjectId(actor.userId),
       receivedAt: new Date(),
       notes: dto.notes,
       isInitialPayment: false,
+      balanceAfterPayment: nextBalanceDue,
     };
 
-    const nextAmountPaid = sale.amountPaid + dto.amount;
-    const nextBalanceDue = Math.max(0, sale.balanceDue - dto.amount);
-    const nextPaymentStatus =
-      nextBalanceDue <= 0 ? PaymentStatus.PAID : PaymentStatus.PARTIAL;
+    const session = await this.connection.startSession();
+    let updatedSale: SaleDocument | null = null;
+    try {
+      await session.withTransaction(async () => {
+        updatedSale = await this.salesRepository.recordPayment(
+          saleId,
+          payment,
+          nextAmountPaid,
+          nextBalanceDue,
+          nextPaymentStatus,
+          session,
+        );
 
-    const updatedSale = await this.salesRepository.recordPayment(
-      saleId,
-      payment,
-      nextAmountPaid,
-      nextBalanceDue,
-      nextPaymentStatus,
-    );
+        await this.cashEntryModel.create([{
+          type: CashEntryType.INCOME,
+          category: CashEntryCategory.SALES,
+          branchId: sale.branchId,
+          amount: dto.amount,
+          description: `Credit payment received for ${sale.receiptNumber}`,
+          notes: dto.notes,
+          receiptNumber: paymentReceiptNumber,
+          referenceId: sale._id.toString(),
+          recordedBy: new Types.ObjectId(actor.userId),
+          entryDate: payment.receivedAt,
+          isActive: true,
+        }], { session });
+      });
+    } finally {
+      await session.endSession();
+    }
 
     if (!updatedSale) {
       throw new NotFoundException(`Sale with ID ${saleId} not found`);
     }
 
+    await this.auditCreditPayment(sale, updatedSale, payment, actor);
     return updatedSale;
+  }
+
+  async calculateShiftCashCollections(shiftId: string): Promise<number> {
+    const sales = await this.salesRepository.findByShift(shiftId);
+    return sales.reduce((sum, sale) => {
+      const cashPayments = (sale.payments || [])
+        .filter((payment) => payment.paymentMethod === PaymentMethod.CASH)
+        .reduce((paymentSum, payment) => paymentSum + (payment.amount || 0), 0);
+
+      if (sale.payments?.length) {
+        return sum + cashPayments - (sale.returnedAmount || 0);
+      }
+
+      if (sale.paymentMethod === PaymentMethod.CASH) {
+        return sum + (sale.total || 0) - (sale.returnedAmount || 0);
+      }
+
+      return sum;
+    }, 0);
+  }
+
+  @Interval(60 * 60 * 1000)
+  async markOverdueCreditSales(branchId?: string): Promise<number> {
+    const modified = await this.salesRepository.markOverdueCreditSales(branchId);
+    if (modified > 0) {
+      this.logger.log(`Marked ${modified} credit sale(s) overdue`);
+    }
+    return modified;
+  }
+
+  private getCreditPaymentStatus(
+    balanceDue: number,
+    amountPaid: number,
+    dueDate?: Date,
+  ): PaymentStatus {
+    if (balanceDue <= 0) {
+      return PaymentStatus.PAID;
+    }
+    if (this.isPastDueDate(dueDate)) {
+      return PaymentStatus.OVERDUE;
+    }
+    return amountPaid > 0 ? PaymentStatus.PARTIAL : PaymentStatus.UNPAID;
+  }
+
+  private isPastDueDate(dueDate?: Date): boolean {
+    if (!dueDate) {
+      return false;
+    }
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    return dueDate < startOfToday;
+  }
+
+  private assertCanManageSaleBranch(sale: SaleDocument, actor: CurrentUserData): void {
+    if (actor.role === UserRole.SUPER_ADMIN) {
+      return;
+    }
+
+    if (!actor.branchId || sale.branchId.toString() !== actor.branchId) {
+      throw new ForbiddenException('You can only record payments for your assigned branch');
+    }
+  }
+
+  private generateCreditPaymentReceiptNumber(sale: SaleDocument): string {
+    const sequence = (sale.payments?.length || 0) + 1;
+    return `${sale.receiptNumber}-PAY-${String(sequence).padStart(2, '0')}`;
+  }
+
+  private async auditCreditPayment(
+    previousSale: SaleDocument,
+    updatedSale: SaleDocument,
+    payment: SalePaymentEntry,
+    actor: CurrentUserData,
+  ): Promise<void> {
+    try {
+      await this.auditService.logUpdate(
+        actor.userId,
+        actor.username,
+        AuditResource.SALE,
+        updatedSale._id.toString(),
+        {
+          amountPaid: previousSale.amountPaid,
+          balanceDue: previousSale.balanceDue,
+          paymentStatus: previousSale.paymentStatus,
+        },
+        {
+          amountPaid: updatedSale.amountPaid,
+          balanceDue: updatedSale.balanceDue,
+          paymentStatus: updatedSale.paymentStatus,
+        },
+        updatedSale.branchId.toString(),
+        {
+          event: 'credit_payment_received',
+          paymentReceiptNumber: payment.paymentReceiptNumber,
+          paymentMethod: payment.paymentMethod,
+          amount: payment.amount,
+        },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Credit payment recorded but audit log failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
   }
 
   /**

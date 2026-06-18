@@ -342,6 +342,28 @@ export class SalesRepository {
       .exec();
   }
 
+  async markOverdueCreditSales(branchId?: string): Promise<number> {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const query: Record<string, unknown> = {
+      saleType: SaleType.CREDIT,
+      paymentStatus: { $in: [PaymentStatus.UNPAID, PaymentStatus.PARTIAL] },
+      balanceDue: { $gt: 0 },
+      dueDate: { $lt: startOfToday },
+    };
+
+    if (branchId) {
+      query.branchId = new Types.ObjectId(branchId);
+    }
+
+    const result = await this.saleModel
+      .updateMany(query, { $set: { paymentStatus: PaymentStatus.OVERDUE } })
+      .exec();
+
+    return result.modifiedCount ?? 0;
+  }
+
   /**
    * Count sales for a shift
    */

@@ -82,11 +82,10 @@ export class ShiftsController {
       closingCash: closeShiftRequestDto.closingCash,
       notes: closeShiftRequestDto.notes,
     };
-    // Calculate expected cash source values:
-    // expectedCash = openingCash + totalSales - totalExpenses
-    const totalSales = await this.salesService.calculateShiftTotal(id);
+    // Expected cash uses cash actually collected, not full invoice totals.
+    const cashCollections = await this.salesService.calculateShiftCashCollections(id);
     const totalExpenses = await this.expensesService.getTotalByShift(id);
-    const netCashMovement = totalSales - totalExpenses;
+    const netCashMovement = cashCollections - totalExpenses;
     const shift = await this.shiftsService.closeShift(closeShiftDto, netCashMovement);
     return apiResponse(shift);
   }

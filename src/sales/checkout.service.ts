@@ -154,7 +154,7 @@ let session;
             : PaymentStatus.UNPAID;
 
       this.validatePaymentDetails(dto, total, saleType, amountPaid, balanceDue);
-      const payments = this.buildInitialPayments(dto, cashierId, saleType, amountPaid);
+      const payments = this.buildInitialPayments(dto, cashierId, saleType, amountPaid, balanceDue);
 
       // Determine prescription status
       const prescriptionStatus = dto.prescriptionUrl
@@ -450,6 +450,13 @@ let session;
         throw new BadRequestException('Due date is required for credit sales');
       }
 
+      const dueDate = new Date(dto.dueDate);
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      if (dueDate < startOfToday) {
+        throw new BadRequestException('Due date cannot be in the past');
+      }
+
       if (amountPaid > 0 && !dto.initialPaymentMethod) {
         throw new BadRequestException(
           'Initial payment method is required when recording a deposit',
@@ -481,6 +488,7 @@ let session;
     cashierId: string,
     saleType: SaleType,
     amountPaid: number,
+    balanceDue: number,
   ): SalePaymentEntry[] {
     if (amountPaid <= 0) {
       return [];
@@ -503,6 +511,7 @@ let session;
             ? 'Initial credit-sale payment'
             : 'Checkout payment',
         isInitialPayment: true,
+        balanceAfterPayment: balanceDue,
       },
     ];
   }

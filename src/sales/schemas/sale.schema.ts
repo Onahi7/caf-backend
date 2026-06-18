@@ -104,6 +104,9 @@ export const SaleItemSchema = SchemaFactory.createForClass(SaleItem);
 
 @Schema({ _id: false })
 export class SalePaymentEntry {
+  @Prop()
+  paymentReceiptNumber?: string;
+
   @Prop({ required: true })
   amount!: number;
 
@@ -124,6 +127,9 @@ export class SalePaymentEntry {
 
   @Prop({ default: false })
   isInitialPayment!: boolean;
+
+  @Prop()
+  balanceAfterPayment?: number;
 }
 
 export const SalePaymentEntrySchema =

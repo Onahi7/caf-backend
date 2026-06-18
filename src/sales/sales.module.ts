@@ -4,6 +4,7 @@ import { Sale, SaleSchema } from './schemas/sale.schema.js';
 import { CounterSchema } from './schemas/counter.schema.js';
 import { Product, ProductSchema } from '../products/schemas/product.schema.js';
 import { Branch, BranchSchema } from '../branches/schemas/branch.schema.js';
+import { CashEntry, CashEntrySchema } from '../finance-manager/schema/cash-entry.schema.js';
 import { SalesRepository } from './sales.repository.js';
 import { SalesService } from './sales.service.js';
 import { CheckoutService } from './checkout.service.js';
@@ -16,6 +17,7 @@ import { ProductsModule } from '../products/products.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { WebSocketModule } from '../websocket/websocket.module.js';
 import { EmailModule } from '../email/email.module.js';
+import { AuditModule } from '../audit/audit.module.js';
 import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
 
@@ -31,6 +33,7 @@ import { IdempotencyInterceptor } from '../common/interceptors/idempotency.inter
       { name: 'Counter', schema: CounterSchema },
       { name: Product.name, schema: ProductSchema },
       { name: Branch.name, schema: BranchSchema },
+      { name: CashEntry.name, schema: CashEntrySchema },
     ]),
     forwardRef(() => BatchesModule),
     forwardRef(() => InventoryModule),
@@ -38,6 +41,7 @@ import { IdempotencyInterceptor } from '../common/interceptors/idempotency.inter
     forwardRef(() => ProductsModule),
     forwardRef(() => AuthModule),
     forwardRef(() => EmailModule),
+    AuditModule,
     WebSocketModule,
   ],
   controllers: [SalesController],
