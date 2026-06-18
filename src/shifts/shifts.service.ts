@@ -7,7 +7,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { ShiftsRepository } from './shifts.repository.js';
 import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 import { OpenShiftDto } from './dto/open-shift.dto.js';
@@ -62,6 +62,13 @@ export class ShiftsService {
       );
     }
 
+    if (
+      !Types.ObjectId.isValid(openShiftDto.branchId) ||
+      !Types.ObjectId.isValid(openShiftDto.cashierId)
+    ) {
+      throw new BadRequestException('Invalid branchId or cashierId');
+    }
+
     if (openShiftDto.openingCash === undefined || openShiftDto.openingCash === null) {
       throw new BadRequestException(
         'Opening cash amount is required',
@@ -81,10 +88,9 @@ export class ShiftsService {
         await this.shiftsRepository.findOpenShiftForCashier(
           openShiftDto.cashierId,
           session, // Pass session for consistency
-        );
+      );
 
       if (existingOpenShift) {
-        await session.abortTransaction();
         throw new ConflictException(
           'Cashier already has an open shift. Please close the existing shift first.',
         );
@@ -94,7 +100,9 @@ export class ShiftsService {
       await session.commitTransaction();
       return shift;
     } catch (error) {
-      await session.abortTransaction();
+      if (session.inTransaction()) {
+        await session.abortTransaction();
+      }
       throw error;
     } finally {
       await session.endSession();

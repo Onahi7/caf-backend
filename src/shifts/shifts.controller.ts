@@ -50,8 +50,17 @@ export class ShiftsController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
-  async openShift(@Body() openShiftDto: OpenShiftDto) {
-    const shift = await this.shiftsService.openShift(openShiftDto);
+  async openShift(
+    @Body() openShiftDto: OpenShiftDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    const resolvedBranchId = requireResolvedBranchId(user, openShiftDto.branchId);
+    const shift = await this.shiftsService.openShift({
+      ...openShiftDto,
+      branchId: resolvedBranchId,
+      cashierId:
+        user.role === UserRole.CASHIER ? user.userId : openShiftDto.cashierId,
+    });
     return apiResponse(shift);
   }
 

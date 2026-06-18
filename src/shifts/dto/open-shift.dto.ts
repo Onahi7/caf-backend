@@ -1,8 +1,8 @@
-import { IsNotEmpty, IsString, IsNumber, Min } from 'class-validator';
+import { IsMongoId, IsNotEmpty, IsString, IsNumber, Min } from 'class-validator';
 
 export class OpenShiftDto {
   @IsNotEmpty()
-  @IsString()
+  @IsMongoId()
   branchId!: string;
 
   @IsNotEmpty()
@@ -10,7 +10,7 @@ export class OpenShiftDto {
   terminalId!: string;
 
   @IsNotEmpty()
-  @IsString()
+  @IsMongoId()
   cashierId!: string;
 
   @IsNotEmpty()
