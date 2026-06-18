@@ -4,7 +4,7 @@ import { AppModule } from '../app.module';
 import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { Batch } from '../batches/schemas/batch.schema';
-import { Branch } from '../branches/schemas/branch.schema';
+import { Branch, BranchCurrency } from '../branches/schemas/branch.schema';
 import { Customer } from '../customers/schemas/customer.schema';
 import {
   MovementType,
@@ -113,6 +113,7 @@ async function bootstrap() {
         address: '15 Siaka Stevens Street, Freetown',
         phone: '+232-30-100-001',
         email: 'hq@carefarm.example',
+        currencyCode: BranchCurrency.SLE,
         isHeadquarters: true,
         config: {
           reorderThreshold: 10,
@@ -127,6 +128,7 @@ async function bootstrap() {
         address: '7 Beach Road, Aberdeen, Freetown',
         phone: '+232-30-100-002',
         email: 'aberdeen@carefarm.example',
+        currencyCode: BranchCurrency.SLE,
         isHeadquarters: false,
         config: {
           reorderThreshold: 8,
@@ -141,6 +143,7 @@ async function bootstrap() {
         address: 'EMR Integration Branch',
         phone: '+232-30-100-003',
         email: 'emr@carefarm.example',
+        currencyCode: BranchCurrency.SLE,
         isHeadquarters: false,
         config: {
           reorderThreshold: 5,
@@ -155,6 +158,7 @@ async function bootstrap() {
         address: 'Lab Dispensary Branch',
         phone: '+232-30-100-004',
         email: 'lab@carefarm.example',
+        currencyCode: BranchCurrency.SLE,
         isHeadquarters: false,
         config: {
           reorderThreshold: 5,

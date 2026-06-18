@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, ClientSession, Model, Types } from 'mongoose';
@@ -41,6 +42,7 @@ export interface StockSummary {
 @Injectable()
 export class InventoryService {
   private readonly DEFAULT_REORDER_LEVEL = 10;
+  private readonly logger = new Logger(InventoryService.name);
 
   constructor(
     private readonly stockMovementRepository: StockMovementRepository,
@@ -127,9 +129,13 @@ export class InventoryService {
 
     const previousQuantity = product.quantityAvailable;
     const session = await this.connection.startSession();
-    session.startTransaction();
+    let updatedProduct!: ProductDocument;
+    let movement!: StockMovementDocument;
+    let newQuantity!: number;
 
     try {
+      session.startTransaction();
+
       const filter: Record<string, unknown> = {
         _id: new Types.ObjectId(dto.productId),
       };
@@ -151,29 +157,19 @@ export class InventoryService {
         );
       }
 
-      if (updatedProduct.quantityAvailable < 0) {
-        await session.abortTransaction();
-        session.endSession();
-        throw new BadRequestException(
-          `Adjustment would result in negative stock for product ${dto.productId}: ${updatedProduct.quantityAvailable}`,
-        );
-      }
-
-      const newQuantity = updatedProduct.quantityAvailable;
+      newQuantity = updatedProduct.quantityAvailable;
 
       if (
         dto.quantityChange > 0 &&
         updatedProduct.maxStockLevel > 0 &&
         updatedProduct.quantityAvailable > updatedProduct.maxStockLevel
       ) {
-        await session.abortTransaction();
-        session.endSession();
         throw new BadRequestException(
           `Adjustment would exceed the maximum stock level of ${updatedProduct.maxStockLevel} units for this product`,
         );
       }
 
-      const movement = await this.stockMovementRepository.create(
+      movement = await this.stockMovementRepository.create(
         {
           branchId: dto.branchId,
           productId: dto.productId,
@@ -191,25 +187,38 @@ export class InventoryService {
       );
 
       await session.commitTransaction();
+    } catch (error) {
+      if (session.inTransaction()) {
+        await session.abortTransaction();
+      }
+      throw error;
+    } finally {
+      await session.endSession();
+    }
 
-      const actingUser = await this.usersService.findById(userId).catch(() => null);
-      await this.auditService.logUpdate(
-        userId,
-        actingUser?.username ?? userId,
-        AuditResource.INVENTORY,
-        dto.productId,
-        { previousQuantity },
-        { newQuantity, quantityAvailable: updatedProduct.quantityAvailable },
-        dto.branchId,
-        {
-          productId: dto.productId,
-          reason: dto.reason,
-          adjustmentAmount: dto.quantityChange,
-          movementId: movement._id.toString(),
-          approvedBy: dto.approvedBy,
-        },
+    const actingUser = await this.usersService.findById(userId).catch(() => null);
+    await this.auditService.logUpdate(
+      userId,
+      actingUser?.username ?? userId,
+      AuditResource.INVENTORY,
+      dto.productId,
+      { previousQuantity },
+      { newQuantity, quantityAvailable: updatedProduct.quantityAvailable },
+      dto.branchId,
+      {
+        productId: dto.productId,
+        reason: dto.reason,
+        adjustmentAmount: dto.quantityChange,
+        movementId: movement._id.toString(),
+        approvedBy: dto.approvedBy,
+      },
+    ).catch((error: unknown) => {
+      this.logger.error(
+        `Inventory adjustment audit failed for product ${dto.productId}: ${error instanceof Error ? error.message : String(error)}`,
       );
+    });
 
+    try {
       this.eventsService.emitInventoryUpdate({
         batchId: dto.productId,
         productId: dto.productId,
@@ -218,20 +227,19 @@ export class InventoryService {
         updateType: 'adjustment',
         timestamp: new Date(),
       });
-
-      return {
-        success: true,
-        movementId: movement._id.toString(),
-        previousQuantity,
-        newQuantity,
-        adjustmentAmount: dto.quantityChange,
-      };
     } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
+      this.logger.error(
+        `Inventory adjustment event failed for product ${dto.productId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
+
+    return {
+      success: true,
+      movementId: movement._id.toString(),
+      previousQuantity,
+      newQuantity,
+      adjustmentAmount: dto.quantityChange,
+    };
   }
 
   async generateLowStockAlerts(branchId: string): Promise<LowStockAlert[]> {

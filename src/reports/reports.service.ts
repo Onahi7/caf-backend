@@ -1056,7 +1056,7 @@ export class ReportsService {
 
     const branches = await this.branchModel
       .find({ isActive: { $ne: false } })
-      .select('_id name')
+      .select('_id name currencyCode')
       .lean();
 
     const branchIds = branches.map((b) => b._id);
@@ -1205,9 +1205,14 @@ export class ReportsService {
       return {
         branchId: branch._id.toString(),
         branchName: branch.name,
+        currencyCode: branch.currencyCode ?? 'SLE',
         totalProducts: agg?.totalProducts ?? 0,
         totalQuantity: agg?.totalQuantity ?? 0,
         totalValue: agg?.totalValue ?? 0,
+        totalValueFormatted: CurrencyUtil.format(
+          agg?.totalValue ?? 0,
+          branch.currencyCode ?? 'SLE',
+        ),
         lowStockItems: agg?.lowStockItems ?? 0,
       };
     });
@@ -1222,11 +1227,42 @@ export class ReportsService {
       return {
         branchId: branch._id.toString(),
         branchName: branch.name,
+        currencyCode: branch.currencyCode ?? 'SLE',
         totalSales,
         totalRevenue,
+        totalRevenueFormatted: CurrencyUtil.format(
+          totalRevenue,
+          branch.currencyCode ?? 'SLE',
+        ),
         averageOrderValue: totalSales > 0 ? totalRevenue / totalSales : 0,
+        averageOrderValueFormatted: CurrencyUtil.format(
+          totalSales > 0 ? totalRevenue / totalSales : 0,
+          branch.currencyCode ?? 'SLE',
+        ),
       };
     });
+
+    const inventoryTotalsByCurrency = inventory.reduce(
+      (acc, row) => {
+        const code = row.currencyCode;
+        acc[code] = acc[code] ?? { currencyCode: code, totalValue: 0, totalQuantity: 0 };
+        acc[code].totalValue += row.totalValue;
+        acc[code].totalQuantity += row.totalQuantity;
+        return acc;
+      },
+      {} as Record<string, { currencyCode: string; totalValue: number; totalQuantity: number }>,
+    );
+
+    const salesTotalsByCurrency = sales.reduce(
+      (acc, row) => {
+        const code = row.currencyCode;
+        acc[code] = acc[code] ?? { currencyCode: code, totalRevenue: 0, totalSales: 0 };
+        acc[code].totalRevenue += row.totalRevenue;
+        acc[code].totalSales += row.totalSales;
+        return acc;
+      },
+      {} as Record<string, { currencyCode: string; totalRevenue: number; totalSales: number }>,
+    );
 
     // Format pending transfers
     const pendingTransferRows = pendingTransfers.map((transfer: any) => ({
@@ -1265,6 +1301,14 @@ export class ReportsService {
     return {
       inventory,
       sales,
+      inventoryTotalsByCurrency: Object.values(inventoryTotalsByCurrency).map((row) => ({
+        ...row,
+        totalValueFormatted: CurrencyUtil.format(row.totalValue, row.currencyCode),
+      })),
+      salesTotalsByCurrency: Object.values(salesTotalsByCurrency).map((row) => ({
+        ...row,
+        totalRevenueFormatted: CurrencyUtil.format(row.totalRevenue, row.currencyCode),
+      })),
       pendingTransfers: pendingTransferRows,
       lowStockAlerts,
       expiryAlerts,

@@ -4,9 +4,11 @@ import {
   IsBoolean,
   IsOptional,
   ValidateNested,
+  IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { BranchConfigDto } from './create-branch.dto.js';
+import { BranchCurrency } from '../schemas/branch.schema.js';
 
 export class UpdateBranchDto {
   @IsString()
@@ -28,6 +30,10 @@ export class UpdateBranchDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @IsEnum(BranchCurrency)
+  @IsOptional()
+  currencyCode?: BranchCurrency;
 
   @IsBoolean()
   @IsOptional()

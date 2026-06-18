@@ -8,6 +8,10 @@ export class CurrencyUtil {
   static readonly CURRENCY_SYMBOL = 'Le';
   static readonly DECIMAL_PLACES = 2;
 
+  private static getSymbol(currencyCode?: string): string {
+    return currencyCode === 'USD' ? '$' : this.CURRENCY_SYMBOL;
+  }
+
   /**
    * Format a monetary amount with SLE currency symbol and proper formatting
    * Property 1: Currency symbol prefix
@@ -21,10 +25,12 @@ export class CurrencyUtil {
    * CurrencyUtil.format(1234.56) // "Le 1,234.56"
    * CurrencyUtil.format(100) // "Le 100.00"
    */
-  static format(amount: number): string {
+  static format(amount: number, currencyCode?: string): string {
+    const symbol = this.getSymbol(currencyCode);
+
     // Handle invalid inputs
     if (amount === null || amount === undefined || isNaN(amount)) {
-      return `${this.CURRENCY_SYMBOL} 0.00`;
+      return `${symbol} 0.00`;
     }
 
     // Format with two decimal places
@@ -36,7 +42,7 @@ export class CurrencyUtil {
     // Add thousand separators
     const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-    return `${this.CURRENCY_SYMBOL} ${formattedInteger}.${decimalPart}`;
+    return `${symbol} ${formattedInteger}.${decimalPart}`;
   }
 
   /**
@@ -83,6 +89,7 @@ export class CurrencyUtil {
     // Remove currency symbol, spaces, and commas
     const cleanedAmount = formattedAmount
       .replace(this.CURRENCY_SYMBOL, '')
+      .replace('$', '')
       .replace(/\s/g, '')
       .replace(/,/g, '');
 

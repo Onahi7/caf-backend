@@ -9,6 +9,11 @@ export interface BranchConfig {
   allowNegativeStock: boolean;
 }
 
+export enum BranchCurrency {
+  SLE = 'SLE',
+  USD = 'USD',
+}
+
 @Schema({ timestamps: true })
 export class Branch {
   @Prop({ required: true })
@@ -25,6 +30,9 @@ export class Branch {
 
   @Prop({ required: true })
   email!: string;
+
+  @Prop({ required: true, enum: BranchCurrency, type: String, default: BranchCurrency.SLE })
+  currencyCode!: BranchCurrency;
 
   @Prop({ default: false })
   isHeadquarters!: boolean;

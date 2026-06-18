@@ -6,8 +6,10 @@ import {
   IsNumber,
   IsArray,
   ValidateNested,
+  IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { BranchCurrency } from '../schemas/branch.schema.js';
 
 export class BranchConfigDto {
   @IsNumber()
@@ -39,6 +41,10 @@ export class CreateBranchDto {
 
   @IsEmail()
   email!: string;
+
+  @IsEnum(BranchCurrency)
+  @IsOptional()
+  currencyCode?: BranchCurrency;
 
   @IsBoolean()
   @IsOptional()

@@ -92,6 +92,7 @@ export interface UnifiedDashboard {
   byBranch: {
     branchId: string;
     branchName: string;
+    currencyCode: string;
     revenue: number;
     expenses: number;
     profit: number;
@@ -637,12 +638,14 @@ export class FinanceAggregationService {
           },
         },
       ]).exec(),
-      this.branchModel.find({}, { _id: 1, name: 1 }).lean().exec(),
+      this.branchModel.find({}, { _id: 1, name: 1, currencyCode: 1 }).lean().exec(),
     ]);
 
     const branchNameMap = new Map<string, string>();
+    const branchCurrencyMap = new Map<string, string>();
     for (const b of branches) {
       branchNameMap.set(b._id.toString(), b.name);
+      branchCurrencyMap.set(b._id.toString(), b.currencyCode ?? 'SLE');
     }
 
     const branchMap = new Map<string, { revenue: number; expenses: number; salesCount: number }>();
@@ -661,6 +664,7 @@ export class FinanceAggregationService {
     return Array.from(branchMap.entries()).map(([branchId, data]) => ({
       branchId,
       branchName: branchNameMap.get(branchId) || branchId,
+      currencyCode: branchCurrencyMap.get(branchId) || 'SLE',
       revenue: data.revenue,
       expenses: data.expenses,
       profit: data.revenue - data.expenses,
