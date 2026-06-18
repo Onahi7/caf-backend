@@ -46,6 +46,14 @@ export class MarketerService {
       throw new ForbiddenException('Branch managers can only assign products in their own branch');
     }
 
+    const items = this.normalizeAssignmentItems(dto);
+    const duplicateProduct = items.find((item, index) =>
+      items.some((other, otherIndex) => otherIndex !== index && other.productId === item.productId),
+    );
+    if (duplicateProduct) {
+      throw new BadRequestException('Each product can only appear once in the same assignment request');
+    }
+
     const marketer = await this.userModel.findById(dto.marketerId).exec();
     if (!marketer || marketer.role !== UserRole.MARKETER) {
       throw new NotFoundException('Marketer user not found');
@@ -55,70 +63,102 @@ export class MarketerService {
       throw new BadRequestException('Marketer is not assigned to the selected branch');
     }
 
-    const product = await this.productModel.findById(dto.productId).exec();
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
-
-    if (product.branchId.toString() !== dto.branchId) {
-      throw new BadRequestException('Product does not belong to selected branch');
-    }
-
-    const existing = await this.assignmentModel
-      .findOne({
-        branchId: dto.branchId,
-        marketerId: dto.marketerId,
-        productId: dto.productId,
-        isActive: true,
-      })
-      .exec();
-
-    if (existing) {
-      throw new BadRequestException('An active assignment already exists for this marketer and product');
-    }
-
     const session = await this.connection.startSession();
-    let assignment: MarketerProductAssignmentDocument | undefined;
+    const assignments: MarketerProductAssignmentDocument[] = [];
     try {
       await session.withTransaction(async () => {
-        const updatedProduct = await this.productModel.findOneAndUpdate(
-          {
-            _id: new Types.ObjectId(dto.productId),
-            branchId: new Types.ObjectId(dto.branchId),
-            quantityAvailable: { $gte: dto.assignedQuantity },
-          },
-          { $inc: { quantityAvailable: -dto.assignedQuantity } },
-          { new: true, session },
-        ).exec();
+        for (const item of items) {
+          const product = await this.productModel
+            .findOne({
+              _id: new Types.ObjectId(item.productId),
+              branchId: new Types.ObjectId(dto.branchId),
+            })
+            .session(session)
+            .exec();
+          if (!product) {
+            throw new NotFoundException('Product not found in selected branch');
+          }
 
-        if (!updatedProduct) {
-          throw new BadRequestException(
-            `Insufficient stock to assign ${dto.assignedQuantity} units to marketer`,
-          );
+          const existing = await this.assignmentModel
+            .findOne({
+              branchId: dto.branchId,
+              marketerId: dto.marketerId,
+              productId: item.productId,
+              isActive: true,
+            })
+            .session(session)
+            .exec();
+
+          if (existing) {
+            throw new BadRequestException(`An active assignment already exists for ${product.name}`);
+          }
+
+          const updatedProduct = await this.productModel.findOneAndUpdate(
+            {
+              _id: new Types.ObjectId(item.productId),
+              branchId: new Types.ObjectId(dto.branchId),
+              quantityAvailable: { $gte: item.assignedQuantity },
+            },
+            { $inc: { quantityAvailable: -item.assignedQuantity } },
+            { new: true, session },
+          ).exec();
+
+          if (!updatedProduct) {
+            throw new BadRequestException(
+              `Insufficient stock to assign ${item.assignedQuantity} units of ${product.name}`,
+            );
+          }
+
+          const [assignment] = await this.assignmentModel.create([{
+            branchId: dto.branchId,
+            marketerId: dto.marketerId,
+            productId: item.productId,
+            assignedQuantity: item.assignedQuantity,
+            assignedUnitPrice: item.assignedUnitPrice,
+            notes: dto.notes,
+            assignedBy: actor.userId,
+            remainingQuantity: item.assignedQuantity,
+            status: MarketerAssignmentStatus.PENDING,
+          }], { session });
+
+          assignments.push(assignment);
+
+          await this.recordMarketerStockMovement({
+            branchId: dto.branchId,
+            productId: item.productId,
+            quantity: -item.assignedQuantity,
+            userId: actor.userId,
+            referenceId: assignment._id,
+            reason: 'Stock assigned to marketer',
+            metadata: { marketerId: dto.marketerId },
+          }, session);
         }
-
-        [assignment] = await this.assignmentModel.create([{
-          ...dto,
-          assignedBy: actor.userId,
-          remainingQuantity: dto.assignedQuantity,
-          status: MarketerAssignmentStatus.PENDING,
-        }], { session });
-
-        await this.recordMarketerStockMovement({
-          branchId: dto.branchId,
-          productId: dto.productId,
-          quantity: -dto.assignedQuantity,
-          userId: actor.userId,
-          referenceId: assignment._id,
-          reason: 'Stock assigned to marketer',
-          metadata: { marketerId: dto.marketerId },
-        }, session);
       });
     } finally {
       await session.endSession();
     }
 
-    return assignment;
+    return dto.items?.length ? assignments : assignments[0];
+  }
+
+  private normalizeAssignmentItems(dto: CreateMarketerAssignmentDto) {
+    if (dto.items?.length) {
+      return dto.items;
+    }
+
+    if (
+      dto.productId &&
+      dto.assignedQuantity !== undefined &&
+      dto.assignedUnitPrice !== undefined
+    ) {
+      return [{
+        productId: dto.productId,
+        assignedQuantity: dto.assignedQuantity,
+        assignedUnitPrice: dto.assignedUnitPrice,
+      }];
+    }
+
+    throw new BadRequestException('Add at least one product assignment');
   }
 
   async listAssignments(filter: MarketerAssignmentQueryDto, actor: CurrentUserData) {

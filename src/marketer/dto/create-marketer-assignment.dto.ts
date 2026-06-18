@@ -1,12 +1,18 @@
-import { IsInt, IsMongoId, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsInt,
+  IsMongoId,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
-export class CreateMarketerAssignmentDto {
-  @IsMongoId()
-  branchId!: string;
-
-  @IsMongoId()
-  marketerId!: string;
-
+export class CreateMarketerAssignmentItemDto {
   @IsMongoId()
   productId!: string;
 
@@ -17,6 +23,35 @@ export class CreateMarketerAssignmentDto {
   @IsNumber()
   @Min(0)
   assignedUnitPrice!: number;
+}
+
+export class CreateMarketerAssignmentDto {
+  @IsMongoId()
+  branchId!: string;
+
+  @IsMongoId()
+  marketerId!: string;
+
+  @IsOptional()
+  @IsMongoId()
+  productId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  assignedQuantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  assignedUnitPrice?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateMarketerAssignmentItemDto)
+  items?: CreateMarketerAssignmentItemDto[];
 
   @IsOptional()
   @IsString()
