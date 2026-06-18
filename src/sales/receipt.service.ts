@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { SalesRepository } from './sales.repository.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
+import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 import PDFDocument from 'pdfkit';
 import { Readable } from 'stream';
 
@@ -12,7 +15,10 @@ import { Readable } from 'stream';
  */
 @Injectable()
 export class ReceiptService {
-  constructor(private readonly salesRepository: SalesRepository) {}
+  constructor(
+    private readonly salesRepository: SalesRepository,
+    @InjectModel(Branch.name) private readonly branchModel: Model<BranchDocument>,
+  ) {}
 
   /**
    * Generate PDF receipt
@@ -28,6 +34,22 @@ export class ReceiptService {
     await sale.populate(['branchId', 'cashierId', 'items.productId']);
 
     return this.createPDFDocument(sale);
+  }
+
+  /**
+   * Resolve the currency code for a sale from its populated branch
+   */
+  private async getSaleCurrencyCode(sale: any): Promise<string> {
+    const populatedCode = sale.branchId?.currencyCode;
+    if (populatedCode) {
+      return populatedCode;
+    }
+    if (!sale.branchId) {
+      return 'SLE';
+    }
+    const branchId = sale.branchId._id?.toString?.() ?? sale.branchId.toString();
+    const branch = await this.branchModel.findById(branchId).exec();
+    return branch?.currencyCode || 'SLE';
   }
 
   /**
@@ -48,8 +70,9 @@ export class ReceiptService {
   /**
    * Create PDF document with receipt content
    */
-  private createPDFDocument(sale: any): Readable {
+  private async createPDFDocument(sale: any): Promise<Readable> {
     const doc = new PDFDocument({ size: 'A5', margin: 50 });
+    const currencyCode = await this.getSaleCurrencyCode(sale);
 
     // Store branch info
     const branchName = sale.branchId?.name || 'Pharmacy POS';
@@ -150,18 +173,18 @@ export class ReceiptService {
     const totalsValueX = 450;
     
     doc.text('Subtotal:', totalsX, doc.y, { width: 100, continued: false });
-    doc.text(CurrencyUtil.format(sale.subtotal), totalsValueX, doc.y, { width: 100, align: 'right' });
+    doc.text(CurrencyUtil.format(sale.subtotal, currencyCode), totalsValueX, doc.y, { width: 100, align: 'right' });
     doc.moveDown(0.3);
 
     if (sale.discount > 0) {
       doc.text('Discount:', totalsX, doc.y, { width: 100, continued: false });
-      doc.text(`-${CurrencyUtil.format(sale.discount)}`, totalsValueX, doc.y, { width: 100, align: 'right' });
+      doc.text(`-${CurrencyUtil.format(sale.discount, currencyCode)}`, totalsValueX, doc.y, { width: 100, align: 'right' });
       doc.moveDown(0.3);
     }
 
     doc.fontSize(12).font('Helvetica-Bold');
     doc.text('TOTAL:', totalsX, doc.y, { width: 100, continued: false });
-    doc.text(CurrencyUtil.format(sale.total), totalsValueX, doc.y, { width: 100, align: 'right' });
+    doc.text(CurrencyUtil.format(sale.total, currencyCode), totalsValueX, doc.y, { width: 100, align: 'right' });
     doc.moveDown();
 
     // Payment info
@@ -198,8 +221,9 @@ export class ReceiptService {
    * Create ESC/POS commands for thermal printers
    * Supports 58mm and 80mm paper widths
    */
-  private createESCPOSCommands(sale: any, width: 58 | 80): Buffer {
+  private async createESCPOSCommands(sale: any, width: 58 | 80): Promise<Buffer> {
     const commands: Buffer[] = [];
+    const currencyCode = await this.getSaleCurrencyCode(sale);
     
     // ESC/POS command constants
     const ESC = 0x1B;
@@ -278,7 +302,7 @@ export class ReceiptService {
       }
       
       // Quantity x Price = Total
-      const qtyPriceTotal = `${item.quantity} x ${CurrencyUtil.formatWithoutSymbol(item.unitPrice)} = ${CurrencyUtil.format(item.subtotal)}`;
+      const qtyPriceTotal = `${item.quantity} x ${CurrencyUtil.formatWithoutSymbol(item.unitPrice)} = ${CurrencyUtil.format(item.subtotal, currencyCode)}`;
       addText(qtyPriceTotal);
       
       // Batch info
@@ -298,16 +322,16 @@ export class ReceiptService {
     addText(separator);
 
     // Totals
-    const subtotalLine = this.padLine('Subtotal:', CurrencyUtil.format(sale.subtotal), lineWidth);
+    const subtotalLine = this.padLine('Subtotal:', CurrencyUtil.format(sale.subtotal, currencyCode), lineWidth);
     addText(subtotalLine);
     
     if (sale.discount > 0) {
-      const discountLine = this.padLine('Discount:', `-${CurrencyUtil.format(sale.discount)}`, lineWidth);
+      const discountLine = this.padLine('Discount:', `-${CurrencyUtil.format(sale.discount, currencyCode)}`, lineWidth);
       addText(discountLine);
     }
     
     commands.push(CMD_BOLD_ON, CMD_DOUBLE_HEIGHT);
-    const totalLine = this.padLine('TOTAL:', CurrencyUtil.format(sale.total), lineWidth);
+    const totalLine = this.padLine('TOTAL:', CurrencyUtil.format(sale.total, currencyCode), lineWidth);
     addText(totalLine);
     commands.push(CMD_NORMAL, CMD_BOLD_OFF);
 

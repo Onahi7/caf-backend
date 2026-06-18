@@ -6,8 +6,10 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { InjectConnection } from '@nestjs/mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { ShiftsRepository } from './shifts.repository.js';
+import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 import { OpenShiftDto } from './dto/open-shift.dto.js';
 import { CloseShiftDto } from './dto/close-shift.dto.js';
 import { ShiftFilterDto } from './dto/shift-filter.dto.js';
@@ -23,6 +25,7 @@ export class ShiftsService {
     @Inject(forwardRef(() => SalesService))
     private readonly salesService: SalesService,
     @InjectConnection() private readonly connection: Connection,
+    @InjectModel(Branch.name) private readonly branchModel: Model<BranchDocument>,
   ) {}
 
   /**
@@ -262,21 +265,26 @@ export class ShiftsService {
 
     // Calculate actual total sales from sales records
     const totalSales = await this.salesService.calculateShiftTotal(shiftId);
-    
+
     const openingCash = shift.openingCash;
     const expectedCash = shift.expectedCash || (shift.openingCash + totalSales);
     const closingCash = shift.closingCash || 0;
     const variance = shift.variance || 0;
 
+    const branch = await this.branchModel
+      .findById(shift.branchId.toString())
+      .exec();
+    const currencyCode = branch?.currencyCode || 'SLE';
+
     return {
       shift,
       totalSales,
-      totalSalesFormatted: CurrencyUtil.format(totalSales),
+      totalSalesFormatted: CurrencyUtil.format(totalSales, currencyCode),
       variance,
-      varianceFormatted: CurrencyUtil.format(variance),
-      formattedOpeningCash: CurrencyUtil.format(openingCash),
-      formattedClosingCash: CurrencyUtil.format(closingCash),
-      formattedExpectedCash: CurrencyUtil.format(expectedCash),
+      varianceFormatted: CurrencyUtil.format(variance, currencyCode),
+      formattedOpeningCash: CurrencyUtil.format(openingCash, currencyCode),
+      formattedClosingCash: CurrencyUtil.format(closingCash, currencyCode),
+      formattedExpectedCash: CurrencyUtil.format(expectedCash, currencyCode),
     };
   }
 }

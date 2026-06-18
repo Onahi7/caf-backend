@@ -34,6 +34,8 @@ export class InventoryReportDto {
  * Property 11: Report currency formatting
  */
 export interface InventoryReportResult {
+  branchId?: string;
+  currencyCode?: string;
   summary: {
     totalProducts: number;
     totalBatches: number;

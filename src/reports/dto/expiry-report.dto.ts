@@ -23,6 +23,8 @@ export class ExpiryReportDto {
  * Property 11: Report currency formatting
  */
 export interface ExpiryReportResult {
+  branchId?: string;
+  currencyCode?: string;
   summary: {
     totalBatches: number;
     totalQuantity: number;

@@ -5,12 +5,13 @@ import { getPaymentMethodLabel } from '../../common/constants/payment-methods.co
 /**
  * Generate HTML email template for receipt
  * Requirements: 3.1, 3.2, 3.3, 3.4, 4.5
- * Creates a mobile-friendly, professional receipt email with SLE currency formatting
+ * Creates a mobile-friendly, professional receipt email with branch currency formatting
  * Property 8: Receipt currency formatting
  * Property 9: Receipt payment method display
  * Property 10: Email and print formatting consistency
  */
 export function generateReceiptEmailTemplate(data: ReceiptData): string {
+  const currencyCode = data.branchCurrencyCode || 'SLE';
   const formattedDate = new Date(data.timestamp).toLocaleString('en-NG', {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -27,10 +28,10 @@ export function generateReceiptEmailTemplate(data: ReceiptData): string {
         ${item.quantity}
       </td>
       <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; text-align: right;">
-        ${CurrencyUtil.format(item.unitPrice)}
+        ${CurrencyUtil.format(item.unitPrice, currencyCode)}
       </td>
       <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">
-        ${CurrencyUtil.format(item.total)}
+        ${CurrencyUtil.format(item.total, currencyCode)}
       </td>
     </tr>
   `,
@@ -147,7 +148,7 @@ export function generateReceiptEmailTemplate(data: ReceiptData): string {
                     Subtotal:
                   </td>
                   <td style="padding: 8px 0 8px 24px; text-align: right; color: #111827; font-size: 14px; font-weight: 600; width: 120px;">
-                    ${CurrencyUtil.format(data.subtotal)}
+                    ${CurrencyUtil.format(data.subtotal, currencyCode)}
                   </td>
                 </tr>
                 ${
@@ -158,7 +159,7 @@ export function generateReceiptEmailTemplate(data: ReceiptData): string {
                     Discount:
                   </td>
                   <td style="padding: 8px 0 8px 24px; text-align: right; color: #10b981; font-size: 14px; font-weight: 600;">
-                    -${CurrencyUtil.format(data.discount)}
+                    -${CurrencyUtil.format(data.discount, currencyCode)}
                   </td>
                 </tr>
                 `
@@ -169,7 +170,7 @@ export function generateReceiptEmailTemplate(data: ReceiptData): string {
                     Total:
                   </td>
                   <td style="padding: 16px 0 0 24px; text-align: right; color: #667eea; font-size: 24px; font-weight: 700;">
-                    ${CurrencyUtil.format(data.total)}
+                    ${CurrencyUtil.format(data.total, currencyCode)}
                   </td>
                 </tr>
               </table>

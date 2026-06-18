@@ -45,6 +45,8 @@ export class SalesReportDto {
  * Property 12: Payment method breakdown completeness
  */
 export interface SalesReportResult {
+  branchId?: string;
+  currencyCode?: string;
   summary: {
     totalSales: number;
     totalAmount: number;

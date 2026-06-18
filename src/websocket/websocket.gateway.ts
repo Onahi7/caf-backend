@@ -13,6 +13,8 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import { JwtService } from '@nestjs/jwt';
 import { OnEvent } from '@nestjs/event-emitter';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import type {
   InventoryUpdateEvent,
   BatchUpdateEvent,
@@ -23,6 +25,7 @@ import type {
 } from './events.service.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { PAYMENT_METHOD_LABELS } from '../common/constants/payment-methods.constant.js';
+import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 
 /**
  * WebSocket Gateway for real-time inventory updates
@@ -44,6 +47,7 @@ export class WebSocketGateway
   constructor(
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
+    @InjectModel(Branch.name) private readonly branchModel: Model<BranchDocument>,
   ) {}
 
   private isOriginAllowed(origin: string | undefined): boolean {
@@ -348,15 +352,17 @@ export class WebSocketGateway
    * Listen to sale update events and broadcast to clients
    */
   @OnEvent('sale.updated')
-  handleSaleUpdateEvent(event: SaleUpdateEvent) {
+  async handleSaleUpdateEvent(event: SaleUpdateEvent) {
     // Format currency and get payment method label
+    const branch = await this.branchModel.findById(event.branchId).exec();
+    const currencyCode = branch?.currencyCode || 'SLE';
 
     this.broadcastSaleUpdate(event.branchId, {
       saleId: event.saleId,
       branchId: event.branchId,
       shiftId: event.shiftId,
       total: event.total,
-      totalFormatted: CurrencyUtil.format(event.total),
+      totalFormatted: CurrencyUtil.format(event.total, currencyCode),
       paymentMethod: event.paymentMethod,
       paymentMethodLabel:
         PAYMENT_METHOD_LABELS[event.paymentMethod] || event.paymentMethod,

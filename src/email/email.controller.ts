@@ -133,6 +133,7 @@ export class EmailController {
       timestamp: sale.createdAt || new Date(),
       branchName: branch.name,
       branchAddress: branch.address,
+      branchCurrencyCode: branch.currencyCode,
       cashierName: `${cashier.firstName} ${cashier.lastName}`,
       customerName: sale.customerName,
       customerPhone: sale.customerPhone,

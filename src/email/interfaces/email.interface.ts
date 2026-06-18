@@ -13,6 +13,7 @@ export interface ReceiptData {
   timestamp: Date;
   branchName: string;
   branchAddress?: string;
+  branchCurrencyCode?: string;
   cashierName: string;
   customerName?: string;
   customerPhone?: string;

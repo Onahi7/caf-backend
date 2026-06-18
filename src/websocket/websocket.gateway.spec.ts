@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { getModelToken } from '@nestjs/mongoose';
 import { WebSocketGateway } from './websocket.gateway';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PAYMENT_METHOD_LABELS } from '../common/constants/payment-methods.constant';
+import { Branch } from '../branches/schemas/branch.schema';
 import type { SaleUpdateEvent } from './events.service';
 
 describe('WebSocketGateway - Sale Update Events', () => {
@@ -33,6 +35,14 @@ describe('WebSocketGateway - Sale Update Events', () => {
             emit: jest.fn(),
           },
         },
+        {
+          provide: getModelToken(Branch.name),
+          useValue: {
+            findById: jest.fn().mockReturnValue({
+              exec: jest.fn().mockResolvedValue({ currencyCode: 'SLE' }),
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -46,7 +56,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
   });
 
   describe('handleSaleUpdateEvent', () => {
-    it('should format currency in sale update events', () => {
+    it('should format currency in sale update events', async () => {
       const saleEvent: SaleUpdateEvent = {
         saleId: 'sale123',
         branchId: 'branch1',
@@ -66,7 +76,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
 
       const emitSpy = jest.spyOn(gateway.server, 'emit');
 
-      gateway.handleSaleUpdateEvent(saleEvent);
+      await gateway.handleSaleUpdateEvent(saleEvent);
 
       expect(emitSpy).toHaveBeenCalledWith(
         'sale:update',
@@ -80,7 +90,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
       );
     });
 
-    it('should include payment method labels for mobile money', () => {
+    it('should include payment method labels for mobile money', async () => {
       const saleEvent: SaleUpdateEvent = {
         saleId: 'sale456',
         branchId: 'branch1',
@@ -95,7 +105,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
 
       const emitSpy = jest.spyOn(gateway.server, 'emit');
 
-      gateway.handleSaleUpdateEvent(saleEvent);
+      await gateway.handleSaleUpdateEvent(saleEvent);
 
       expect(emitSpy).toHaveBeenCalledWith(
         'sale:update',
@@ -108,7 +118,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
       );
     });
 
-    it('should handle all payment methods correctly', () => {
+    it('should handle all payment methods correctly', async () => {
       const paymentMethods = [
         'cash',
         'card',
@@ -118,7 +128,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
         'bank_transfer',
       ];
 
-      paymentMethods.forEach((method) => {
+      for (const method of paymentMethods) {
         const saleEvent: SaleUpdateEvent = {
           saleId: `sale_${method}`,
           branchId: 'branch1',
@@ -132,7 +142,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
 
         const emitSpy = jest.spyOn(gateway.server, 'emit');
 
-        gateway.handleSaleUpdateEvent(saleEvent);
+        await gateway.handleSaleUpdateEvent(saleEvent);
 
         expect(emitSpy).toHaveBeenCalledWith(
           'sale:update',
@@ -141,10 +151,10 @@ describe('WebSocketGateway - Sale Update Events', () => {
             paymentMethodLabel: PAYMENT_METHOD_LABELS[method],
           }),
         );
-      });
+      }
     });
 
-    it('should format currency consistently for different amounts', () => {
+    it('should format currency consistently for different amounts', async () => {
       const testCases = [
         { amount: 0, expected: 'Le 0.00' },
         { amount: 100, expected: 'Le 100.00' },
@@ -153,7 +163,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
         { amount: 1000000, expected: 'Le 1,000,000.00' },
       ];
 
-      testCases.forEach(({ amount, expected }) => {
+      for (const { amount, expected } of testCases) {
         const saleEvent: SaleUpdateEvent = {
           saleId: `sale_${amount}`,
           branchId: 'branch1',
@@ -167,7 +177,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
 
         const emitSpy = jest.spyOn(gateway.server, 'emit');
 
-        gateway.handleSaleUpdateEvent(saleEvent);
+        await gateway.handleSaleUpdateEvent(saleEvent);
 
         expect(emitSpy).toHaveBeenCalledWith(
           'sale:update',
@@ -176,10 +186,10 @@ describe('WebSocketGateway - Sale Update Events', () => {
             totalFormatted: expected,
           }),
         );
-      });
+      }
     });
 
-    it('should handle optional payment reference', () => {
+    it('should handle optional payment reference', async () => {
       const saleEventWithRef: SaleUpdateEvent = {
         saleId: 'sale_with_ref',
         branchId: 'branch1',
@@ -205,7 +215,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
 
       const emitSpy = jest.spyOn(gateway.server, 'emit');
 
-      gateway.handleSaleUpdateEvent(saleEventWithRef);
+      await gateway.handleSaleUpdateEvent(saleEventWithRef);
       expect(emitSpy).toHaveBeenCalledWith(
         'sale:update',
         expect.objectContaining({
@@ -213,7 +223,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
         }),
       );
 
-      gateway.handleSaleUpdateEvent(saleEventWithoutRef);
+      await gateway.handleSaleUpdateEvent(saleEventWithoutRef);
       expect(emitSpy).toHaveBeenCalledWith(
         'sale:update',
         expect.objectContaining({

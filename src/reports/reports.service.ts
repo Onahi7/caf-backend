@@ -63,6 +63,15 @@ export class ReportsService {
     return Types.ObjectId.isValid(id) ? { $in: [new Types.ObjectId(id), id] } : id;
   }
 
+  private async getBranchCurrencyCode(branchId?: string): Promise<string> {
+    if (!branchId) return 'SLE';
+    const branch = await this.branchModel
+      .findById(branchId)
+      .select('currencyCode')
+      .lean();
+    return branch?.currencyCode ?? 'SLE';
+  }
+
   private dateMatch(from?: string, to?: string) {
     if (!from && !to) return undefined;
     const createdAt: Record<string, Date> = {};
@@ -112,6 +121,8 @@ export class ReportsService {
     );
 
     try {
+      const currencyCode = await this.getBranchCurrencyCode(branchId);
+
       // Get total sales for current month
       const monthlySales = await this.saleModel.aggregate([
         {
@@ -184,27 +195,45 @@ export class ReportsService {
 
       const todaySalesAmount = todaysSales[0]?.totalAmount || 0;
       const todaySalesCount = todaysSales[0]?.count || 0;
+      const monthlySalesAmount = monthlySales[0]?.totalAmount || 0;
+      const totalInventoryValue = products.reduce(
+        (sum, product) =>
+          sum +
+          Math.max(0, product.quantityAvailable || 0) *
+            (product.costPrice || 0),
+        0,
+      );
 
       return {
         monthlySales: {
-          amount: monthlySales[0]?.totalAmount || 0,
+          amount: monthlySalesAmount,
           count: monthlySales[0]?.count || 0,
         },
+        monthlySalesFormatted: CurrencyUtil.format(
+          monthlySalesAmount,
+          currencyCode,
+        ),
         todaysSales: {
           amount: todaysSales[0]?.totalAmount || 0,
           count: todaysSales[0]?.count || 0,
         },
+        todaysSalesFormatted: CurrencyUtil.format(
+          todaysSales[0]?.totalAmount || 0,
+          currencyCode,
+        ),
         lowStockCount: lowStockProducts.length,
         expiredCount: expiredProducts.length,
         todaySales: todaySalesAmount,
+        todaySalesFormatted: CurrencyUtil.format(
+          todaySalesAmount,
+          currencyCode,
+        ),
         todaySalesCount,
         totalProducts: products.length,
-        totalInventoryValue: products.reduce(
-          (sum, product) =>
-            sum +
-            Math.max(0, product.quantityAvailable || 0) *
-              (product.costPrice || 0),
-          0,
+        totalInventoryValue,
+        totalInventoryValueFormatted: CurrencyUtil.format(
+          totalInventoryValue,
+          currencyCode,
         ),
         totalCustomers: activeCustomers.length,
         expiringSoon: expiringSoonProducts.length,
@@ -289,21 +318,36 @@ export class ReportsService {
       transactionCount: 0,
     };
 
+    const currencyCode = await this.getBranchCurrencyCode(dto.branchId);
+
     // Format currency values in summary
     const formattedSummary = {
       ...summary,
-      totalAmountFormatted: CurrencyUtil.format(summary.totalAmount),
-      totalDiscountFormatted: CurrencyUtil.format(summary.totalDiscount),
-      totalReturnsFormatted: CurrencyUtil.format(summary.totalReturns),
-      netAmountFormatted: CurrencyUtil.format(summary.netAmount),
+      totalAmountFormatted: CurrencyUtil.format(
+        summary.totalAmount,
+        currencyCode,
+      ),
+      totalDiscountFormatted: CurrencyUtil.format(
+        summary.totalDiscount,
+        currencyCode,
+      ),
+      totalReturnsFormatted: CurrencyUtil.format(
+        summary.totalReturns,
+        currencyCode,
+      ),
+      netAmountFormatted: CurrencyUtil.format(
+        summary.netAmount,
+        currencyCode,
+      ),
       averageTransactionFormatted: CurrencyUtil.format(
         summary.averageTransaction,
+        currencyCode,
       ),
     };
 
     // Generate payment method breakdown
     const paymentMethodBreakdown =
-      await this.generatePaymentMethodBreakdown(matchStage);
+      await this.generatePaymentMethodBreakdown(matchStage, currencyCode);
 
     // Generate breakdown if groupBy is specified
     let breakdown: Array<{
@@ -322,6 +366,8 @@ export class ReportsService {
     const topProducts = await this.getTopProducts(matchStage);
 
     return {
+      branchId: dto.branchId,
+      currencyCode,
       summary: formattedSummary,
       paymentMethodBreakdown,
       breakdown,
@@ -336,6 +382,7 @@ export class ReportsService {
    */
   private async generatePaymentMethodBreakdown(
     matchStage: Record<string, unknown>,
+    currencyCode: string,
   ): Promise<Array<{
     paymentMethod: string;
     label: string;
@@ -376,7 +423,10 @@ export class ReportsService {
         label: PAYMENT_METHOD_LABELS[method] || method,
         count: data.count,
         totalAmount: data.totalAmount,
-        totalAmountFormatted: CurrencyUtil.format(data.totalAmount),
+        totalAmountFormatted: CurrencyUtil.format(
+          data.totalAmount,
+          currencyCode,
+        ),
       };
     });
   }
@@ -493,6 +543,7 @@ export class ReportsService {
       matchStage.branchId = new Types.ObjectId(dto.branchId);
     }
 
+    const currencyCode = await this.getBranchCurrencyCode(dto.branchId);
     const now = new Date();
     const products = await this.productModel
       .find(matchStage)
@@ -520,9 +571,12 @@ export class ReportsService {
           totalQuantity: product.quantityAvailable,
           batchCount: 1,
           totalValue,
-          totalValueFormatted: CurrencyUtil.format(totalValue),
+          totalValueFormatted: CurrencyUtil.format(totalValue, currencyCode),
           averageCost: product.costPrice,
-          averageCostFormatted: CurrencyUtil.format(product.costPrice),
+          averageCostFormatted: CurrencyUtil.format(
+            product.costPrice,
+            currencyCode,
+          ),
           isLowStock,
           reorderLevel: product.reorderLevel,
           batches: [
@@ -532,13 +586,17 @@ export class ReportsService {
               quantity: product.quantityAvailable,
               expiryDate: product.expiryDate,
               purchasePrice: product.costPrice,
-              purchasePriceFormatted: CurrencyUtil.format(product.costPrice),
+              purchasePriceFormatted: CurrencyUtil.format(
+                product.costPrice,
+                currencyCode,
+              ),
               sellingPrice: product.suggestedRetailPrice || product.basePrice,
               sellingPriceFormatted: CurrencyUtil.format(
                 product.suggestedRetailPrice || product.basePrice,
+                currencyCode,
               ),
               value: totalValue,
-              valueFormatted: CurrencyUtil.format(totalValue),
+              valueFormatted: CurrencyUtil.format(totalValue, currencyCode),
               isExpired:
                 !!product.expiryDate && new Date(product.expiryDate) < now,
             },
@@ -551,7 +609,10 @@ export class ReportsService {
       : items;
 
     const totalValue = filteredItems.reduce((sum, item) => sum + item.totalValue, 0);
+
     return {
+      branchId: dto.branchId,
+      currencyCode,
       summary: {
         totalProducts: filteredItems.length,
         totalBatches: filteredItems.length,
@@ -560,7 +621,7 @@ export class ReportsService {
           0,
         ),
         totalValue,
-        totalValueFormatted: CurrencyUtil.format(totalValue),
+        totalValueFormatted: CurrencyUtil.format(totalValue, currencyCode),
         lowStockItems: filteredItems.filter((item) => item.isLowStock).length,
         expiredItems: filteredItems.filter(
           (item) => item.batches[0]?.isExpired,
@@ -586,6 +647,8 @@ export class ReportsService {
 
     const branchFilter = this.idFilter(dto.branchId);
     if (branchFilter) saleMatch.branchId = branchFilter;
+
+    const currencyCode = await this.getBranchCurrencyCode(dto.branchId);
 
     const periodMatch = this.dateMatch(dto.from, dto.to);
     const periodSaleMatch = { ...saleMatch };
@@ -696,6 +759,10 @@ export class ReportsService {
         customerId: String(customer._id),
         customerName: customer.customerName || customer.customerPhone || 'Walk-in Customer',
         totalPurchases: customer.totalPurchases,
+        totalPurchasesFormatted: CurrencyUtil.format(
+          customer.totalPurchases,
+          currencyCode,
+        ),
         purchaseCount: customer.purchaseCount,
         loyaltyPoints: loyaltyByCustomer.get(String(customer._id)) ?? 0,
       })),
@@ -703,6 +770,10 @@ export class ReportsService {
         date: period._id,
         newCustomers: period.customers?.length ?? 0,
         totalPurchases: period.totalPurchases,
+        totalPurchasesFormatted: CurrencyUtil.format(
+          period.totalPurchases,
+          currencyCode,
+        ),
       })),
       segmentation,
     };
@@ -721,6 +792,8 @@ export class ReportsService {
     if (branchFilter) match.branchId = branchFilter;
     const createdAt = this.dateMatch(dto.from, dto.to);
     if (createdAt) match.createdAt = createdAt;
+
+    const currencyCode = await this.getBranchCurrencyCode(dto.branchId);
 
     const [summaryRows, bySupplier, byProduct, byPeriod] = await Promise.all([
       this.purchaseOrderModel.aggregate([
@@ -810,23 +883,36 @@ export class ReportsService {
     return {
       totalPurchases: summary.totalPurchases,
       totalAmount: summary.totalAmount,
+      totalAmountFormatted: CurrencyUtil.format(
+        summary.totalAmount,
+        currencyCode,
+      ),
       totalItems: summary.totalItems,
       bySupplier: bySupplier.map((supplier) => ({
         supplierId: String(supplier._id),
         supplierName: supplier.supplier?.name ?? 'Unknown Supplier',
         purchaseCount: supplier.purchaseCount,
         totalAmount: supplier.totalAmount,
+        totalAmountFormatted: CurrencyUtil.format(
+          supplier.totalAmount,
+          currencyCode,
+        ),
       })),
       byProduct: byProduct.map((product) => ({
         productId: String(product._id),
         productName: product.product?.name ?? 'Unknown Product',
         quantity: product.quantity,
         totalAmount: product.totalAmount,
+        totalAmountFormatted: CurrencyUtil.format(
+          product.totalAmount,
+          currencyCode,
+        ),
       })),
       byPeriod: byPeriod.map((period) => ({
         date: period._id,
         purchaseCount: period.purchaseCount,
         amount: period.amount,
+        amountFormatted: CurrencyUtil.format(period.amount, currencyCode),
       })),
     };
   }
@@ -845,6 +931,8 @@ export class ReportsService {
     const now = new Date();
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + (dto.daysUntilExpiry || 90));
+
+    const currencyCode = await this.getBranchCurrencyCode(dto.branchId);
 
     const matchStage: Record<string, unknown> = {
       isActive: true,
@@ -880,11 +968,17 @@ export class ReportsService {
         expiryDate,
         daysUntilExpiry,
         purchasePrice: product.costPrice,
-        purchasePriceFormatted: CurrencyUtil.format(product.costPrice),
+        purchasePriceFormatted: CurrencyUtil.format(
+          product.costPrice,
+          currencyCode,
+        ),
         sellingPrice,
-        sellingPriceFormatted: CurrencyUtil.format(sellingPrice),
+        sellingPriceFormatted: CurrencyUtil.format(sellingPrice, currencyCode),
         potentialLoss,
-        potentialLossFormatted: CurrencyUtil.format(potentialLoss),
+        potentialLossFormatted: CurrencyUtil.format(
+          potentialLoss,
+          currencyCode,
+        ),
         isExpired: daysUntilExpiry < 0,
       };
     });
@@ -902,37 +996,43 @@ export class ReportsService {
       totalBatches: expiringBatches.length,
       totalQuantity: expiringBatches.reduce((sum, b) => sum + b.quantity, 0),
       potentialLoss,
-      potentialLossFormatted: CurrencyUtil.format(potentialLoss),
+      potentialLossFormatted: CurrencyUtil.format(potentialLoss, currencyCode),
       expiredBatches: expiringBatches.filter((b) => b.isExpired).length,
       expiredQuantity: expiringBatches
         .filter((b) => b.isExpired)
         .reduce((sum, b) => sum + b.quantity, 0),
       expiredValue,
-      expiredValueFormatted: CurrencyUtil.format(expiredValue),
+      expiredValueFormatted: CurrencyUtil.format(expiredValue, currencyCode),
     };
 
     const byTimeframe = {
       expired: this.calculateTimeframeStats(
         expiringBatches.filter((b) => b.daysUntilExpiry < 0),
+        currencyCode,
       ),
       within30Days: this.calculateTimeframeStats(
         expiringBatches.filter(
           (b) => b.daysUntilExpiry >= 0 && b.daysUntilExpiry <= 30,
         ),
+        currencyCode,
       ),
       within60Days: this.calculateTimeframeStats(
         expiringBatches.filter(
           (b) => b.daysUntilExpiry > 30 && b.daysUntilExpiry <= 60,
         ),
+        currencyCode,
       ),
       within90Days: this.calculateTimeframeStats(
         expiringBatches.filter(
           (b) => b.daysUntilExpiry > 60 && b.daysUntilExpiry <= 90,
         ),
+        currencyCode,
       ),
     };
 
     return {
+      branchId: dto.branchId,
+      currencyCode,
       summary,
       expiringBatches,
       byTimeframe,
@@ -942,7 +1042,10 @@ export class ReportsService {
   /**
    * Calculate statistics for a timeframe
    */
-  private calculateTimeframeStats(batches: Array<{ potentialLoss: number; quantity: number }>): {
+  private calculateTimeframeStats(
+    batches: Array<{ potentialLoss: number; quantity: number }>,
+    currencyCode: string,
+  ): {
     count: number;
     quantity: number;
     value: number;
@@ -953,7 +1056,7 @@ export class ReportsService {
       count: batches.length,
       quantity: batches.reduce((sum, b) => sum + b.quantity, 0),
       value,
-      valueFormatted: CurrencyUtil.format(value),
+      valueFormatted: CurrencyUtil.format(value, currencyCode),
     };
   }
 

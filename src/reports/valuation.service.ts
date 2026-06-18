@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Batch, BatchDocument } from '../batches/schemas/batch.schema.js';
+import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 import {
   StockMovement,
   StockMovementDocument,
@@ -55,7 +56,16 @@ export class ValuationService {
     @InjectModel(Batch.name) private batchModel: Model<BatchDocument>,
     @InjectModel(StockMovement.name)
     private stockMovementModel: Model<StockMovementDocument>,
+    @InjectModel(Branch.name) private branchModel: Model<BranchDocument>,
   ) {}
+
+  private async getBranchCurrencyCode(branchId: string): Promise<string> {
+    const branch = await this.branchModel
+      .findById(branchId)
+      .select('currencyCode')
+      .lean();
+    return branch?.currencyCode ?? 'SLE';
+  }
 
   /**
    * Calculate inventory valuation for a product at a branch
@@ -86,16 +96,18 @@ export class ValuationService {
     productId: string,
     branchId: string,
   ): Promise<ValuationResult> {
-    // Get all batches for the product at the branch, ordered by creation date (FIFO)
-    const batches = await this.batchModel
-      .find({
-        productId,
-        branchId,
-        isDepleted: false,
-        quantityAvailable: { $gt: 0 },
-      })
-      .sort({ createdAt: 1 }) // Oldest first for FIFO
-      .lean();
+    const [currencyCode, batches] = await Promise.all([
+      this.getBranchCurrencyCode(branchId),
+      this.batchModel
+        .find({
+          productId,
+          branchId,
+          isDepleted: false,
+          quantityAvailable: { $gt: 0 },
+        })
+        .sort({ createdAt: 1 }) // Oldest first for FIFO
+        .lean(),
+    ]);
 
     let totalQuantity = 0;
     let totalValue = 0;
@@ -112,9 +124,9 @@ export class ValuationService {
       branchId,
       quantity: totalQuantity,
       totalValue,
-      totalValueFormatted: CurrencyUtil.format(totalValue),
+      totalValueFormatted: CurrencyUtil.format(totalValue, currencyCode),
       averageCost,
-      averageCostFormatted: CurrencyUtil.format(averageCost),
+      averageCostFormatted: CurrencyUtil.format(averageCost, currencyCode),
       method: ValuationMethod.FIFO,
     };
   }
@@ -127,6 +139,8 @@ export class ValuationService {
     productId: string,
     branchId: string,
   ): Promise<ValuationResult> {
+    const currencyCode = await this.getBranchCurrencyCode(branchId);
+
     // Get all purchase movements for the product at the branch
     const purchaseMovements = await this.stockMovementModel
       .find({
@@ -186,9 +200,9 @@ export class ValuationService {
       branchId,
       quantity: currentQuantity,
       totalValue: currentValue,
-      totalValueFormatted: CurrencyUtil.format(currentValue),
+      totalValueFormatted: CurrencyUtil.format(currentValue, currencyCode),
       averageCost: runningAverage,
-      averageCostFormatted: CurrencyUtil.format(runningAverage),
+      averageCostFormatted: CurrencyUtil.format(runningAverage, currencyCode),
       method: ValuationMethod.MOVING_AVERAGE,
     };
   }

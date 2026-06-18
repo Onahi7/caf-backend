@@ -4,12 +4,16 @@ import { ShiftsController } from './shifts.controller.js';
 import { ShiftsService } from './shifts.service.js';
 import { ShiftsRepository } from './shifts.repository.js';
 import { Shift, ShiftSchema } from './schemas/shift.schema.js';
+import { Branch, BranchSchema } from '../branches/schemas/branch.schema.js';
 import { SalesModule } from '../sales/sales.module.js';
 import { ExpensesModule } from '../expenses/expenses.module.js';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Shift.name, schema: ShiftSchema }]),
+    MongooseModule.forFeature([
+      { name: Shift.name, schema: ShiftSchema },
+      { name: Branch.name, schema: BranchSchema },
+    ]),
     forwardRef(() => SalesModule),
     forwardRef(() => ExpensesModule),
   ],

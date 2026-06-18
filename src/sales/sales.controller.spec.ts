@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { getModelToken } from '@nestjs/mongoose';
 import { SalesController } from './sales.controller.js';
 import { SalesService } from './sales.service.js';
 import { CheckoutService } from './checkout.service.js';
 import { ReceiptService } from './receipt.service.js';
 import { PaymentMethod } from './schemas/sale.schema.js';
+import { Branch } from '../branches/schemas/branch.schema.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { getPaymentMethodLabel } from '../common/constants/payment-methods.constant.js';
 import { RedisService } from '../redis/redis.service.js';
@@ -68,6 +70,11 @@ describe('SalesController', () => {
     };
     const mockReceiptService = {};
     const mockEmailService = {};
+    const mockBranchModel = {
+      findById: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ currencyCode: 'SLE' }),
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SalesController],
@@ -77,6 +84,7 @@ describe('SalesController', () => {
         { provide: RedisService, useValue: mockRedisService },
         { provide: ReceiptService, useValue: mockReceiptService },
         { provide: EmailService, useValue: mockEmailService },
+        { provide: getModelToken(Branch.name), useValue: mockBranchModel },
       ],
     }).compile();
 

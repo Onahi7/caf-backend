@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
 import {
@@ -8,6 +10,7 @@ import {
   TransferReportResult,
 } from './dto/index.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
+import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 
 /**
  * Export format enum
@@ -27,11 +30,40 @@ export enum ExportFormat {
 export class ExportService {
   private readonly logger = new Logger(ExportService.name);
 
+  constructor(
+    @InjectModel(Branch.name) private readonly branchModel: Model<BranchDocument>,
+  ) {}
+
+  /**
+   * Build an Excel number format string for a currency code
+   */
+  private getCurrencyNumFmt(currencyCode: string): string {
+    const symbol = currencyCode === 'USD' ? '$' : 'Le';
+    return `"${symbol}"#,##0.00`;
+  }
+
+  /**
+   * Resolve the currency code for a report result
+   */
+  private async getReportCurrencyCode(
+    report: { branchId?: string; currencyCode?: string },
+  ): Promise<string> {
+    if (report.currencyCode) {
+      return report.currencyCode;
+    }
+    if (report.branchId) {
+      const branch = await this.branchModel.findById(report.branchId).exec();
+      return branch?.currencyCode || 'SLE';
+    }
+    return 'SLE';
+  }
+
   /**
    * Export sales report to PDF
    */
   async exportSalesReportToPDF(report: SalesReportResult): Promise<Buffer> {
     this.logger.log('Exporting sales report to PDF');
+    const currencyCode = await this.getReportCurrencyCode(report);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50 });
@@ -55,19 +87,19 @@ export class ExportService {
       doc.fontSize(10);
       doc.text(`Total Sales: ${report.summary.transactionCount}`);
       doc.text(
-        `Total Amount: ${report.summary.totalAmountFormatted || CurrencyUtil.format(report.summary.totalAmount)}`,
+        `Total Amount: ${CurrencyUtil.format(report.summary.totalAmount, currencyCode)}`,
       );
       doc.text(
-        `Total Discount: ${report.summary.totalDiscountFormatted || CurrencyUtil.format(report.summary.totalDiscount)}`,
+        `Total Discount: ${CurrencyUtil.format(report.summary.totalDiscount, currencyCode)}`,
       );
       doc.text(
-        `Total Returns: ${report.summary.totalReturnsFormatted || CurrencyUtil.format(report.summary.totalReturns)}`,
+        `Total Returns: ${CurrencyUtil.format(report.summary.totalReturns, currencyCode)}`,
       );
       doc.text(
-        `Net Amount: ${report.summary.netAmountFormatted || CurrencyUtil.format(report.summary.netAmount)}`,
+        `Net Amount: ${CurrencyUtil.format(report.summary.netAmount, currencyCode)}`,
       );
       doc.text(
-        `Average Transaction: ${report.summary.averageTransactionFormatted || CurrencyUtil.format(report.summary.averageTransaction)}`,
+        `Average Transaction: ${CurrencyUtil.format(report.summary.averageTransaction, currencyCode)}`,
       );
       doc.moveDown(2);
 
@@ -96,7 +128,7 @@ export class ExportService {
           doc.text(item._id.substring(0, 8), col1X, y);
           doc.text(item.name || 'N/A', col2X, y);
           doc.text(
-            item.totalAmountFormatted || CurrencyUtil.format(item.totalAmount),
+            CurrencyUtil.format(item.totalAmount, currencyCode),
             col3X,
             y,
           );
@@ -114,7 +146,7 @@ export class ExportService {
 
         report.topProducts.forEach((product, index) => {
           doc.text(
-            `${index + 1}. Product ${product.productId.substring(0, 8)} - Qty: ${product.quantitySold}, Amount: ${product.totalAmountFormatted || CurrencyUtil.format(product.totalAmount)}`,
+            `${index + 1}. Product ${product.productId.substring(0, 8)} - Qty: ${product.quantitySold}, Amount: ${CurrencyUtil.format(product.totalAmount, currencyCode)}`,
           );
           doc.moveDown(0.5);
         });
@@ -129,6 +161,8 @@ export class ExportService {
    */
   async exportSalesReportToExcel(report: SalesReportResult): Promise<Buffer> {
     this.logger.log('Exporting sales report to Excel');
+    const currencyCode = await this.getReportCurrencyCode(report);
+    const numFmt = this.getCurrencyNumFmt(currencyCode);
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Sales Report');
@@ -156,27 +190,27 @@ export class ExportService {
 
     worksheet.getCell(`A${row}`).value = 'Total Amount';
     worksheet.getCell(`B${row}`).value = report.summary.totalAmount;
-    worksheet.getCell(`B${row}`).numFmt = '"Le "#,##0.00';
+    worksheet.getCell(`B${row}`).numFmt = numFmt;
     row++;
 
     worksheet.getCell(`A${row}`).value = 'Total Discount';
     worksheet.getCell(`B${row}`).value = report.summary.totalDiscount;
-    worksheet.getCell(`B${row}`).numFmt = '"Le "#,##0.00';
+    worksheet.getCell(`B${row}`).numFmt = numFmt;
     row++;
 
     worksheet.getCell(`A${row}`).value = 'Total Returns';
     worksheet.getCell(`B${row}`).value = report.summary.totalReturns;
-    worksheet.getCell(`B${row}`).numFmt = '"Le "#,##0.00';
+    worksheet.getCell(`B${row}`).numFmt = numFmt;
     row++;
 
     worksheet.getCell(`A${row}`).value = 'Net Amount';
     worksheet.getCell(`B${row}`).value = report.summary.netAmount;
-    worksheet.getCell(`B${row}`).numFmt = '"Le "#,##0.00';
+    worksheet.getCell(`B${row}`).numFmt = numFmt;
     row++;
 
     worksheet.getCell(`A${row}`).value = 'Average Transaction';
     worksheet.getCell(`B${row}`).value = report.summary.averageTransaction;
-    worksheet.getCell(`B${row}`).numFmt = '"Le "#,##0.00';
+    worksheet.getCell(`B${row}`).numFmt = numFmt;
     row += 2;
 
     // Add breakdown if available
@@ -198,7 +232,7 @@ export class ExportService {
         worksheet.getCell(`A${row}`).value = item._id;
         worksheet.getCell(`B${row}`).value = item.name || 'N/A';
         worksheet.getCell(`C${row}`).value = item.totalAmount;
-        worksheet.getCell(`C${row}`).numFmt = '"Le "#,##0.00';
+        worksheet.getCell(`C${row}`).numFmt = numFmt;
         worksheet.getCell(`D${row}`).value = item.transactionCount;
         row++;
       });
@@ -219,6 +253,7 @@ export class ExportService {
     report: InventoryReportResult,
   ): Promise<Buffer> {
     this.logger.log('Exporting inventory report to PDF');
+    const currencyCode = await this.getReportCurrencyCode(report);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50 });
@@ -244,7 +279,7 @@ export class ExportService {
       doc.text(`Total Batches: ${report.summary.totalBatches}`);
       doc.text(`Total Quantity: ${report.summary.totalQuantity}`);
       doc.text(
-        `Total Value: ${report.summary.totalValueFormatted || CurrencyUtil.format(report.summary.totalValue)}`,
+        `Total Value: ${CurrencyUtil.format(report.summary.totalValue, currencyCode)}`,
       );
       doc.text(`Low Stock Items: ${report.summary.lowStockItems}`);
       doc.text(`Expired Items: ${report.summary.expiredItems}`);
@@ -260,10 +295,10 @@ export class ExportService {
         doc.text(`  Branch: ${item.branchName || 'Unknown'}`);
         doc.text(`  Total Quantity: ${item.totalQuantity}`);
         doc.text(
-          `  Total Value: ${item.totalValueFormatted || CurrencyUtil.format(item.totalValue)}`,
+          `  Total Value: ${CurrencyUtil.format(item.totalValue, currencyCode)}`,
         );
         doc.text(
-          `  Average Cost: ${item.averageCostFormatted || CurrencyUtil.format(item.averageCost)}`,
+          `  Average Cost: ${CurrencyUtil.format(item.averageCost, currencyCode)}`,
         );
         doc.text(`  Batches: ${item.batchCount}`);
         if (item.isLowStock) {
@@ -288,6 +323,8 @@ export class ExportService {
     report: InventoryReportResult,
   ): Promise<Buffer> {
     this.logger.log('Exporting inventory report to Excel');
+    const currencyCode = await this.getReportCurrencyCode(report);
+    const numFmt = this.getCurrencyNumFmt(currencyCode);
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Inventory Report');
@@ -317,7 +354,7 @@ export class ExportService {
       worksheet.getCell(`A${row}`).value = label;
       worksheet.getCell(`B${row}`).value = value;
       if (label === 'Total Value') {
-        worksheet.getCell(`B${row}`).numFmt = '"Le "#,##0.00';
+        worksheet.getCell(`B${row}`).numFmt = numFmt;
       }
       row++;
     });
@@ -339,9 +376,9 @@ export class ExportService {
       worksheet.getCell(`B${row}`).value = item.branchName || 'Unknown';
       worksheet.getCell(`C${row}`).value = item.totalQuantity;
       worksheet.getCell(`D${row}`).value = item.totalValue;
-      worksheet.getCell(`D${row}`).numFmt = '"Le "#,##0.00';
+      worksheet.getCell(`D${row}`).numFmt = numFmt;
       worksheet.getCell(`E${row}`).value = item.averageCost;
-      worksheet.getCell(`E${row}`).numFmt = '"Le "#,##0.00';
+      worksheet.getCell(`E${row}`).numFmt = numFmt;
       worksheet.getCell(`F${row}`).value = item.isLowStock ? 'LOW STOCK' : 'OK';
       if (item.isLowStock) {
         worksheet.getCell(`F${row}`).font = {
@@ -364,6 +401,7 @@ export class ExportService {
    */
   async exportExpiryReportToPDF(report: ExpiryReportResult): Promise<Buffer> {
     this.logger.log('Exporting expiry report to PDF');
+    const currencyCode = await this.getReportCurrencyCode(report);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50 });
@@ -388,12 +426,12 @@ export class ExportService {
       doc.text(`Total Batches: ${report.summary.totalBatches}`);
       doc.text(`Total Quantity: ${report.summary.totalQuantity}`);
       doc.text(
-        `Potential Loss: ${report.summary.potentialLossFormatted || CurrencyUtil.format(report.summary.potentialLoss)}`,
+        `Potential Loss: ${CurrencyUtil.format(report.summary.potentialLoss, currencyCode)}`,
       );
       doc.text(`Expired Batches: ${report.summary.expiredBatches}`);
       doc.text(`Expired Quantity: ${report.summary.expiredQuantity}`);
       doc.text(
-        `Expired Value: ${report.summary.expiredValueFormatted || CurrencyUtil.format(report.summary.expiredValue)}`,
+        `Expired Value: ${CurrencyUtil.format(report.summary.expiredValue, currencyCode)}`,
       );
       doc.moveDown(2);
 
@@ -402,16 +440,16 @@ export class ExportService {
       doc.moveDown();
       doc.fontSize(10);
       doc.text(
-        `Expired: ${report.byTimeframe.expired.count} batches, ${report.byTimeframe.expired.quantity} units, ${report.byTimeframe.expired.valueFormatted || CurrencyUtil.format(report.byTimeframe.expired.value)}`,
+        `Expired: ${report.byTimeframe.expired.count} batches, ${report.byTimeframe.expired.quantity} units, ${CurrencyUtil.format(report.byTimeframe.expired.value, currencyCode)}`,
       );
       doc.text(
-        `Within 30 Days: ${report.byTimeframe.within30Days.count} batches, ${report.byTimeframe.within30Days.quantity} units, ${report.byTimeframe.within30Days.valueFormatted || CurrencyUtil.format(report.byTimeframe.within30Days.value)}`,
+        `Within 30 Days: ${report.byTimeframe.within30Days.count} batches, ${report.byTimeframe.within30Days.quantity} units, ${CurrencyUtil.format(report.byTimeframe.within30Days.value, currencyCode)}`,
       );
       doc.text(
-        `Within 60 Days: ${report.byTimeframe.within60Days.count} batches, ${report.byTimeframe.within60Days.quantity} units, ${report.byTimeframe.within60Days.valueFormatted || CurrencyUtil.format(report.byTimeframe.within60Days.value)}`,
+        `Within 60 Days: ${report.byTimeframe.within60Days.count} batches, ${report.byTimeframe.within60Days.quantity} units, ${CurrencyUtil.format(report.byTimeframe.within60Days.value, currencyCode)}`,
       );
       doc.text(
-        `Within 90 Days: ${report.byTimeframe.within90Days.count} batches, ${report.byTimeframe.within90Days.quantity} units, ${report.byTimeframe.within90Days.valueFormatted || CurrencyUtil.format(report.byTimeframe.within90Days.value)}`,
+        `Within 90 Days: ${report.byTimeframe.within90Days.count} batches, ${report.byTimeframe.within90Days.quantity} units, ${CurrencyUtil.format(report.byTimeframe.within90Days.value, currencyCode)}`,
       );
       doc.moveDown(2);
 
@@ -430,7 +468,7 @@ export class ExportService {
           `  Quantity: ${batch.quantity}, Expiry: ${new Date(batch.expiryDate).toLocaleDateString()}`,
         );
         doc.text(
-          `  Status: ${status}, Loss: ${batch.potentialLossFormatted || CurrencyUtil.format(batch.potentialLoss)}`,
+          `  Status: ${status}, Loss: ${CurrencyUtil.format(batch.potentialLoss, currencyCode)}`,
         );
         doc.moveDown();
 
@@ -448,6 +486,8 @@ export class ExportService {
    */
   async exportExpiryReportToExcel(report: ExpiryReportResult): Promise<Buffer> {
     this.logger.log('Exporting expiry report to Excel');
+    const currencyCode = await this.getReportCurrencyCode(report);
+    const numFmt = this.getCurrencyNumFmt(currencyCode);
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Expiry Report');
@@ -480,7 +520,7 @@ export class ExportService {
         typeof label === 'string' &&
         (label.includes('Loss') || label.includes('Value'))
       ) {
-        worksheet.getCell(`B${row}`).numFmt = '"Le "#,##0.00';
+        worksheet.getCell(`B${row}`).numFmt = numFmt;
       }
       row++;
     });
@@ -508,7 +548,7 @@ export class ExportService {
       ).toLocaleDateString();
       worksheet.getCell(`F${row}`).value = batch.daysUntilExpiry;
       worksheet.getCell(`G${row}`).value = batch.potentialLoss;
-      worksheet.getCell(`G${row}`).numFmt = '"Le "#,##0.00';
+      worksheet.getCell(`G${row}`).numFmt = numFmt;
 
       if (batch.isExpired) {
         worksheet.getRow(row).font = { color: { argb: 'FFFF0000' } };

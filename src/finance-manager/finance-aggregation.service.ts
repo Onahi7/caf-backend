@@ -11,6 +11,7 @@ import { PurchaseOrder, PurchaseOrderDocument } from '../purchases/schemas/purch
 import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 import { CashEntry, CashEntryDocument } from './schema/cash-entry.schema.js';
 import { MicroserviceClientService } from './microservice-client.service.js';
+import { CurrencyUtil } from '../common/utils/currency.util.js';
 
 export interface ServiceFinancials {
   revenue: number;
@@ -32,6 +33,29 @@ export interface ServiceFinancials {
   } | null;
 }
 
+export interface ByCurrency {
+  SLE: number;
+  USD: number;
+}
+
+export interface ByCurrencyFormatted {
+  SLE: string;
+  USD: string;
+}
+
+export interface ByBranchSummary {
+  branchId: string;
+  branchName: string;
+  currencyCode: string;
+  revenue: number;
+  expenses: number;
+  profit: number;
+  salesCount: number;
+  revenueFormatted: string;
+  expensesFormatted: string;
+  profitFormatted: string;
+}
+
 export interface UnifiedDashboard {
   revenue: {
     totalSales: number;
@@ -39,13 +63,19 @@ export interface UnifiedDashboard {
     totalReturns: number;
     netRevenue: number;
     salesCount: number;
+    revenueByCurrency: ByCurrency;
   };
+  revenueByCurrency: ByCurrency;
+  revenueByCurrencyFormatted: ByCurrencyFormatted;
   expenses: {
     totalShiftExpenses: number;
     totalFinanceExpenses: number;
     totalExpenses: number;
     byCategory: { category: string; total: number; count: number }[];
+    expensesByCurrency: ByCurrency;
   };
+  expensesByCurrency: ByCurrency;
+  expensesByCurrencyFormatted: ByCurrencyFormatted;
   cashPosition: {
     totalIncome: number;
     totalExpense: number;
@@ -61,7 +91,10 @@ export interface UnifiedDashboard {
     totalVariance: number;
     openShifts: number;
     closedShifts: number;
+    cashPositionByCurrency: ByCurrency;
   };
+  cashPositionByCurrency: ByCurrency;
+  cashPositionByCurrencyFormatted: ByCurrencyFormatted;
   creditOutstanding: {
     totalCreditSales: number;
     totalBalanceDue: number;
@@ -89,15 +122,9 @@ export interface UnifiedDashboard {
     netProfit: number;
     margin: number;
   };
-  byBranch: {
-    branchId: string;
-    branchName: string;
-    currencyCode: string;
-    revenue: number;
-    expenses: number;
-    profit: number;
-    salesCount: number;
-  }[];
+  profitLossByCurrency: ByCurrency;
+  profitLossByCurrencyFormatted: ByCurrencyFormatted;
+  byBranch: ByBranchSummary[];
   byPaymentMethod: {
     method: string;
     count: number;
@@ -150,14 +177,26 @@ export class FinanceAggregationService {
 
     const combinedFilter = { ...branchFilter, ...dateFilter };
 
+    const branches = await this.branchModel
+      .find({}, { _id: 1, name: 1, currencyCode: 1 })
+      .lean()
+      .exec();
+    const branchNameMap = new Map<string, string>();
+    const branchCurrencyMap = new Map<string, string>();
+    for (const b of branches) {
+      const id = b._id.toString();
+      branchNameMap.set(id, b.name);
+      branchCurrencyMap.set(id, b.currencyCode ?? 'SLE');
+    }
+
     const [revenue, expenses, cashPosition, creditOutstanding, marketer, purchases, byBranch, byPaymentMethod, externalData] = await Promise.all([
-      this.getRevenue(combinedFilter),
-      this.getExpenses(combinedFilter, branchId),
-      this.getCashPosition(branchFilter, dateFilter),
+      this.getRevenue(combinedFilter, branchCurrencyMap),
+      this.getExpenses(combinedFilter, branchId, branchCurrencyMap),
+      this.getCashPosition(branchFilter, dateFilter, branchCurrencyMap),
       this.getCreditOutstanding(branchFilter),
       this.getMarketerData(branchFilter),
       this.getPurchases(dateFilter, branchFilter),
-      this.getByBranch(dateFilter),
+      this.getByBranch(dateFilter, branchNameMap, branchCurrencyMap),
       this.getByPaymentMethod(combinedFilter),
       this.microserviceClient.getAllFinancialData().catch((err) => {
         this.logger.warn(`Failed to fetch external service data: ${err.message}`);
@@ -172,12 +211,23 @@ export class FinanceAggregationService {
     const netProfit = grossProfit - operatingExpenses;
     const margin = grossRevenue > 0 ? (netProfit / grossRevenue) * 100 : 0;
 
+    const profitLossByCurrency: ByCurrency = {
+      SLE: revenue.revenueByCurrency.SLE - expenses.expensesByCurrency.SLE,
+      USD: revenue.revenueByCurrency.USD - expenses.expensesByCurrency.USD,
+    };
+
     const externalServices = this.buildExternalServices(revenue, expenses, creditOutstanding, cashPosition, byPaymentMethod, externalData);
 
     return {
       revenue,
+      revenueByCurrency: revenue.revenueByCurrency,
+      revenueByCurrencyFormatted: this.formatByCurrency(revenue.revenueByCurrency),
       expenses,
+      expensesByCurrency: expenses.expensesByCurrency,
+      expensesByCurrencyFormatted: this.formatByCurrency(expenses.expensesByCurrency),
       cashPosition,
+      cashPositionByCurrency: cashPosition.cashPositionByCurrency,
+      cashPositionByCurrencyFormatted: this.formatByCurrency(cashPosition.cashPositionByCurrency),
       creditOutstanding,
       marketer,
       purchases,
@@ -189,6 +239,8 @@ export class FinanceAggregationService {
         netProfit,
         margin: Math.round(margin * 100) / 100,
       },
+      profitLossByCurrency,
+      profitLossByCurrencyFormatted: this.formatByCurrency(profitLossByCurrency),
       byBranch,
       byPaymentMethod,
       externalServices,
@@ -302,39 +354,97 @@ export class FinanceAggregationService {
     };
   }
 
-  private async getRevenue(filter: Record<string, any>): Promise<UnifiedDashboard['revenue']> {
-    const [result] = await this.saleModel.aggregate([
-      {
-        $match: {
-          ...filter,
-          status: { $ne: 'returned' },
-          terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] },
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalSales: { $sum: '$total' },
-          totalReturns: { $sum: '$returnedAmount' },
-          salesCount: { $sum: 1 },
-        },
-      },
-    ]).exec();
+  private emptyByCurrency(): ByCurrency {
+    return { SLE: 0, USD: 0 };
+  }
 
-    const r = result || { totalSales: 0, totalReturns: 0, salesCount: 0 };
+  private sumByCurrency<T extends { _id: any }>(
+    rows: T[],
+    branchCurrencyMap: Map<string, string>,
+    getValue: (row: T) => number,
+  ): ByCurrency {
+    const result = this.emptyByCurrency();
+    for (const row of rows) {
+      const branchId = row._id?.toString() || 'unknown';
+      const code = (branchCurrencyMap.get(branchId) || 'SLE') as keyof ByCurrency;
+      result[code] += getValue(row) || 0;
+    }
+    return result;
+  }
+
+  private formatByCurrency(byCurrency: ByCurrency): ByCurrencyFormatted {
+    return {
+      SLE: CurrencyUtil.format(byCurrency.SLE, 'SLE'),
+      USD: CurrencyUtil.format(byCurrency.USD, 'USD'),
+    };
+  }
+
+  private async getRevenue(
+    filter: Record<string, any>,
+    branchCurrencyMap: Map<string, string>,
+  ): Promise<UnifiedDashboard['revenue']> {
+    const [result, byBranch] = await Promise.all([
+      this.saleModel.aggregate([
+        {
+          $match: {
+            ...filter,
+            status: { $ne: 'returned' },
+            terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalSales: { $sum: '$total' },
+            totalReturns: { $sum: '$returnedAmount' },
+            salesCount: { $sum: 1 },
+          },
+        },
+      ]).exec(),
+      this.saleModel.aggregate([
+        {
+          $match: {
+            ...filter,
+            status: { $ne: 'returned' },
+            terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] },
+          },
+        },
+        {
+          $group: {
+            _id: '$branchId',
+            totalSales: { $sum: '$total' },
+            totalReturns: { $sum: '$returnedAmount' },
+            salesCount: { $sum: 1 },
+          },
+        },
+      ]).exec(),
+    ]);
+
+    const r = result[0] || { totalSales: 0, totalReturns: 0, salesCount: 0 };
+    const revenueByCurrency = this.sumByCurrency(
+      byBranch,
+      branchCurrencyMap,
+      (row: any) => (row.totalSales || 0) - (row.totalReturns || 0),
+    );
+
     return {
       totalSales: r.totalSales,
       totalRevenue: r.totalSales,
       totalReturns: r.totalReturns,
       netRevenue: r.totalSales - r.totalReturns,
       salesCount: r.salesCount,
+      revenueByCurrency,
     };
   }
 
-  private async getExpenses(filter: Record<string, any>, branchId?: string): Promise<UnifiedDashboard['expenses']> {
+  private async getExpenses(
+    filter: Record<string, any>,
+    branchId: string | undefined,
+    branchCurrencyMap: Map<string, string>,
+  ): Promise<UnifiedDashboard['expenses']> {
     const branchQ: Record<string, any> = branchId ? { branchId: new Types.ObjectId(branchId) } : {};
 
-    const [shiftExpenses, financeExpenses, byCategory] = await Promise.all([
+    const [shiftExpenses, financeExpenses, byCategory, shiftExpensesByBranch, financeExpensesByBranch] = await Promise.all([
       this.expenseModel.aggregate([
         { $match: { ...branchQ, isDeleted: false, ...filter } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
@@ -348,27 +458,57 @@ export class FinanceAggregationService {
         { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } },
         { $sort: { total: -1 } },
       ]).exec(),
+      this.expenseModel.aggregate([
+        { $match: { ...branchQ, isDeleted: false, ...filter } },
+        { $group: { _id: '$branchId', total: { $sum: '$amount' } } },
+      ]).exec(),
+      this.financeModel.aggregate([
+        { $match: { ...branchQ, type: { $in: ['expense', 'cash_out'] }, isDeleted: false, ...filter } },
+        { $group: { _id: '$branchId', total: { $sum: '$amount' } } },
+      ]).exec(),
     ]);
 
     const se = shiftExpenses[0]?.total || 0;
     const fe = financeExpenses[0]?.total || 0;
+
+    const branchExpenses = new Map<string, number>();
+    for (const e of shiftExpensesByBranch) {
+      const id = e._id?.toString() || 'unknown';
+      branchExpenses.set(id, (branchExpenses.get(id) || 0) + (e.total || 0));
+    }
+    for (const e of financeExpensesByBranch) {
+      const id = e._id?.toString() || 'unknown';
+      branchExpenses.set(id, (branchExpenses.get(id) || 0) + (e.total || 0));
+    }
+
+    const perBranchTotals = Array.from(branchExpenses.entries()).map(([branchId, value]) => ({ _id: branchId, value }));
+    const expensesByCurrency = this.sumByCurrency(
+      perBranchTotals,
+      branchCurrencyMap,
+      (row: { _id: string; value: number }) => row.value,
+    );
 
     return {
       totalShiftExpenses: se,
       totalFinanceExpenses: fe,
       totalExpenses: se + fe,
       byCategory: byCategory.map((c: any) => ({ category: c._id, total: c.total, count: c.count })),
+      expensesByCurrency,
     };
   }
 
-  private async getCashPosition(branchFilter: Record<string, any>, dateFilter?: Record<string, any>): Promise<UnifiedDashboard['cashPosition']> {
+  private async getCashPosition(
+    branchFilter: Record<string, any>,
+    dateFilter: Record<string, any> | undefined,
+    branchCurrencyMap: Map<string, string>,
+  ): Promise<UnifiedDashboard['cashPosition']> {
     const combinedFilter = { ...branchFilter, ...dateFilter };
     const cashEntryFilter: Record<string, any> = { isActive: true, ...branchFilter };
     if (dateFilter?.createdAt) {
       cashEntryFilter.entryDate = dateFilter.createdAt;
     }
 
-    const [result, openCount, closedCount, cashSummary, byCategory] = await Promise.all([
+    const [result, openCount, closedCount, cashSummary, cashByBranch, byCategory] = await Promise.all([
       this.shiftModel.aggregate([
         { $match: combinedFilter },
         {
@@ -401,6 +541,20 @@ export class FinanceAggregationService {
         { $match: cashEntryFilter },
         {
           $group: {
+            _id: '$branchId',
+            totalIncome: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
+            totalExpense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
+            totalTransfer: { $sum: { $cond: [{ $eq: ['$type', 'transfer'] }, '$amount', 0] } },
+            totalLoan: { $sum: { $cond: [{ $eq: ['$type', 'loan'] }, '$amount', 0] } },
+            totalAdvance: { $sum: { $cond: [{ $eq: ['$type', 'advance'] }, '$amount', 0] } },
+            totalSalary: { $sum: { $cond: [{ $eq: ['$type', 'salary'] }, '$amount', 0] } },
+          },
+        },
+      ]).exec(),
+      this.cashModel.aggregate([
+        { $match: cashEntryFilter },
+        {
+          $group: {
             _id: '$category',
             total: { $sum: '$amount' },
             count: { $sum: 1 },
@@ -413,6 +567,25 @@ export class FinanceAggregationService {
     const r = result[0] || { totalOpeningCash: 0, totalClosingCash: 0, totalExpectedCash: 0, totalVariance: 0 };
     const s = cashSummary[0] || { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalAdvance: 0, totalSalary: 0 };
     const netCash = s.totalIncome - s.totalExpense - s.totalTransfer - s.totalLoan - s.totalAdvance - s.totalSalary;
+
+    const netCashByBranch = new Map<string, number>();
+    for (const row of cashByBranch) {
+      const id = row._id?.toString() || 'unknown';
+      const net =
+        (row.totalIncome || 0) -
+        (row.totalExpense || 0) -
+        (row.totalTransfer || 0) -
+        (row.totalLoan || 0) -
+        (row.totalAdvance || 0) -
+        (row.totalSalary || 0);
+      netCashByBranch.set(id, (netCashByBranch.get(id) || 0) + net);
+    }
+    const perBranchNetCash = Array.from(netCashByBranch.entries()).map(([branchId, value]) => ({ _id: branchId, value }));
+    const cashPositionByCurrency = this.sumByCurrency(
+      perBranchNetCash,
+      branchCurrencyMap,
+      (row: { _id: string; value: number }) => row.value,
+    );
 
     return {
       totalIncome: s.totalIncome,
@@ -429,6 +602,7 @@ export class FinanceAggregationService {
       totalVariance: r.totalVariance,
       openShifts: openCount,
       closedShifts: closedCount,
+      cashPositionByCurrency,
     };
   }
 
@@ -617,8 +791,12 @@ export class FinanceAggregationService {
     };
   }
 
-  private async getByBranch(dateFilter: Record<string, any>): Promise<UnifiedDashboard['byBranch']> {
-    const [salesByBranch, expensesByBranch, branches] = await Promise.all([
+  private async getByBranch(
+    dateFilter: Record<string, any>,
+    branchNameMap: Map<string, string>,
+    branchCurrencyMap: Map<string, string>,
+  ): Promise<UnifiedDashboard['byBranch']> {
+    const [salesByBranch, expensesByBranch, financeExpensesByBranch] = await Promise.all([
       this.saleModel.aggregate([
         { $match: { ...dateFilter, status: { $ne: 'returned' }, terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] } } },
         {
@@ -638,14 +816,20 @@ export class FinanceAggregationService {
           },
         },
       ]).exec(),
-      this.branchModel.find({}, { _id: 1, name: 1, currencyCode: 1 }).lean().exec(),
+      this.financeModel.aggregate([
+        { $match: { ...dateFilter, type: { $in: ['expense', 'cash_out'] }, isDeleted: false } },
+        {
+          $group: {
+            _id: '$branchId',
+            expenses: { $sum: '$amount' },
+          },
+        },
+      ]).exec(),
     ]);
 
-    const branchNameMap = new Map<string, string>();
-    const branchCurrencyMap = new Map<string, string>();
-    for (const b of branches) {
-      branchNameMap.set(b._id.toString(), b.name);
-      branchCurrencyMap.set(b._id.toString(), b.currencyCode ?? 'SLE');
+    const financeExpenseMap = new Map<string, number>();
+    for (const f of financeExpensesByBranch) {
+      financeExpenseMap.set(f._id?.toString() || 'unknown', f.expenses || 0);
     }
 
     const branchMap = new Map<string, { revenue: number; expenses: number; salesCount: number }>();
@@ -657,19 +841,32 @@ export class FinanceAggregationService {
     for (const e of expensesByBranch) {
       const id = e._id?.toString() || 'unknown';
       const existing = branchMap.get(id) || { revenue: 0, expenses: 0, salesCount: 0 };
-      existing.expenses = e.expenses;
+      existing.expenses = (e.expenses || 0) + (financeExpenseMap.get(id) || 0);
       branchMap.set(id, existing);
     }
+    // Include branches that only have finance expenses.
+    for (const [id, financeExp] of financeExpenseMap.entries()) {
+      if (!branchMap.has(id)) {
+        branchMap.set(id, { revenue: 0, expenses: financeExp, salesCount: 0 });
+      }
+    }
 
-    return Array.from(branchMap.entries()).map(([branchId, data]) => ({
-      branchId,
-      branchName: branchNameMap.get(branchId) || branchId,
-      currencyCode: branchCurrencyMap.get(branchId) || 'SLE',
-      revenue: data.revenue,
-      expenses: data.expenses,
-      profit: data.revenue - data.expenses,
-      salesCount: data.salesCount,
-    }));
+    return Array.from(branchMap.entries()).map(([branchId, data]) => {
+      const currencyCode = branchCurrencyMap.get(branchId) || 'SLE';
+      const profit = data.revenue - data.expenses;
+      return {
+        branchId,
+        branchName: branchNameMap.get(branchId) || branchId,
+        currencyCode,
+        revenue: data.revenue,
+        expenses: data.expenses,
+        profit,
+        salesCount: data.salesCount,
+        revenueFormatted: CurrencyUtil.format(data.revenue, currencyCode),
+        expensesFormatted: CurrencyUtil.format(data.expenses, currencyCode),
+        profitFormatted: CurrencyUtil.format(profit, currencyCode),
+      };
+    });
   }
 
   private async getByPaymentMethod(filter: Record<string, any>): Promise<UnifiedDashboard['byPaymentMethod']> {

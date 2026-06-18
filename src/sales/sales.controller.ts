@@ -13,6 +13,8 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -25,6 +27,7 @@ import { SalesService } from './sales.service.js';
 import { CheckoutService } from './checkout.service.js';
 import { ReceiptService } from './receipt.service.js';
 import { SaleDocument } from './schemas/sale.schema.js';
+import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 import { CreateSaleDto } from './dto/create-sale.dto.js';
 import { ProcessReturnDto } from './dto/process-return.dto.js';
 import { ReceiveSalePaymentDto } from './dto/receive-sale-payment.dto.js';
@@ -52,23 +55,40 @@ export class SalesController {
     private readonly checkoutService: CheckoutService,
     private readonly receiptService: ReceiptService,
     private readonly emailService: EmailService,
+    @InjectModel(Branch.name) private readonly branchModel: Model<BranchDocument>,
   ) {}
 
   /**
    * Helper method to format sale data with currency and payment method labels
    * Requirements: 1.4
    */
-  private formatSaleData(sale: SaleDocument) {
+  private async formatSaleData(
+    sale: SaleDocument,
+    currencyCode?: string,
+  ): Promise<Record<string, unknown>> {
+    const code =
+      currencyCode ?? (await this.getBranchCurrencyCode(sale.branchId.toString()));
     return {
       ...sale.toObject(),
-      totalFormatted: CurrencyUtil.format(sale.total),
-      subtotalFormatted: CurrencyUtil.format(sale.subtotal),
-      discountFormatted: CurrencyUtil.format(sale.discount),
-      returnedAmountFormatted: CurrencyUtil.format(sale.returnedAmount),
+      totalFormatted: CurrencyUtil.format(sale.total, code),
+      subtotalFormatted: CurrencyUtil.format(sale.subtotal, code),
+      discountFormatted: CurrencyUtil.format(sale.discount, code),
+      returnedAmountFormatted: CurrencyUtil.format(sale.returnedAmount, code),
       paymentMethodLabel: getPaymentMethodLabel(sale.paymentMethod),
-      amountPaidFormatted: CurrencyUtil.format(sale.amountPaid ?? 0),
-      balanceDueFormatted: CurrencyUtil.format(sale.balanceDue ?? 0),
+      amountPaidFormatted: CurrencyUtil.format(sale.amountPaid ?? 0, code),
+      balanceDueFormatted: CurrencyUtil.format(sale.balanceDue ?? 0, code),
     };
+  }
+
+  /**
+   * Fetch the currency code for a branch
+   */
+  private async getBranchCurrencyCode(branchId: string): Promise<string> {
+    if (!branchId) {
+      return 'SLE';
+    }
+    const branch = await this.branchModel.findById(branchId).exec();
+    return branch?.currencyCode || 'SLE';
   }
 
   /**
@@ -97,6 +117,9 @@ export class SalesController {
       createSaleDto,
       user.userId,
     );
+    const currencyCode = await this.getBranchCurrencyCode(
+      result.sale.branchId.toString(),
+    );
 
     return {
       success: true,
@@ -105,11 +128,17 @@ export class SalesController {
         saleId: result.sale._id,
         receiptNumber: result.receiptNumber,
         total: result.totalAmount,
-        totalFormatted: CurrencyUtil.format(result.totalAmount),
+        totalFormatted: CurrencyUtil.format(result.totalAmount, currencyCode),
         subtotal: result.sale.subtotal,
-        subtotalFormatted: CurrencyUtil.format(result.sale.subtotal),
+        subtotalFormatted: CurrencyUtil.format(
+          result.sale.subtotal,
+          currencyCode,
+        ),
         discount: result.sale.discount,
-        discountFormatted: CurrencyUtil.format(result.sale.discount),
+        discountFormatted: CurrencyUtil.format(
+          result.sale.discount,
+          currencyCode,
+        ),
         paymentMethod: result.sale.paymentMethod,
         paymentMethodLabel: getPaymentMethodLabel(result.sale.paymentMethod),
         paymentReference: result.sale.paymentReference,
@@ -137,6 +166,9 @@ export class SalesController {
       { ...processReturnDto, saleId },
       user.userId,
     );
+    const currencyCode = await this.getBranchCurrencyCode(
+      result.sale.branchId.toString(),
+    );
 
     return {
       success: true,
@@ -146,9 +178,12 @@ export class SalesController {
         receiptNumber: result.sale.receiptNumber,
         returnedItems: result.returnedItems,
         returnedAmount: result.returnedAmount,
-        returnedAmountFormatted: CurrencyUtil.format(result.returnedAmount),
+        returnedAmountFormatted: CurrencyUtil.format(
+          result.returnedAmount,
+          currencyCode,
+        ),
         total: result.sale.total,
-        totalFormatted: CurrencyUtil.format(result.sale.total),
+        totalFormatted: CurrencyUtil.format(result.sale.total, currencyCode),
         newStatus: result.newStatus,
         paymentMethod: result.sale.paymentMethod,
         paymentMethodLabel: getPaymentMethodLabel(result.sale.paymentMethod),
@@ -175,7 +210,7 @@ export class SalesController {
     return {
       success: true,
       message: 'Payment recorded successfully',
-      data: this.formatSaleData(sale),
+      data: await this.formatSaleData(sale),
     };
   }
 
@@ -203,6 +238,7 @@ export class SalesController {
       name?: string;
       address?: string;
       phone?: string;
+      currencyCode?: string;
     };
 
     const cashier = sale.cashierId as unknown as {
@@ -232,6 +268,7 @@ export class SalesController {
       timestamp: sale.createdAt || new Date(),
       branchName: branch?.name || 'Pharmacy',
       branchAddress: branch?.address,
+      branchCurrencyCode: branch?.currencyCode,
       cashierName,
       customerName: sale.customerName,
       customerPhone: sale.customerPhone,
@@ -279,7 +316,9 @@ export class SalesController {
 
     return {
       success: true,
-      data: sales.map((sale) => this.formatSaleData(sale)),
+      data: await Promise.all(
+        sales.map((sale) => this.formatSaleData(sale)),
+      ),
       count: sales.length,
     };
   }
@@ -301,7 +340,7 @@ export class SalesController {
 
     return {
       success: true,
-      data: this.formatSaleData(sale),
+      data: await this.formatSaleData(sale),
     };
   }
 
@@ -322,7 +361,9 @@ export class SalesController {
 
     return {
       success: true,
-      data: sales.map((sale) => this.formatSaleData(sale)),
+      data: await Promise.all(
+        sales.map((sale) => this.formatSaleData(sale)),
+      ),
       count: sales.length,
     };
   }
@@ -343,7 +384,9 @@ export class SalesController {
 
     return {
       success: true,
-      data: sales.map((sale) => this.formatSaleData(sale)),
+      data: await Promise.all(
+        sales.map((sale) => this.formatSaleData(sale)),
+      ),
       count: sales.length,
     };
   }
@@ -390,7 +433,9 @@ export class SalesController {
 
     return {
       success: true,
-      data: sales.map((sale) => this.formatSaleData(sale)),
+      data: await Promise.all(
+        sales.map((sale) => this.formatSaleData(sale)),
+      ),
       count: sales.length,
     };
   }
@@ -412,7 +457,7 @@ export class SalesController {
 
     return {
       success: true,
-      data: this.formatSaleData(sale),
+      data: await this.formatSaleData(sale),
     };
   }
 
@@ -460,14 +505,19 @@ export class SalesController {
       new Date(startDate),
       new Date(endDate),
     );
+    const currencyCode = await this.getBranchCurrencyCode(branchId);
 
     return {
       success: true,
       data: {
         ...stats,
-        totalAmountFormatted: CurrencyUtil.format(stats.totalAmount),
+        totalAmountFormatted: CurrencyUtil.format(
+          stats.totalAmount,
+          currencyCode,
+        ),
         averageTransactionFormatted: CurrencyUtil.format(
           stats.averageTransaction,
+          currencyCode,
         ),
       },
     };
@@ -486,12 +536,19 @@ export class SalesController {
   )
   async getShiftTotal(@Param('shiftId') shiftId: string) {
     const total = await this.salesService.calculateShiftTotal(shiftId);
+    let currencyCode = 'SLE';
+    const shiftSales = await this.salesService.findByShift(shiftId);
+    if (shiftSales && shiftSales.length > 0) {
+      currencyCode = await this.getBranchCurrencyCode(
+        shiftSales[0].branchId.toString(),
+      );
+    }
 
     return {
       success: true,
       data: {
         total,
-        totalFormatted: CurrencyUtil.format(total),
+        totalFormatted: CurrencyUtil.format(total, currencyCode),
       },
     };
   }
