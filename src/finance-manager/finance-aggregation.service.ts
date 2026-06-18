@@ -198,7 +198,7 @@ export class FinanceAggregationService {
       this.getPurchases(dateFilter, branchFilter),
       this.getByBranch(dateFilter, branchNameMap, branchCurrencyMap),
       this.getByPaymentMethod(combinedFilter),
-      this.microserviceClient.getAllFinancialData().catch((err) => {
+      this.microserviceClient.getLatestFinancialData().catch((err) => {
         this.logger.warn(`Failed to fetch external service data: ${err.message}`);
         return null;
       }),
@@ -895,7 +895,7 @@ export class FinanceAggregationService {
     timestamp: string;
   }> {
     const targetDate = date || new Date().toISOString().slice(0, 10);
-    const externalData = await this.microserviceClient.getAllFinancialData().catch(() => null);
+    const externalData = await this.microserviceClient.getLatestFinancialData().catch(() => null);
 
     const cafEmrSales = await this.saleModel.aggregate([
       {

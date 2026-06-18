@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -62,16 +63,41 @@ interface RevenueReport {
   daily: { date: string; total: number }[];
 }
 
+export interface ExternalFinancialData {
+  emr: {
+    paymentStats: PaymentStats | null;
+    expenditureSummary: ExpenditureSummary | null;
+    dailyReport: DailyReport | null;
+    revenueReport: RevenueReport | null;
+    outstanding: OutstandingBalance[] | null;
+  };
+  lab: {
+    paymentStats: PaymentStats | null;
+    expenditureSummary: ExpenditureSummary | null;
+    dailyReport: DailyReport | null;
+    revenueReport: RevenueReport | null;
+    outstanding: OutstandingBalance[] | null;
+  };
+  syncedAt: string;
+}
+
 @Injectable()
-export class MicroserviceClientService {
+export class MicroserviceClientService implements OnModuleInit {
   private readonly logger = new Logger(MicroserviceClientService.name);
+  private readonly staleAfterMs = 15 * 60 * 1000;
   private emrToken: ServiceToken | null = null;
   private labToken: ServiceToken | null = null;
+  private cachedFinancialData: ExternalFinancialData | null = null;
+  private lastSyncStartedAt = 0;
 
   constructor(
     private readonly config: ConfigService,
     private readonly http: HttpService,
   ) {}
+
+  onModuleInit(): void {
+    void this.refreshExternalFinancialData('startup');
+  }
 
   // --- Authentication --------------------------------------
 
@@ -217,29 +243,29 @@ export class MicroserviceClientService {
 
   // --- Combined Fetch --------------------------------------
 
-  async getAllFinancialData(): Promise<{
-    emr: {
-      paymentStats: PaymentStats | null;
-      expenditureSummary: ExpenditureSummary | null;
-      dailyReport: DailyReport | null;
-      revenueReport: RevenueReport | null;
-    };
-    lab: {
-      paymentStats: PaymentStats | null;
-      expenditureSummary: ExpenditureSummary | null;
-      dailyReport: DailyReport | null;
-      revenueReport: RevenueReport | null;
-    };
-  }> {
-    const [emrPayment, emrExpend, emrDaily, emrRevenue, labPayment, labExpend, labDaily, labRevenue] = await Promise.allSettled([
+  async getAllFinancialData(): Promise<ExternalFinancialData> {
+    const [
+      emrPayment,
+      emrExpend,
+      emrDaily,
+      emrRevenue,
+      emrOutstanding,
+      labPayment,
+      labExpend,
+      labDaily,
+      labRevenue,
+      labOutstanding,
+    ] = await Promise.allSettled([
       this.getEmrPaymentStats(),
       this.getEmrExpenditureSummary(),
       this.getEmrDailyReport(),
       this.getEmrRevenueReport(),
+      this.getEmrOutstanding(),
       this.getLabPaymentStats(),
       this.getLabExpenditureSummary(),
       this.getLabDailyReport(),
       this.getLabRevenueReport(),
+      this.getLabOutstanding(),
     ]);
 
     return {
@@ -248,13 +274,67 @@ export class MicroserviceClientService {
         expenditureSummary: emrExpend.status === 'fulfilled' ? emrExpend.value : null,
         dailyReport: emrDaily.status === 'fulfilled' ? emrDaily.value : null,
         revenueReport: emrRevenue.status === 'fulfilled' ? emrRevenue.value : null,
+        outstanding: emrOutstanding.status === 'fulfilled' ? emrOutstanding.value : null,
       },
       lab: {
         paymentStats: labPayment.status === 'fulfilled' ? labPayment.value : null,
         expenditureSummary: labExpend.status === 'fulfilled' ? labExpend.value : null,
         dailyReport: labDaily.status === 'fulfilled' ? labDaily.value : null,
         revenueReport: labRevenue.status === 'fulfilled' ? labRevenue.value : null,
+        outstanding: labOutstanding.status === 'fulfilled' ? labOutstanding.value : null,
       },
+      syncedAt: new Date().toISOString(),
     };
+  }
+
+  @Interval(5 * 60 * 1000)
+  async refreshExternalFinancialData(reason = 'scheduled'): Promise<ExternalFinancialData | null> {
+    if (!this.hasExternalApiConfig()) {
+      this.logger.warn('External finance API sync skipped: no EMR/LAB credentials are configured');
+      return this.cachedFinancialData;
+    }
+
+    const now = Date.now();
+    if (this.lastSyncStartedAt && now - this.lastSyncStartedAt < 30_000) {
+      return this.cachedFinancialData;
+    }
+    this.lastSyncStartedAt = now;
+
+    try {
+      const data = await this.getAllFinancialData();
+      this.cachedFinancialData = data;
+      this.logger.log(`External finance API sync completed (${reason}) at ${data.syncedAt}`);
+      return data;
+    } catch (error: any) {
+      this.logger.warn(`External finance API sync failed (${reason}): ${error.message}`);
+      return this.cachedFinancialData;
+    }
+  }
+
+  async getLatestFinancialData(): Promise<ExternalFinancialData | null> {
+    if (!this.cachedFinancialData) {
+      return this.refreshExternalFinancialData('cache-miss');
+    }
+
+    const cachedAt = new Date(this.cachedFinancialData.syncedAt).getTime();
+    if (Date.now() - cachedAt > this.staleAfterMs) {
+      void this.refreshExternalFinancialData('stale-cache');
+    }
+
+    return this.cachedFinancialData;
+  }
+
+  private hasExternalApiConfig(): boolean {
+    const hasEmrConfig = Boolean(
+      this.config.get<string>('EMR_API_BASE_URL') &&
+        this.config.get<string>('EMR_API_USERNAME') &&
+        this.config.get<string>('EMR_API_PASSWORD'),
+    );
+    const hasLabConfig = Boolean(
+      this.config.get<string>('LAB_API_BASE_URL') &&
+        this.config.get<string>('LAB_API_USERNAME') &&
+        this.config.get<string>('LAB_API_PASSWORD'),
+    );
+    return hasEmrConfig || hasLabConfig;
   }
 }
