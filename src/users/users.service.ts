@@ -1,22 +1,125 @@
 import {
   Injectable,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { UsersRepository } from './users.repository.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
 import { UserDocument } from './schemas/user.schema.js';
 import { UserRole } from './schemas/user.schema.js';
+import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly usersRepository: UsersRepository) {}
+  constructor(
+    private readonly usersRepository: UsersRepository,
+    @InjectModel(Branch.name) private readonly branchModel: Model<BranchDocument>,
+  ) {}
 
-  async create(createUserDto: CreateUserDto): Promise<UserDocument> {
+  private async canManageAcrossBranches(
+    actor?: { role: string; branchId?: string },
+  ): Promise<boolean> {
+    if (!actor) {
+      return false;
+    }
+
+    if (actor.role === UserRole.SUPER_ADMIN) {
+      return true;
+    }
+
+    if (actor.role !== UserRole.BRANCH_MANAGER || !actor.branchId) {
+      return false;
+    }
+
+    const branch = await this.branchModel
+      .findById(actor.branchId)
+      .select('isHeadquarters')
+      .lean();
+
+    return Boolean(branch?.isHeadquarters);
+  }
+
+  private async applyBranchScopeForWrite<T extends CreateUserDto | UpdateUserDto>(
+    dto: T,
+    actor?: { role: string; branchId?: string },
+  ): Promise<T> {
+    if (!actor) {
+      throw new ForbiddenException('User context is required');
+    }
+
+    if (actor.role === UserRole.SUPER_ADMIN) {
+      return dto;
+    }
+
+    if (actor.role !== UserRole.BRANCH_MANAGER) {
+      throw new ForbiddenException('You are not allowed to manage users');
+    }
+
+    if (!actor.branchId) {
+      throw new ForbiddenException(
+        'Your account is not assigned to a branch. Contact an administrator.',
+      );
+    }
+
+    if (dto.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Only super admins can manage super admin users');
+    }
+
+    const canChooseBranch = await this.canManageAcrossBranches(actor);
+    if (canChooseBranch) {
+      return dto;
+    }
+
+    if (
+      dto.role &&
+      ![UserRole.CASHIER, UserRole.MARKETER].includes(dto.role)
+    ) {
+      throw new ForbiddenException(
+        'Outlet managers can only manage cashier and marketer users',
+      );
+    }
+
+    return {
+      ...dto,
+      branchId: actor.branchId,
+    };
+  }
+
+  private async assertCanManageTargetUser(
+    target: UserDocument,
+    actor?: { role: string; branchId?: string },
+  ): Promise<void> {
+    if (!actor || actor.role === UserRole.SUPER_ADMIN) {
+      return;
+    }
+
+    if (actor.role !== UserRole.BRANCH_MANAGER || !actor.branchId) {
+      throw new ForbiddenException('You are not allowed to manage this user');
+    }
+
+    const canChooseBranch = await this.canManageAcrossBranches(actor);
+    if (canChooseBranch) {
+      return;
+    }
+
+    if (target.branchId?.toString() !== actor.branchId) {
+      throw new ForbiddenException('You can only manage users in your outlet');
+    }
+  }
+
+  async create(
+    createUserDto: CreateUserDto,
+    actor?: { role: string; branchId?: string },
+  ): Promise<UserDocument> {
+    const scopedDto = await this.applyBranchScopeForWrite(createUserDto, actor);
+
     // Check if username already exists
     const existingUsername = await this.usersRepository.findByUsername(
-      createUserDto.username,
+      scopedDto.username,
     );
     if (existingUsername) {
       throw new ConflictException('Username already exists');
@@ -24,13 +127,13 @@ export class UsersService {
 
     // Check if email already exists
     const existingEmail = await this.usersRepository.findByEmail(
-      createUserDto.email,
+      scopedDto.email,
     );
     if (existingEmail) {
       throw new ConflictException('Email already exists');
     }
 
-    return this.usersRepository.create(createUserDto);
+    return this.usersRepository.create(scopedDto);
   }
 
   async findAll(
@@ -75,18 +178,23 @@ export class UsersService {
   async update(
     id: string,
     updateUserDto: UpdateUserDto,
+    actor?: { role: string; branchId?: string },
   ): Promise<UserDocument> {
+    const targetUser = await this.findById(id);
+    await this.assertCanManageTargetUser(targetUser, actor);
+    const scopedDto = await this.applyBranchScopeForWrite(updateUserDto, actor);
+
     // Check if email is being updated and already exists
-    if (updateUserDto.email) {
+    if (scopedDto.email) {
       const existingEmail = await this.usersRepository.findByEmail(
-        updateUserDto.email,
+        scopedDto.email,
       );
       if (existingEmail && existingEmail._id.toString() !== id) {
         throw new ConflictException('Email already exists');
       }
     }
 
-    const user = await this.usersRepository.update(id, updateUserDto);
+    const user = await this.usersRepository.update(id, scopedDto);
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }

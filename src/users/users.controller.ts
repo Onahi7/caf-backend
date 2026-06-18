@@ -36,8 +36,11 @@ export class UsersController {
    */
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
-  async create(@Body() createUserDto: CreateUserDto): Promise<UserDocument> {
-    return this.usersService.create(createUserDto);
+  async create(
+    @Body() createUserDto: CreateUserDto,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<UserDocument> {
+    return this.usersService.create(createUserDto, user);
   }
 
   /**
@@ -111,8 +114,9 @@ export class UsersController {
   async update(
     @Param('id') id: string,
     @Body() updateUserDto: UpdateUserDto,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<UserDocument> {
-    return this.usersService.update(id, updateUserDto);
+    return this.usersService.update(id, updateUserDto, user);
   }
 
   /**
