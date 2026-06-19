@@ -261,14 +261,9 @@ export class ReportsService {
 
     const cashierFilter = this.idFilter(dto.cashierId);
     if (cashierFilter) matchStage.cashierId = cashierFilter;
-    if (dto.startDate || dto.endDate) {
-      matchStage.createdAt = {};
-      if (dto.startDate) {
-        (matchStage.createdAt as Record<string, unknown>).$gte = new Date(dto.startDate);
-      }
-      if (dto.endDate) {
-        (matchStage.createdAt as Record<string, unknown>).$lte = new Date(dto.endDate);
-      }
+    const dateFilter = this.dateMatch(dto.startDate, dto.endDate);
+    if (dateFilter) {
+      matchStage.createdAt = dateFilter;
     }
 
     // Filter by product if specified
@@ -1087,14 +1082,9 @@ export class ReportsService {
     if (dto.status) {
       matchStage.status = dto.status;
     }
-    if (dto.startDate || dto.endDate) {
-      matchStage.createdAt = {};
-      if (dto.startDate) {
-        (matchStage.createdAt as Record<string, unknown>).$gte = new Date(dto.startDate);
-      }
-      if (dto.endDate) {
-        (matchStage.createdAt as Record<string, unknown>).$lte = new Date(dto.endDate);
-      }
+    const dateFilter = this.dateMatch(dto.startDate, dto.endDate);
+    if (dateFilter) {
+      matchStage.createdAt = dateFilter;
     }
 
     // Get transfers with populated references
