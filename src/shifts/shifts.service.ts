@@ -17,6 +17,16 @@ import { ShiftDocument, ShiftStatus } from './schemas/shift.schema.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { SalesService } from '../sales/sales.service.js';
 import { Connection } from 'mongoose';
+import {
+  PaymentMethod,
+  SaleDocument,
+  SaleStatus,
+} from '../sales/schemas/sale.schema.js';
+
+export interface PaymentMethodTotal {
+  paymentMethod: string;
+  total: number;
+}
 
 @Injectable()
 export class ShiftsService {
@@ -42,6 +52,35 @@ export class ShiftsService {
         `Invalid ${fieldName}: cannot be negative`,
       );
     }
+  }
+
+  private calculatePaymentMethodTotals(sales: SaleDocument[]): PaymentMethodTotal[] {
+    const totals = new Map<string, number>();
+
+    for (const sale of sales) {
+      const returnedAmount = sale.returnedAmount || 0;
+
+      if (sale.payments?.length) {
+        for (const payment of sale.payments) {
+          const previous = totals.get(payment.paymentMethod) || 0;
+          totals.set(payment.paymentMethod, previous + (payment.amount || 0));
+        }
+
+        if (returnedAmount > 0) {
+          const firstMethod = sale.payments[0]?.paymentMethod || sale.paymentMethod;
+          totals.set(firstMethod, (totals.get(firstMethod) || 0) - returnedAmount);
+        }
+        continue;
+      }
+
+      const previous = totals.get(sale.paymentMethod) || 0;
+      totals.set(sale.paymentMethod, previous + (sale.total || 0) - returnedAmount);
+    }
+
+    return Object.values(PaymentMethod).map((paymentMethod) => ({
+      paymentMethod,
+      total: totals.get(paymentMethod) || 0,
+    }));
   }
 
   /**
@@ -262,6 +301,21 @@ export class ShiftsService {
   async getShiftReport(shiftId: string): Promise<{
     shift: ShiftDocument;
     totalSales: number;
+    netSales: number;
+    salesCount: number;
+    voidsCount: number;
+    refundsCount: number;
+    openedAt: Date;
+    closedAt?: Date;
+    cashierName: string;
+    branchName: string;
+    openingCash: number;
+    closingCash: number;
+    expectedCash: number;
+    totalCashSales: number;
+    totalCardSales: number;
+    totalMobileSales: number;
+    paymentMethodTotals: PaymentMethodTotal[];
     totalSalesFormatted: string;
     variance: number;
     varianceFormatted: string;
@@ -270,23 +324,78 @@ export class ShiftsService {
     formattedExpectedCash: string;
   }> {
     const shift = await this.findById(shiftId);
+    await shift.populate([
+      { path: 'branchId', select: 'name code currencyCode' },
+      { path: 'cashierId', select: 'firstName lastName username' },
+    ]);
 
     // Calculate actual total sales from sales records
-    const totalSales = await this.salesService.calculateShiftTotal(shiftId);
+    const sales = await this.salesService.findByShift(shiftId);
+    const totalSales = sales.reduce(
+      (sum, sale) => sum + (sale.total || 0) - (sale.returnedAmount || 0),
+      0,
+    );
+    const paymentMethodTotals = this.calculatePaymentMethodTotals(sales);
+    const totalCashSales =
+      paymentMethodTotals.find((item) => item.paymentMethod === PaymentMethod.CASH)
+        ?.total || 0;
+    const totalCardSales =
+      paymentMethodTotals.find((item) => item.paymentMethod === PaymentMethod.CARD)
+        ?.total || 0;
+    const totalMobileSales = paymentMethodTotals
+      .filter((item) =>
+        [
+          PaymentMethod.ORANGE_MONEY,
+          PaymentMethod.AFRICELL_MONEY,
+          PaymentMethod.QMONEY,
+          PaymentMethod.MOBILE,
+        ].includes(item.paymentMethod as PaymentMethod),
+      )
+      .reduce((sum, item) => sum + item.total, 0);
 
     const openingCash = shift.openingCash;
     const expectedCash = shift.expectedCash || (shift.openingCash + totalSales);
     const closingCash = shift.closingCash || 0;
     const variance = shift.variance || 0;
 
-    const branch = await this.branchModel
-      .findById(shift.branchId.toString())
-      .exec();
+    const branch =
+      typeof shift.branchId === 'object' && 'currencyCode' in shift.branchId
+        ? (shift.branchId as unknown as { name?: string; currencyCode?: string })
+        : await this.branchModel.findById(shift.branchId.toString()).exec();
+    const cashier =
+      typeof shift.cashierId === 'object' && 'username' in shift.cashierId
+        ? (shift.cashierId as unknown as {
+            firstName?: string;
+            lastName?: string;
+            username?: string;
+          })
+        : null;
     const currencyCode = branch?.currencyCode || 'SLE';
+    const cashierName =
+      [cashier?.firstName, cashier?.lastName].filter(Boolean).join(' ') ||
+      cashier?.username ||
+      'Cashier';
 
     return {
       shift,
       totalSales,
+      netSales: totalSales,
+      salesCount: sales.length,
+      voidsCount: 0,
+      refundsCount: sales.filter((sale) =>
+        [SaleStatus.RETURNED, SaleStatus.PARTIALLY_RETURNED].includes(sale.status),
+      ).length,
+      openedAt: shift.openedAt,
+      closedAt: shift.closedAt,
+      cashierName,
+      branchName: branch?.name || 'Outlet',
+      openingCash,
+      closingCash,
+      expectedCash,
+      totalCashSales,
+      totalCardSales,
+      totalMobileSales,
+      paymentMethodTotals,
       totalSalesFormatted: CurrencyUtil.format(totalSales, currencyCode),
       variance,
       varianceFormatted: CurrencyUtil.format(variance, currencyCode),
