@@ -251,10 +251,14 @@ export class SalesService implements OnModuleInit {
     if (balanceDue <= 0) {
       return PaymentStatus.PAID;
     }
+    // Once a payment is made, show progress — even if past due date
+    if (amountPaid > 0) {
+      return PaymentStatus.PARTIAL;
+    }
     if (this.isPastDueDate(dueDate)) {
       return PaymentStatus.OVERDUE;
     }
-    return amountPaid > 0 ? PaymentStatus.PARTIAL : PaymentStatus.UNPAID;
+    return PaymentStatus.UNPAID;
   }
 
   private isPastDueDate(dueDate?: Date): boolean {
@@ -278,7 +282,8 @@ export class SalesService implements OnModuleInit {
 
   private generateCreditPaymentReceiptNumber(sale: SaleDocument): string {
     const sequence = (sale.payments?.length || 0) + 1;
-    return `${sale.receiptNumber}-PAY-${String(sequence).padStart(2, '0')}`;
+    const timestamp = Date.now().toString(36);
+    return `${sale.receiptNumber}-PAY-${String(sequence).padStart(2, '0')}-${timestamp}`;
   }
 
   private async auditCreditPayment(

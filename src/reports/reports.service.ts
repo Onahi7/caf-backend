@@ -280,6 +280,8 @@ export class ReportsService {
           totalAmount: { $sum: '$total' },
           totalDiscount: { $sum: '$discount' },
           totalReturns: { $sum: '$returnedAmount' },
+          totalCollected: { $sum: '$amountPaid' },
+          totalOutstanding: { $sum: '$balanceDue' },
         },
       },
       {
@@ -289,6 +291,8 @@ export class ReportsService {
           totalAmount: 1,
           totalDiscount: 1,
           totalReturns: 1,
+          totalCollected: 1,
+          totalOutstanding: 1,
           netAmount: { $subtract: ['$totalAmount', '$totalReturns'] },
           averageTransaction: {
             $cond: [
@@ -336,6 +340,14 @@ export class ReportsService {
       ),
       averageTransactionFormatted: CurrencyUtil.format(
         summary.averageTransaction,
+        currencyCode,
+      ),
+      totalCollectedFormatted: CurrencyUtil.format(
+        summary.totalCollected || 0,
+        currencyCode,
+      ),
+      totalOutstandingFormatted: CurrencyUtil.format(
+        summary.totalOutstanding || 0,
         currencyCode,
       ),
     };
@@ -388,31 +400,56 @@ export class ReportsService {
     // Get all payment methods from the enum
     const allPaymentMethods = Object.values(PaymentMethod);
 
-    // Aggregate sales by payment method
+    // Aggregate by actual payment methods from the payments array (installments)
+    // and also include the top-level paymentMethod for cash/card sales without installments
     const pipeline = [
       { $match: matchStage },
       {
-        $group: {
-          _id: '$paymentMethod',
-          count: { $sum: 1 },
-          totalAmount: { $sum: '$total' },
+        $facet: {
+          // From installment payments (unwind the payments array)
+          installmentPayments: [
+            { $unwind: { path: '$payments', preserveNullAndEmptyArrays: false } },
+            {
+              $group: {
+                _id: '$payments.paymentMethod',
+                count: { $sum: 1 },
+                totalAmount: { $sum: '$payments.amount' },
+              },
+            },
+          ],
+          // From top-level paymentMethod (for sales with no installments recorded)
+          topLevelPayments: [
+            {
+              $match: { payments: { $size: 0 } },
+            },
+            {
+              $group: {
+                _id: '$paymentMethod',
+                count: { $sum: 1 },
+                totalAmount: { $sum: '$total' },
+              },
+            },
+          ],
         },
       },
     ];
 
     const results = await this.saleModel.aggregate(pipeline);
+    const facet = results[0] || { installmentPayments: [], topLevelPayments: [] };
 
-    // Create a map of results for easy lookup
-    const resultsMap = new Map(
-      results.map((r) => [
-        r._id,
-        { count: r.count, totalAmount: r.totalAmount },
-      ]),
-    );
+    // Merge both sources
+    const merged = new Map<string, { count: number; totalAmount: number }>();
+    for (const r of [...facet.installmentPayments, ...facet.topLevelPayments]) {
+      const existing = merged.get(r._id) || { count: 0, totalAmount: 0 };
+      merged.set(r._id, {
+        count: existing.count + r.count,
+        totalAmount: existing.totalAmount + r.totalAmount,
+      });
+    }
 
     // Ensure all payment methods are represented
     return allPaymentMethods.map((method) => {
-      const data = resultsMap.get(method) || { count: 0, totalAmount: 0 };
+      const data = merged.get(method) || { count: 0, totalAmount: 0 };
       return {
         paymentMethod: method,
         label: PAYMENT_METHOD_LABELS[method] || method,

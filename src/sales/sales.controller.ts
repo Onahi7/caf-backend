@@ -317,6 +317,10 @@ export class SalesController {
     } else {
       delete filter.branchId;
     }
+    // Cashiers can only see their own sales
+    if (user.role === UserRole.CASHIER) {
+      filter.cashierId = user.userId;
+    }
     const sales = await this.salesService.findAll(filter);
 
     return {

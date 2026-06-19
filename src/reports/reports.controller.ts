@@ -165,6 +165,10 @@ export class ReportsController {
   ) {
     this.logger.log('Generating sales report');
     assignResolvedBranchId(user, dto);
+    // Cashiers can only see their own sales
+    if (user.role === UserRole.CASHIER) {
+      dto.cashierId = user.userId;
+    }
 
     const report = await this.reportsService.generateSalesReport(dto);
 
@@ -484,7 +488,7 @@ export class ReportsController {
    * Generate customer analytics report
    */
   @Get('customers')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR, UserRole.CASHIER)
   async getCustomerReport(
     @CurrentUser() user: CurrentUserData,
     @Query('branchId') branchId: string,
@@ -507,7 +511,7 @@ export class ReportsController {
    * Export customer report to CSV
    */
   @Get('customers/export')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR, UserRole.CASHIER)
   async exportCustomerReport(
     @CurrentUser() user: CurrentUserData,
     @Query('branchId') branchId: string,

@@ -154,7 +154,7 @@ let session;
             : PaymentStatus.UNPAID;
 
       this.validatePaymentDetails(dto, total, saleType, amountPaid, balanceDue);
-      const payments = this.buildInitialPayments(dto, cashierId, saleType, amountPaid, balanceDue);
+      const payments = this.buildInitialPayments(dto, cashierId, saleType, amountPaid, balanceDue, receiptNumber);
 
       // Determine prescription status
       const prescriptionStatus = dto.prescriptionUrl
@@ -489,6 +489,7 @@ let session;
     saleType: SaleType,
     amountPaid: number,
     balanceDue: number,
+    receiptNumber: string,
   ): SalePaymentEntry[] {
     if (amountPaid <= 0) {
       return [];
@@ -501,6 +502,7 @@ let session;
 
     return [
       {
+        paymentReceiptNumber: `${receiptNumber}-PAY-01`,
         amount: amountPaid,
         paymentMethod,
         paymentReference: dto.paymentReference,

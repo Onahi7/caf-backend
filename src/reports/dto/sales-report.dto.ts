@@ -60,6 +60,10 @@ export interface SalesReportResult {
     averageTransaction: number;
     averageTransactionFormatted?: string;
     transactionCount: number;
+    totalCollected: number;
+    totalCollectedFormatted?: string;
+    totalOutstanding: number;
+    totalOutstandingFormatted?: string;
   };
   paymentMethodBreakdown?: Array<{
     paymentMethod: string;
