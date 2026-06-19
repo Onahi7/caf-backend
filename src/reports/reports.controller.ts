@@ -156,7 +156,7 @@ export class ReportsController {
    * Property 60: Report export formats
    */
   @Get('sales')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR, UserRole.CASHIER)
   async getSalesReport(
     @CurrentUser() user: CurrentUserData,
     @Query() dto: SalesReportDto,
@@ -200,7 +200,7 @@ export class ReportsController {
    * Alias export endpoint for frontend compatibility
    */
   @Get('sales/export')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR, UserRole.CASHIER)
   async exportSalesReport(
     @CurrentUser() user: CurrentUserData,
     @Query() dto: SalesReportDto,
