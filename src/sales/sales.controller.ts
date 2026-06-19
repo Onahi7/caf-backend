@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Body,
@@ -68,8 +69,39 @@ export class SalesController {
   ): Promise<Record<string, unknown>> {
     const code =
       currencyCode ?? (await this.getBranchCurrencyCode(sale.branchId.toString()));
+    await sale.populate([
+      { path: 'items.productId', select: 'name sku barcode' },
+      { path: 'branchId', select: 'name code currencyCode' },
+      { path: 'cashierId', select: 'firstName lastName username role' },
+    ]);
+    const saleObject = sale.toObject() as Record<string, any>;
+    const items = Array.isArray(saleObject.items)
+      ? saleObject.items.map((item: Record<string, any>) => {
+          const product = item.productId;
+          const populatedProduct =
+            product && typeof product === 'object' && !Array.isArray(product)
+              ? product
+              : null;
+
+          return {
+            ...item,
+            productId:
+              populatedProduct?._id?.toString?.() ??
+              product?.toString?.() ??
+              product,
+            productName:
+              item.productName ??
+              populatedProduct?.name ??
+              'Unknown Product',
+            productSku: item.productSku ?? populatedProduct?.sku,
+            productBarcode: item.productBarcode ?? populatedProduct?.barcode,
+          };
+        })
+      : [];
+
     return {
-      ...sale.toObject(),
+      ...saleObject,
+      items,
       totalFormatted: CurrencyUtil.format(sale.total, code),
       subtotalFormatted: CurrencyUtil.format(sale.subtotal, code),
       discountFormatted: CurrencyUtil.format(sale.discount, code),
@@ -461,8 +493,20 @@ export class SalesController {
     UserRole.CASHIER,
     UserRole.AUDITOR,
   )
-  async findById(@Param('id') id: string) {
+  async findById(
+    @CurrentUser() user: CurrentUserData,
+    @Param('id') id: string,
+  ) {
     const sale = await this.salesService.findById(id);
+    const saleBranchId = sale.branchId.toString();
+    resolveBranchId(user, saleBranchId);
+
+    if (
+      user.role === UserRole.CASHIER &&
+      sale.cashierId.toString() !== user.userId
+    ) {
+      throw new ForbiddenException('You can only view your own receipts.');
+    }
 
     return {
       success: true,
