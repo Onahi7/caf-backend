@@ -187,7 +187,7 @@ async function bootstrap() {
             sku,
             barcode: sku,
             category: 'Diagnostics',
-            brand: 'Monrovia Opening Stock',
+            brand: 'Generic',
             unit: 'piece',
             reorderLevel: Math.max(1, Math.ceil(item.openingBalance * 0.2)),
             maxStockLevel: Math.max(item.openingBalance, item.balanceInStock, 1),

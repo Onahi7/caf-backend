@@ -15,7 +15,7 @@ const EXECUTE_FLAG = 'CLEAR_PRODUCTION_SALES';
 const MONROVIA_BRAND_FLAG = 'MONROVIA_NORMALIZE_BRANDS';
 const ATLAS_SEEDLIST_FLAG = 'MONGODB_ATLAS_SEEDLIST';
 const ATLAS_QUERY_FLAG = 'MONGODB_ATLAS_QUERY';
-const MONROVIA_BRAND = 'Monrovia Opening Stock';
+const MONROVIA_BRAND = 'Generic';
 
 const backupRoot = join(
   process.cwd(),
