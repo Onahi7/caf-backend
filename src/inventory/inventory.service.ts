@@ -129,7 +129,7 @@ export class InventoryService {
 
     const previousQuantity = product.quantityAvailable;
     const session = await this.connection.startSession();
-    let updatedProduct!: ProductDocument;
+    let updatedProduct: ProductDocument | null = null;
     let movement!: StockMovementDocument;
     let newQuantity!: number;
 
@@ -143,7 +143,7 @@ export class InventoryService {
         filter.quantityAvailable = { $gte: -dto.quantityChange };
       }
 
-      const updatedProduct = await this.productModel
+      updatedProduct = await this.productModel
         .findOneAndUpdate(
           filter,
           { $inc: { quantityAvailable: dto.quantityChange } },
@@ -180,7 +180,8 @@ export class InventoryService {
           metadata: {
             previousQuantity,
             newQuantity,
-            approvedBy: dto.approvedBy,
+            approvedBy: userId,
+            approvedByNote: dto.approvedBy?.trim() || undefined,
           },
         },
         session,
@@ -194,6 +195,10 @@ export class InventoryService {
       throw error;
     } finally {
       await session.endSession();
+    }
+
+    if (!updatedProduct) {
+      throw new NotFoundException(`Product with ID ${dto.productId} not found`);
     }
 
     const actingUser = await this.usersService.findById(userId).catch(() => null);
@@ -210,7 +215,8 @@ export class InventoryService {
         reason: dto.reason,
         adjustmentAmount: dto.quantityChange,
         movementId: movement._id.toString(),
-        approvedBy: dto.approvedBy,
+        approvedBy: userId,
+        approvedByNote: dto.approvedBy?.trim() || undefined,
       },
     ).catch((error: unknown) => {
       this.logger.error(
