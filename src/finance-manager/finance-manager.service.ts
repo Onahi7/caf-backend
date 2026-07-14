@@ -218,6 +218,7 @@ export class FinanceManagerService {
       salary.branchId.toString(),
       salary.period,
       id,
+      salary.netSalary,
     );
 
     const session = await this.connection.startSession();
@@ -314,6 +315,7 @@ export class FinanceManagerService {
       salary.branchId.toString(),
       salary.period,
       id,
+      Math.max(0, salary.baseSalary + (salary.allowances || 0) - (salary.deductions || 0)),
     );
 
     const baseNet = salary.baseSalary + (salary.allowances || 0) - (salary.deductions || 0);
@@ -407,6 +409,21 @@ export class FinanceManagerService {
           totalLoan: { $sum: { $cond: [{ $eq: ['$type', 'loan'] }, '$amount', 0] } },
           totalAdvance: { $sum: { $cond: [{ $eq: ['$type', 'advance'] }, '$amount', 0] } },
           totalSalary: { $sum: { $cond: [{ $eq: ['$type', 'salary'] }, '$amount', 0] } },
+          signedCash: {
+            $sum: {
+              $cond: [
+                { $eq: ['$cashFlowDirection', 'inflow'] },
+                '$amount',
+                {
+                  $cond: [
+                    { $eq: ['$cashFlowDirection', 'outflow'] },
+                    { $multiply: ['$amount', -1] },
+                    { $cond: [{ $eq: ['$type', 'income'] }, '$amount', { $multiply: ['$amount', -1] }] },
+                  ],
+                },
+              ],
+            },
+          },
         },
       },
     ]).exec();
@@ -426,7 +443,7 @@ export class FinanceManagerService {
     const s = summary[0] || { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalAdvance: 0, totalSalary: 0 };
     return {
       ...s,
-      netCash: s.totalIncome - s.totalExpense - s.totalTransfer - s.totalLoan - s.totalAdvance - s.totalSalary,
+      netCash: s.signedCash ?? 0,
       byCategory: byCategory.map((c: any) => ({ category: c._id, total: c.total, count: c.count })),
     };
   }

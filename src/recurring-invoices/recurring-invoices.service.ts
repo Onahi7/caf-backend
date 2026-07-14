@@ -10,13 +10,29 @@ import {
   CreateRecurringInvoiceDto,
   UpdateRecurringInvoiceDto,
 } from './dto/recurring-invoice.dto.js';
+import { ProformaInvoicesService } from '../proforma-invoices/proforma-invoices.service.js';
 
 @Injectable()
 export class RecurringInvoicesService {
   constructor(
     @InjectModel(RecurringInvoice.name)
     private readonly model: Model<RecurringInvoiceDocument>,
+    private readonly proformaService: ProformaInvoicesService,
   ) {}
+
+  private normalizeTotals(items: CreateRecurringInvoiceDto['items'], discount = 0) {
+    const normalizedItems = items.map((item) => ({
+      ...item,
+      subtotal: Math.round(item.quantity * item.unitPrice * 100) / 100,
+    }));
+    const subtotal = normalizedItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const normalizedDiscount = Math.min(Math.max(0, discount), subtotal);
+    return {
+      items: normalizedItems,
+      discount: normalizedDiscount,
+      total: Math.round((subtotal - normalizedDiscount) * 100) / 100,
+    };
+  }
 
   /**
    * List recurring invoices for a branch (or all for super_admin)
@@ -46,13 +62,14 @@ export class RecurringInvoicesService {
     userId: string,
     dto: CreateRecurringInvoiceDto,
   ): Promise<RecurringInvoiceDocument> {
+    const normalized = this.normalizeTotals(dto.items, dto.discount);
     return this.model.create({
       createdBy: new Types.ObjectId(userId),
       branchId: new Types.ObjectId(dto.branchId),
       customerId: new Types.ObjectId(dto.customerId),
       customerName: dto.customerName,
       description: dto.description,
-      items: dto.items.map((i) => ({
+      items: normalized.items.map((i) => ({
         productId: i.productId ? new Types.ObjectId(i.productId) : undefined,
         productName: i.productName,
         sku: i.sku,
@@ -60,8 +77,8 @@ export class RecurringInvoicesService {
         unitPrice: i.unitPrice,
         subtotal: i.subtotal,
       })),
-      total: dto.total,
-      discount: dto.discount ?? 0,
+      total: normalized.total,
+      discount: normalized.discount,
       cadence: dto.cadence,
       nextRunAt: new Date(dto.nextRunAt),
       maxRuns: dto.maxRuns ?? 0,
@@ -77,7 +94,11 @@ export class RecurringInvoicesService {
     const update: Record<string, unknown> = {};
     if (dto.description !== undefined) update.description = dto.description;
     if (dto.items !== undefined) {
-      update.items = dto.items.map((i) => ({
+      const normalized = this.normalizeTotals(
+        dto.items,
+        dto.discount ?? (await this.get(id, userId)).discount,
+      );
+      update.items = normalized.items.map((i) => ({
         productId: i.productId ? new Types.ObjectId(i.productId) : undefined,
         productName: i.productName,
         sku: i.sku,
@@ -85,9 +106,21 @@ export class RecurringInvoicesService {
         unitPrice: i.unitPrice,
         subtotal: i.subtotal,
       }));
+      update.total = normalized.total;
+      update.discount = normalized.discount;
     }
-    if (dto.total !== undefined) update.total = dto.total;
-    if (dto.discount !== undefined) update.discount = dto.discount;
+    if (dto.discount !== undefined && dto.items === undefined) {
+      const existing = await this.get(id, userId);
+      const normalized = this.normalizeTotals(
+        existing.items.map((item) => ({
+          ...item,
+          productId: item.productId?.toString(),
+        })),
+        dto.discount,
+      );
+      update.total = normalized.total;
+      update.discount = normalized.discount;
+    }
     if (dto.cadence !== undefined) update.cadence = dto.cadence;
     if (dto.nextRunAt !== undefined) update.nextRunAt = new Date(dto.nextRunAt);
     if (dto.active !== undefined) update.active = dto.active;
@@ -168,6 +201,44 @@ export class RecurringInvoicesService {
     await doc.save();
 
     return { nextRunAt: next, runCount: doc.runCount, shouldDeactivate };
+  }
+
+  async materialize(id: string, userId: string) {
+    const doc = await this.get(id, userId);
+    if (!doc.active) {
+      throw new BadRequestException('Recurring invoice is inactive or exhausted');
+    }
+    if (doc.items.some((item) => !item.productId)) {
+      throw new BadRequestException(
+        'Every recurring invoice item needs a product before it can be materialized',
+      );
+    }
+    const subtotal = doc.items.reduce(
+      (sum, item) => sum + item.quantity * item.unitPrice,
+      0,
+    );
+    const netRatio = subtotal > 0 ? doc.total / subtotal : 0;
+    const validUntil = new Date();
+    validUntil.setDate(validUntil.getDate() + 30);
+    const invoice = await this.proformaService.create(
+      {
+        branchId: doc.branchId.toString(),
+        customerId: doc.customerId.toString(),
+        items: doc.items.map((item) => ({
+          productId: item.productId!.toString(),
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPrice: Math.round(item.unitPrice * netRatio * 100) / 100,
+        })),
+        taxRate: 0,
+        validUntil: validUntil.toISOString(),
+        notes: `Generated from recurring invoice: ${doc.description}`,
+      },
+      userId,
+      doc.branchId.toString(),
+    );
+    const schedule = await this.recordRun(id);
+    return { invoice, schedule };
   }
 
   /**

@@ -20,6 +20,7 @@
     "start:prod": "node dist/main",
     "seed": "nest build && node dist/database/seed.js",
     "seed:notebook": "nest build && node dist/database/import-notebook-inventory.js",
+    "reconcile:operations": "nest build && node dist/database/reconcile-operational-ledgers.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",

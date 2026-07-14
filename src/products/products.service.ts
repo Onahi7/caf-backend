@@ -13,7 +13,6 @@ import { ProductSearchDto } from './dto/product-search.dto.js';
 import { type ProductDocument } from './schemas/product.schema.js';
 import { Batch, BatchDocument } from '../batches/schemas/batch.schema.js';
 import { StockMovement, MovementType } from '../inventory/schemas/stock-movement.schema.js';
-import { InventoryService } from '../inventory/inventory.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { UsersService } from '../users/users.service.js';
 import { AuditResource } from '../audit/schemas/audit-log.schema.js';
@@ -22,7 +21,6 @@ import { AuditResource } from '../audit/schemas/audit-log.schema.js';
 export class ProductsService {
   constructor(
     private readonly productsRepository: ProductsRepository,
-    private readonly inventoryService: InventoryService,
     private readonly auditService: AuditService,
     private readonly usersService: UsersService,
     @InjectConnection() private readonly connection: Connection,
@@ -438,7 +436,7 @@ export class ProductsService {
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
-    userId?: string,
+    _userId?: string,
   ): Promise<ProductDocument> {
     const existingProduct = await this.productsRepository.findById(id);
     if (!existingProduct) {
@@ -492,18 +490,9 @@ export class ProductsService {
       quantityAvailable !== undefined &&
       quantityAvailable !== existingProduct.quantityAvailable
     ) {
-      const quantityChange = quantityAvailable - existingProduct.quantityAvailable;
-      await this.inventoryService.adjustInventory(
-        {
-          branchId: targetBranchId,
-          productId: id,
-          quantityChange,
-          reason: 'Stock corrected from product edit',
-        },
-        userId ?? 'system',
+      throw new BadRequestException(
+        'Stock cannot be edited from the product form. Use batch stock adjustment so the batch and product ledgers remain synchronized.',
       );
-
-      return this.findById(id);
     }
 
     return product;

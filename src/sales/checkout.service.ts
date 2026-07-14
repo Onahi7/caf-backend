@@ -19,6 +19,13 @@ import {
 import { EventsService } from '../websocket/events.service.js';
 import { Product, ProductDocument } from '../products/schemas/product.schema.js';
 import { SelectedBatch } from '../batches/dto/batch-selection.dto.js';
+import { PromotionsService } from '../promotions/promotions.service.js';
+import { TaxConfig, TaxConfigDocument, TaxType } from '../settings/schemas/tax-config.schema.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
+import { UserRole } from '../users/schemas/user.schema.js';
+import { CheckoutQuoteDto } from './dto/checkout-quote.dto.js';
+import { AuditService } from '../audit/audit.service.js';
+import { AuditResource } from '../audit/schemas/audit-log.schema.js';
 
 /**
  * Result of batch selection for a sale item with pack size info
@@ -62,7 +69,48 @@ constructor(
     private readonly eventsService: EventsService,
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
+    @InjectModel(TaxConfig.name) private readonly taxConfigModel: Model<TaxConfigDocument>,
+    private readonly promotionsService: PromotionsService,
+    private readonly auditService: AuditService,
   ) {}
+
+  async quote(dto: CheckoutQuoteDto, actor: CurrentUserData) {
+    if (
+      actor.role !== UserRole.SUPER_ADMIN &&
+      (!actor.branchId || actor.branchId !== dto.branchId)
+    ) {
+      throw new BadRequestException('Quote is restricted to your assigned branch');
+    }
+    const items = await this.validateAndNormalizeSaleItems(dto.branchId, dto.items);
+    const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const selections: BatchSelectionResult[] = items.map((item) => ({
+      productId: item.productId,
+      selectedBatches: [],
+      totalQuantity: item.quantityInBaseUnits ?? item.quantity,
+      totalAmount: item.unitPrice * item.quantity,
+      unitPrice: item.unitPrice,
+      packSize: item.packSize,
+      originalQuantity: item.quantity,
+    }));
+    const { discount, manualDiscount } = await this.calculateServerDiscount(
+      dto as CreateSaleDto,
+      selections,
+      subtotal,
+    );
+    const { taxAmount, taxBreakdown } = await this.calculateTaxes(
+      items,
+      subtotal,
+      discount,
+    );
+    return {
+      subtotal,
+      discount,
+      manualDiscount,
+      taxAmount,
+      taxBreakdown,
+      total: Math.max(0, subtotal - discount + taxAmount),
+    };
+  }
 
   /**
    * Process checkout with product-level stock selection and transaction
@@ -72,8 +120,15 @@ constructor(
    */
 async processCheckout(
     dto: CreateSaleDto,
-    cashierId: string,
+    actor: CurrentUserData,
   ): Promise<CheckoutResult> {
+    const cashierId = actor.userId;
+    if (
+      actor.role !== UserRole.SUPER_ADMIN &&
+      (!actor.branchId || actor.branchId !== dto.branchId)
+    ) {
+      throw new BadRequestException('Checkout is restricted to your assigned branch');
+    }
     try {
       // Validate shift is open (Property 28)
       const shift = await this.shiftsService.findById(dto.shiftId);
@@ -85,6 +140,15 @@ async processCheckout(
       if (!canAcceptSales) {
         throw new BadRequestException(
           'Shift is not open. Cannot process sales on a closed shift.',
+        );
+      }
+      if (
+        shift.branchId.toString() !== dto.branchId ||
+        shift.cashierId.toString() !== cashierId ||
+        shift.terminalId !== dto.terminalId
+      ) {
+        throw new BadRequestException(
+          'The selected shift does not belong to this cashier, branch, and terminal',
         );
       }
     } catch (shiftError) {
@@ -100,8 +164,6 @@ async processCheckout(
     dto.items = await this.validateAndNormalizeSaleItems(dto.branchId, dto.items);
 
     // Calculate totals (will be recalculated inside the transaction)
-    const discount = dto.discount || 0;
-
     let receiptNumber: string;
     try {
       // Generate receipt number
@@ -130,7 +192,17 @@ let session;
         (sum, selection) => sum + selection.totalAmount,
         0,
       );
-      const total = subtotal - discount;
+      const { discount, manualDiscount } = await this.calculateServerDiscount(
+        dto,
+        batchSelections,
+        subtotal,
+      );
+      const { taxAmount, taxBreakdown } = await this.calculateTaxes(
+        dto.items,
+        subtotal,
+        discount,
+      );
+      const total = Math.max(0, subtotal - discount + taxAmount);
 
       if (total < 0) {
         throw new BadRequestException('Discount cannot exceed subtotal');
@@ -144,7 +216,7 @@ let session;
           ? SaleType.CREDIT
           : SaleType.CASH);
       const amountPaid =
-        dto.amountPaid ?? (saleType === SaleType.CASH ? total : 0);
+        saleType === SaleType.CASH ? total : (dto.amountPaid ?? 0);
       const balanceDue = Math.max(0, total - amountPaid);
       const paymentStatus =
         balanceDue <= 0
@@ -174,6 +246,12 @@ let session;
           items: saleItems,
           subtotal,
           discount,
+          manualDiscount,
+          manualDiscountBy: manualDiscount > 0 ? new Types.ObjectId(cashierId) : undefined,
+          manualDiscountAt: manualDiscount > 0 ? new Date() : undefined,
+          promotionId: dto.promotionId ? new Types.ObjectId(dto.promotionId) : undefined,
+          taxAmount,
+          taxBreakdown,
           total,
           saleType,
           paymentMethod: dto.paymentMethod, // Property 6: Validated and persisted
@@ -206,8 +284,40 @@ let session;
         session,
       );
 
+      if (dto.promotionId) {
+        await this.promotionsService.applyPromotion(dto.promotionId, session);
+      }
+
       await session.commitTransaction();
       this.logger.log(`Checkout completed: ${receiptNumber}`);
+
+      if (manualDiscount > 0) {
+        await this.auditService.logUpdate(
+          actor.userId,
+          actor.username,
+          AuditResource.SALE,
+          sale._id.toString(),
+          { manualDiscount: 0 },
+          { manualDiscount, totalDiscount: discount, saleTotal: total },
+          dto.branchId,
+          {
+            event: 'manual_discount_applied',
+            receiptNumber,
+            subtotal,
+            manualDiscount,
+            discountPercent: subtotal > 0
+              ? Math.round((manualDiscount / subtotal) * 10000) / 100
+              : 0,
+            promotionId: dto.promotionId,
+            cashierId,
+            terminalId: dto.terminalId,
+          },
+        ).catch((error: unknown) => {
+          this.logger.error(
+            `Manual discount audit failed for ${receiptNumber}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      }
 
       // Emit sale event as a non-blocking side-effect. If websocket/redis is
       // temporarily unavailable, checkout must still succeed.
@@ -395,6 +505,100 @@ let session;
     );
   }
 
+  private async calculateServerDiscount(
+    dto: CreateSaleDto,
+    selections: BatchSelectionResult[],
+    subtotal: number,
+  ): Promise<{ discount: number; manualDiscount: number }> {
+    const requestedManualDiscount = Math.min(
+      Math.max(0, dto.discount ?? 0),
+      subtotal,
+    );
+    if (!dto.promotionId) {
+      return {
+        discount: Math.round(requestedManualDiscount * 100) / 100,
+        manualDiscount: Math.round(requestedManualDiscount * 100) / 100,
+      };
+    }
+
+    const products = await this.productModel
+      .find({
+        _id: { $in: selections.map((item) => new Types.ObjectId(item.productId)) },
+      })
+      .select('_id category')
+      .lean()
+      .exec();
+    const categoryByProduct = new Map(
+      products.map((product) => [product._id.toString(), product.category]),
+    );
+    const result = await this.promotionsService.calculateDiscount(
+      dto.promotionId,
+      selections.map((item) => ({
+        productId: item.productId,
+        quantity: item.originalQuantity,
+        unitPrice: item.unitPrice,
+        category: categoryByProduct.get(item.productId),
+      })),
+      subtotal,
+      dto.branchId,
+    );
+    const promotionDiscount = Math.min(result.discountAmount, subtotal);
+    const manualDiscount = Math.min(
+      requestedManualDiscount,
+      Math.max(0, subtotal - promotionDiscount),
+    );
+    return {
+      discount: Math.round((promotionDiscount + manualDiscount) * 100) / 100,
+      manualDiscount: Math.round(manualDiscount * 100) / 100,
+    };
+  }
+
+  private async calculateTaxes(
+    items: SaleItemDto[],
+    subtotal: number,
+    discount: number,
+  ): Promise<{
+    taxAmount: number;
+    taxBreakdown: Array<{ name: string; amount: number }>;
+  }> {
+    const taxes = await this.taxConfigModel.find({ isActive: true }).lean().exec();
+    if (taxes.length === 0 || subtotal <= 0) {
+      return { taxAmount: 0, taxBreakdown: [] };
+    }
+
+    const products = await this.productModel
+      .find({ _id: { $in: items.map((item) => new Types.ObjectId(item.productId)) } })
+      .select('_id category')
+      .lean()
+      .exec();
+    const categoryByProduct = new Map(
+      products.map((product) => [product._id.toString(), product.category]),
+    );
+    const taxableRatio = Math.max(0, (subtotal - discount) / subtotal);
+    const taxBreakdown = taxes
+      .map((tax) => {
+        const eligibleSubtotal = items.reduce((sum, item) => {
+          const category = categoryByProduct.get(item.productId);
+          const applies =
+            tax.applicableCategories.length === 0 ||
+            (category ? tax.applicableCategories.includes(category) : false);
+          return applies ? sum + item.unitPrice * item.quantity : sum;
+        }, 0) * taxableRatio;
+        const rawAmount = tax.type === TaxType.PERCENTAGE
+          ? eligibleSubtotal * tax.rate / 100
+          : eligibleSubtotal > 0 ? tax.rate : 0;
+        return { name: tax.name, amount: Math.round(rawAmount * 100) / 100 };
+      })
+      .filter((tax) => tax.amount > 0);
+
+    return {
+      taxAmount:
+        Math.round(taxBreakdown.reduce((sum, tax) => sum + tax.amount, 0) * 100) /
+        100,
+      taxBreakdown,
+    };
+  }
+
   /**
    * Build sale items from batch selections
    * Preserves pack size info for receipt display and returns
@@ -405,6 +609,7 @@ let session;
     for (const selection of selections) {
       for (const batch of selection.selectedBatches) {
         saleItems.push({
+          saleItemId: new Types.ObjectId().toString(),
           productId: new Types.ObjectId(selection.productId),
           batchId: new Types.ObjectId(batch.batchId),
           quantity: batch.quantity,

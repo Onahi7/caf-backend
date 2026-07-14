@@ -62,14 +62,10 @@ export class RecurringInvoicesController {
     return this.service.remove(id, req.user.sub);
   }
 
-  /**
-   * Mark this template as run now (updates nextRunAt, runCount, etc.).
-   * Does NOT actually create a Sale - that's the caller's job.
-   */
+  /** Create a draft invoice and advance the schedule. */
   @Post(':id/run-now')
   async runNow(@Param('id') id: string, @Req() req: AuthedRequest) {
-    await this.service.validateOwnership(id, req.user.sub);
-    const result = await this.service.recordRun(id);
+    const result = await this.service.materialize(id, req.user.sub);
     return { ok: true, ...result };
   }
 

@@ -11,6 +11,7 @@ import {
   PromotionScope,
   PromotionType,
 } from './schemas/promotion.schema.js';
+import { ClientSession } from 'mongoose';
 
 interface CartItem {
   productId: string;
@@ -99,8 +100,13 @@ export class PromotionsService {
     promotionId: string,
     items: CartItem[],
     subtotal: number,
+    branchId?: string,
   ): Promise<DiscountResult> {
     const promotion = await this.findOne(promotionId);
+
+    if (promotion.branchId && branchId && promotion.branchId.toString() !== branchId) {
+      throw new BadRequestException('Promotion is not valid for this branch');
+    }
 
     if (!promotion.isActive) {
       throw new BadRequestException('Promotion is not active');
@@ -180,7 +186,10 @@ export class PromotionsService {
     };
   }
 
-  async applyPromotion(promotionId: string): Promise<void> {
-    await this.promotionsRepository.incrementUsage(promotionId);
+  async applyPromotion(promotionId: string, session?: ClientSession): Promise<void> {
+    const promotion = await this.promotionsRepository.incrementUsage(promotionId, session);
+    if (!promotion) {
+      throw new BadRequestException('Promotion usage limit reached');
+    }
   }
 }

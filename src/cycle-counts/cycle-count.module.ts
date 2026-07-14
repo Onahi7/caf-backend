@@ -6,6 +6,7 @@ import { CycleCountService } from './cycle-count.service.js';
 import { CycleCountController } from './cycle-count.controller.js';
 import { Product, ProductSchema } from '../products/schemas/product.schema.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
+import { BatchesModule } from '../batches/batches.module.js';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { InventoryModule } from '../inventory/inventory.module.js';
       { name: Product.name, schema: ProductSchema },
     ]),
     InventoryModule, // provides StockMovementRepository
+    BatchesModule,
   ],
   controllers: [CycleCountController],
   providers: [CycleCountRepository, CycleCountService],

@@ -58,23 +58,23 @@ export class ShiftsService {
     const totals = new Map<string, number>();
 
     for (const sale of sales) {
-      const returnedAmount = sale.returnedAmount || 0;
-
       if (sale.payments?.length) {
         for (const payment of sale.payments) {
           const previous = totals.get(payment.paymentMethod) || 0;
           totals.set(payment.paymentMethod, previous + (payment.amount || 0));
         }
 
-        if (returnedAmount > 0) {
-          const firstMethod = sale.payments[0]?.paymentMethod || sale.paymentMethod;
-          totals.set(firstMethod, (totals.get(firstMethod) || 0) - returnedAmount);
-        }
-        continue;
+      } else {
+        const previous = totals.get(sale.paymentMethod) || 0;
+        totals.set(sale.paymentMethod, previous + (sale.total || 0));
       }
 
-      const previous = totals.get(sale.paymentMethod) || 0;
-      totals.set(sale.paymentMethod, previous + (sale.total || 0) - returnedAmount);
+      for (const refund of sale.refunds ?? []) {
+        totals.set(
+          refund.paymentMethod,
+          (totals.get(refund.paymentMethod) || 0) - refund.amount,
+        );
+      }
     }
 
     return Object.values(PaymentMethod).map((paymentMethod) => ({

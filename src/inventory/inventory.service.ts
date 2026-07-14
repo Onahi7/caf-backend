@@ -22,6 +22,7 @@ import { EventsService } from '../websocket/events.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { UsersService } from '../users/users.service.js';
 import { AuditResource } from '../audit/schemas/audit-log.schema.js';
+import { BatchesRepository } from '../batches/batches.repository.js';
 
 export interface LowStockAlert {
   productId: string;
@@ -49,6 +50,7 @@ export class InventoryService {
     private readonly eventsService: EventsService,
     private readonly auditService: AuditService,
     private readonly usersService: UsersService,
+    private readonly batchesRepository: BatchesRepository,
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
   ) {}
@@ -111,8 +113,8 @@ export class InventoryService {
     if (!dto.reason || dto.reason.trim() === '') {
       throw new BadRequestException('Adjustment reason is required');
     }
-    if (!dto.branchId || !dto.productId || !userId) {
-      throw new BadRequestException('branchId, productId, and userId are required');
+    if (!dto.branchId || !dto.productId || !dto.batchId || !userId) {
+      throw new BadRequestException('branchId, productId, batchId, and userId are required');
     }
 
     this.validateQuantity(dto.quantityChange, true);
@@ -135,6 +137,26 @@ export class InventoryService {
 
     try {
       session.startTransaction();
+
+      const batch = await this.batchesRepository.findById(dto.batchId);
+      const batchProductId = batch
+        ? ((batch.productId as unknown as { _id?: Types.ObjectId })._id ?? batch.productId).toString()
+        : undefined;
+      const batchBranchId = batch
+        ? ((batch.branchId as unknown as { _id?: Types.ObjectId })._id ?? batch.branchId).toString()
+        : undefined;
+      if (
+        !batch ||
+        batchProductId !== dto.productId ||
+        batchBranchId !== dto.branchId
+      ) {
+        throw new BadRequestException('Batch does not belong to the specified product and branch');
+      }
+      await this.batchesRepository.updateQuantity(
+        dto.batchId,
+        dto.quantityChange,
+        session,
+      );
 
       const filter: Record<string, unknown> = {
         _id: new Types.ObjectId(dto.productId),
@@ -173,6 +195,7 @@ export class InventoryService {
         {
           branchId: dto.branchId,
           productId: dto.productId,
+          batchId: dto.batchId,
           quantity: dto.quantityChange,
           movementType: MovementType.ADJUSTMENT,
           reason: dto.reason,

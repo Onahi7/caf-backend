@@ -1,8 +1,8 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model, Types } from 'mongoose';
-import { Loan, LoanDocument, LoanStatus } from './schema/loan.schema.js';
-import { CashEntry, CashEntryDocument, CashEntryType, CashEntryCategory } from './schema/cash-entry.schema.js';
+import { Loan, LoanDirection, LoanDocument, LoanStatus } from './schema/loan.schema.js';
+import { CashEntry, CashEntryDocument, CashEntryType, CashEntryCategory, CashFlowDirection } from './schema/cash-entry.schema.js';
 import { CreateLoanDto, RecordLoanRepaymentDto, LoanFilterDto } from './dto/loan.dto.js';
 
 @Injectable()
@@ -42,6 +42,10 @@ export class LoanService {
         category: CashEntryCategory.OTHER,
         branchId: new Types.ObjectId(dto.branchId),
         amount: dto.principalAmount,
+        cashFlowDirection:
+          dto.direction === LoanDirection.RECEIVED
+            ? CashFlowDirection.INFLOW
+            : CashFlowDirection.OUTFLOW,
         description: `Loan ${dto.referenceNumber} - ${dto.direction} from ${dto.counterpartyName}`,
         referenceId: loan._id.toString(),
         recordedBy: new Types.ObjectId(userId),
@@ -105,6 +109,10 @@ export class LoanService {
         category: CashEntryCategory.OTHER,
         branchId: loan.branchId,
         amount: dto.amount,
+        cashFlowDirection:
+          loan.direction === LoanDirection.GIVEN
+            ? CashFlowDirection.INFLOW
+            : CashFlowDirection.OUTFLOW,
         description: `Loan repayment for ${loan.referenceNumber}`,
         referenceId: loan._id.toString(),
         recordedBy: new Types.ObjectId(userId),
@@ -144,7 +152,7 @@ export class LoanService {
     }
   }
 
-  async accrueInterest(id: string, months: number, userId: string): Promise<LoanDocument> {
+  async accrueInterest(id: string, months: number, _userId: string): Promise<LoanDocument> {
     const loan = await this.findLoanById(id);
     if (loan.status !== LoanStatus.ACTIVE) {
       throw new BadRequestException(`Cannot accrue interest for loan in ${loan.status} status`);
@@ -158,17 +166,6 @@ export class LoanService {
 
     try {
       loan.totalInterestAccrued += interestAccrued;
-
-      await this.cashModel.create([{
-        type: CashEntryType.LOAN,
-        category: CashEntryCategory.OTHER,
-        branchId: loan.branchId,
-        amount: interestAccrued,
-        description: `Loan interest accrued: ${loan.referenceNumber} (${months} months)`,
-        referenceId: loan._id.toString(),
-        recordedBy: new Types.ObjectId(userId),
-        entryDate: new Date(),
-      }], { session });
 
       await loan.save({ session });
       await session.commitTransaction();

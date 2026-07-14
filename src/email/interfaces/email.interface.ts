@@ -8,6 +8,7 @@ export interface ReceiptData {
   items: ReceiptItem[];
   subtotal: number;
   discount: number;
+  taxAmount?: number;
   total: number;
   paymentMethod: string;
   timestamp: Date;

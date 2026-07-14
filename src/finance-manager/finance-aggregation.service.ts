@@ -534,6 +534,7 @@ export class FinanceAggregationService {
             totalLoan: { $sum: { $cond: [{ $eq: ['$type', 'loan'] }, '$amount', 0] } },
             totalAdvance: { $sum: { $cond: [{ $eq: ['$type', 'advance'] }, '$amount', 0] } },
             totalSalary: { $sum: { $cond: [{ $eq: ['$type', 'salary'] }, '$amount', 0] } },
+            signedCash: { $sum: { $cond: [{ $eq: ['$cashFlowDirection', 'inflow'] }, '$amount', { $cond: [{ $eq: ['$cashFlowDirection', 'outflow'] }, { $multiply: ['$amount', -1] }, { $cond: [{ $eq: ['$type', 'income'] }, '$amount', { $multiply: ['$amount', -1] }] }] }] } },
           },
         },
       ]).exec(),
@@ -548,6 +549,7 @@ export class FinanceAggregationService {
             totalLoan: { $sum: { $cond: [{ $eq: ['$type', 'loan'] }, '$amount', 0] } },
             totalAdvance: { $sum: { $cond: [{ $eq: ['$type', 'advance'] }, '$amount', 0] } },
             totalSalary: { $sum: { $cond: [{ $eq: ['$type', 'salary'] }, '$amount', 0] } },
+            signedCash: { $sum: { $cond: [{ $eq: ['$cashFlowDirection', 'inflow'] }, '$amount', { $cond: [{ $eq: ['$cashFlowDirection', 'outflow'] }, { $multiply: ['$amount', -1] }, { $cond: [{ $eq: ['$type', 'income'] }, '$amount', { $multiply: ['$amount', -1] }] }] }] } },
           },
         },
       ]).exec(),
@@ -566,18 +568,12 @@ export class FinanceAggregationService {
 
     const r = result[0] || { totalOpeningCash: 0, totalClosingCash: 0, totalExpectedCash: 0, totalVariance: 0 };
     const s = cashSummary[0] || { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalAdvance: 0, totalSalary: 0 };
-    const netCash = s.totalIncome - s.totalExpense - s.totalTransfer - s.totalLoan - s.totalAdvance - s.totalSalary;
+    const netCash = s.signedCash ?? 0;
 
     const netCashByBranch = new Map<string, number>();
     for (const row of cashByBranch) {
       const id = row._id?.toString() || 'unknown';
-      const net =
-        (row.totalIncome || 0) -
-        (row.totalExpense || 0) -
-        (row.totalTransfer || 0) -
-        (row.totalLoan || 0) -
-        (row.totalAdvance || 0) -
-        (row.totalSalary || 0);
+      const net = row.signedCash || 0;
       netCashByBranch.set(id, (netCashByBranch.get(id) || 0) + net);
     }
     const perBranchNetCash = Array.from(netCashByBranch.entries()).map(([branchId, value]) => ({ _id: branchId, value }));
@@ -802,7 +798,7 @@ export class FinanceAggregationService {
         {
           $group: {
             _id: '$branchId',
-            revenue: { $sum: '$total' },
+            revenue: { $sum: { $subtract: ['$total', { $ifNull: ['$returnedAmount', 0] }] } },
             salesCount: { $sum: 1 },
           },
         },
@@ -873,10 +869,42 @@ export class FinanceAggregationService {
     const result = await this.saleModel.aggregate([
       { $match: { ...filter, status: { $ne: 'returned' }, terminalId: { $nin: ['emr-integration', 'lab-dispensary', 'staff-advance'] } } },
       {
+        $project: {
+          entries: {
+            $concatArrays: [
+              {
+                $cond: [
+                  { $gt: [{ $size: { $ifNull: ['$payments', []] } }, 0] },
+                  {
+                    $map: {
+                      input: '$payments',
+                      as: 'payment',
+                      in: { method: '$$payment.paymentMethod', amount: '$$payment.amount' },
+                    },
+                  },
+                  [{ method: '$paymentMethod', amount: '$total' }],
+                ],
+              },
+              {
+                $map: {
+                  input: { $ifNull: ['$refunds', []] },
+                  as: 'refund',
+                  in: {
+                    method: '$$refund.paymentMethod',
+                    amount: { $multiply: ['$$refund.amount', -1] },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+      { $unwind: '$entries' },
+      {
         $group: {
-          _id: '$paymentMethod',
-          count: { $sum: 1 },
-          total: { $sum: '$total' },
+          _id: '$entries.method',
+          count: { $sum: { $cond: [{ $gt: ['$entries.amount', 0] }, 1, 0] } },
+          total: { $sum: '$entries.amount' },
         },
       },
       { $sort: { total: -1 } },

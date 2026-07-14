@@ -97,9 +97,7 @@ export class ReportsService {
         : branchId
       : undefined;
 
-    const saleMatch: Record<string, unknown> = {
-      status: 'completed',
-    };
+    const saleMatch: Record<string, unknown> = {};
 
     const productMatch: Record<string, unknown> = { isActive: true };
 
@@ -134,7 +132,7 @@ export class ReportsService {
         {
           $group: {
             _id: null,
-            totalAmount: { $sum: '$total' },
+            totalAmount: { $sum: { $subtract: ['$total', { $ifNull: ['$returnedAmount', 0] }] } },
             count: { $sum: 1 },
           },
         },
@@ -151,7 +149,7 @@ export class ReportsService {
         {
           $group: {
             _id: null,
-            totalAmount: { $sum: '$total' },
+            totalAmount: { $sum: { $subtract: ['$total', { $ifNull: ['$returnedAmount', 0] }] } },
             count: { $sum: 1 },
           },
         },
@@ -297,7 +295,7 @@ export class ReportsService {
           averageTransaction: {
             $cond: [
               { $gt: ['$totalSales', 0] },
-              { $divide: ['$totalAmount', '$totalSales'] },
+              { $divide: [{ $subtract: ['$totalAmount', '$totalReturns'] }, '$totalSales'] },
               0,
             ],
           },
@@ -430,6 +428,15 @@ export class ReportsService {
               },
             },
           ],
+          refunds: [
+            { $unwind: { path: '$refunds', preserveNullAndEmptyArrays: false } },
+            {
+              $group: {
+                _id: '$refunds.paymentMethod',
+                totalAmount: { $sum: '$refunds.amount' },
+              },
+            },
+          ],
         },
       },
     ];
@@ -445,6 +452,11 @@ export class ReportsService {
         count: existing.count + r.count,
         totalAmount: existing.totalAmount + r.totalAmount,
       });
+    }
+    for (const refund of facet.refunds ?? []) {
+      const existing = merged.get(refund._id) || { count: 0, totalAmount: 0 };
+      existing.totalAmount -= refund.totalAmount;
+      merged.set(refund._id, existing);
     }
 
     // Ensure all payment methods are represented
@@ -541,8 +553,22 @@ export class ReportsService {
       {
         $group: {
           _id: '$items.productId',
-          quantitySold: { $sum: '$items.quantity' },
-          totalAmount: { $sum: '$items.subtotal' },
+          quantitySold: {
+            $sum: { $subtract: ['$items.quantity', { $ifNull: ['$items.returnedQuantity', 0] }] },
+          },
+          totalAmount: {
+            $sum: {
+              $multiply: [
+                {
+                  $multiply: [
+                    { $divide: ['$items.subtotal', '$items.quantity'] },
+                    { $subtract: ['$items.quantity', { $ifNull: ['$items.returnedQuantity', 0] }] },
+                  ],
+                },
+                { $cond: [{ $gt: ['$subtotal', 0] }, { $divide: ['$total', '$subtotal'] }, 0] },
+              ],
+            },
+          },
         },
       },
       { $sort: { quantitySold: -1 } },

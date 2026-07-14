@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import { Promotion } from './schemas/promotion.schema';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
@@ -93,9 +93,21 @@ export class PromotionsRepository {
       .exec();
   }
 
-  async incrementUsage(id: string): Promise<Promotion | null> {
+  async incrementUsage(id: string, session?: ClientSession): Promise<Promotion | null> {
     return this.promotionModel
-      .findByIdAndUpdate(id, { $inc: { usageCount: 1 } }, { new: true })
+      .findOneAndUpdate(
+        {
+          _id: id,
+          $expr: {
+            $or: [
+              { $eq: [{ $ifNull: ['$usageLimit', null] }, null] },
+              { $lt: ['$usageCount', '$usageLimit'] },
+            ],
+          },
+        },
+        { $inc: { usageCount: 1 } },
+        { new: true, ...(session ? { session } : {}) },
+      )
       .exec();
   }
 

@@ -30,6 +30,11 @@ export enum CashEntryCategory {
   OTHER = 'other',
 }
 
+export enum CashFlowDirection {
+  INFLOW = 'inflow',
+  OUTFLOW = 'outflow',
+}
+
 @Schema({ timestamps: true })
 export class CashEntry {
   @Prop({ required: true, enum: CashEntryType, index: true })
@@ -43,6 +48,9 @@ export class CashEntry {
 
   @Prop({ required: true, min: 0 })
   amount!: number;
+
+  @Prop({ enum: CashFlowDirection })
+  cashFlowDirection?: CashFlowDirection;
 
   @Prop({ required: true, maxlength: 500 })
   description!: string;

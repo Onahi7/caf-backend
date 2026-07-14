@@ -16,12 +16,14 @@ import { SubmitCycleCountDto } from './dto/submit-cycle-count.dto.js';
 import { Product, ProductDocument } from '../products/schemas/product.schema.js';
 import { StockMovementRepository } from '../inventory/stock-movement.repository.js';
 import { MovementType } from '../inventory/schemas/stock-movement.schema.js';
+import { BatchesRepository } from '../batches/batches.repository.js';
 
 @Injectable()
 export class CycleCountService {
   constructor(
     private readonly repo: CycleCountRepository,
     private readonly stockMovementRepo: StockMovementRepository,
+    private readonly batchesRepository: BatchesRepository,
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
     @InjectConnection() private readonly connection: Connection,
   ) {}
@@ -42,19 +44,15 @@ export class CycleCountService {
       );
     }
 
-    // Snapshot current stock
-    const products = await this.productModel
-      .find({
-        branchId: new Types.ObjectId(dto.branchId),
-        isActive: true,
-      })
-      .exec();
-
-    const lines = products.map((product) => ({
-      productId: product._id as Types.ObjectId,
-      batchId: product._id as Types.ObjectId,
-      lotNumber: 'Product total',
-      systemQuantity: product.quantityAvailable,
+    // Snapshot sellable batch stock so approved variances cannot diverge from FEFO.
+    const batches = await this.batchesRepository.findByBranch(dto.branchId);
+    const lines = batches.map((batch) => ({
+      productId: new Types.ObjectId(
+        ((batch.productId as unknown as { _id?: Types.ObjectId })._id ?? batch.productId).toString(),
+      ),
+      batchId: batch._id as Types.ObjectId,
+      lotNumber: batch.lotNumber,
+      systemQuantity: batch.quantityAvailable,
       countedQuantity: null,
       variance: null,
     }));
@@ -142,6 +140,12 @@ export class CycleCountService {
         const variance = line.variance ?? 0;
         if (variance === 0) continue;
 
+        await this.batchesRepository.updateQuantity(
+          line.batchId.toString(),
+          variance,
+          session,
+        );
+
         // Atomically update product total quantity.
         await this.productModel
           .findByIdAndUpdate(
@@ -164,6 +168,7 @@ export class CycleCountService {
           {
             branchId: count.branchId.toString(),
             productId: line.productId.toString(),
+            batchId: line.batchId.toString(),
             quantity: variance,
             movementType: MovementType.ADJUSTMENT,
             reason: `Cycle count adjustment (count ID: ${id})`,

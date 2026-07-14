@@ -9,6 +9,20 @@ export enum MarketerAssignmentStatus {
   REJECTED = 'rejected',
 }
 
+@Schema({ _id: false })
+export class MarketerBatchAllocation {
+  @Prop({ type: Types.ObjectId, ref: 'Batch', required: true })
+  batchId!: Types.ObjectId;
+
+  @Prop({ required: true, min: 0 })
+  quantity!: number;
+
+  @Prop({ required: true, min: 0 })
+  remainingQuantity!: number;
+}
+
+const MarketerBatchAllocationSchema = SchemaFactory.createForClass(MarketerBatchAllocation);
+
 @Schema({ timestamps: true })
 export class MarketerProductAssignment {
   @Prop({ type: Types.ObjectId, ref: 'Branch', required: true, index: true })
@@ -25,6 +39,9 @@ export class MarketerProductAssignment {
 
   @Prop({ required: true, min: 0 })
   remainingQuantity!: number;
+
+  @Prop({ type: [MarketerBatchAllocationSchema], default: [] })
+  batchAllocations!: MarketerBatchAllocation[];
 
   @Prop({ required: true, min: 0 })
   assignedUnitPrice!: number;

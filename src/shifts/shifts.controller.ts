@@ -76,7 +76,16 @@ export class ShiftsController {
   async closeShift(
     @Param('id') id: string,
     @Body() closeShiftRequestDto: CloseShiftRequestDto,
+    @CurrentUser() user: CurrentUserData,
   ) {
+    const openShift = await this.shiftsService.findById(id);
+    requireResolvedBranchId(user, openShift.branchId.toString());
+    if (
+      user.role === UserRole.CASHIER &&
+      openShift.cashierId.toString() !== user.userId
+    ) {
+      throw new BadRequestException('Cashiers can only close their own shift');
+    }
     const closeShiftDto: CloseShiftDto = {
       shiftId: id,
       closingCash: closeShiftRequestDto.closingCash,

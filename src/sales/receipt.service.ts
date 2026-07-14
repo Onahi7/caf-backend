@@ -181,6 +181,11 @@ export class ReceiptService {
       doc.text(`-${CurrencyUtil.format(sale.discount, currencyCode)}`, totalsValueX, doc.y, { width: 100, align: 'right' });
       doc.moveDown(0.3);
     }
+    if ((sale.taxAmount ?? 0) > 0) {
+      doc.text('Tax:', totalsX, doc.y, { width: 100, continued: false });
+      doc.text(CurrencyUtil.format(sale.taxAmount, currencyCode), totalsValueX, doc.y, { width: 100, align: 'right' });
+      doc.moveDown(0.3);
+    }
 
     doc.fontSize(12).font('Helvetica-Bold');
     doc.text('TOTAL:', totalsX, doc.y, { width: 100, continued: false });
@@ -328,6 +333,9 @@ export class ReceiptService {
     if (sale.discount > 0) {
       const discountLine = this.padLine('Discount:', `-${CurrencyUtil.format(sale.discount, currencyCode)}`, lineWidth);
       addText(discountLine);
+    }
+    if ((sale.taxAmount ?? 0) > 0) {
+      addText(this.padLine('Tax:', CurrencyUtil.format(sale.taxAmount, currencyCode), lineWidth));
     }
     
     commands.push(CMD_BOLD_ON, CMD_DOUBLE_HEIGHT);

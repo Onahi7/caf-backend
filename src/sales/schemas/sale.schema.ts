@@ -71,6 +71,9 @@ export const SaleItemPackSizeSchema = SchemaFactory.createForClass(SaleItemPackS
  */
 @Schema({ _id: false })
 export class SaleItem {
+  @Prop({ required: true, default: () => new Types.ObjectId().toString() })
+  saleItemId!: string;
+
   @Prop({ required: true, type: Types.ObjectId, ref: 'Product' })
   productId!: Types.ObjectId;
 
@@ -135,6 +138,26 @@ export class SalePaymentEntry {
 export const SalePaymentEntrySchema =
   SchemaFactory.createForClass(SalePaymentEntry);
 
+@Schema({ _id: false })
+export class SaleRefundEntry {
+  @Prop({ required: true })
+  amount!: number;
+
+  @Prop({ required: true, enum: PaymentMethod, type: String })
+  paymentMethod!: PaymentMethod;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  processedBy!: Types.ObjectId;
+
+  @Prop({ default: Date.now })
+  processedAt!: Date;
+
+  @Prop()
+  reason?: string;
+}
+
+export const SaleRefundEntrySchema = SchemaFactory.createForClass(SaleRefundEntry);
+
 /**
  * Prescription verification status
  * Requirements: 22.4
@@ -181,6 +204,24 @@ export class Sale {
 
   @Prop({ default: 0 })
   discount!: number;
+
+  @Prop({ default: 0 })
+  manualDiscount!: number;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  manualDiscountBy?: Types.ObjectId;
+
+  @Prop()
+  manualDiscountAt?: Date;
+
+  @Prop({ type: Types.ObjectId, ref: 'Promotion' })
+  promotionId?: Types.ObjectId;
+
+  @Prop({ default: 0 })
+  taxAmount!: number;
+
+  @Prop({ type: [Object], default: [] })
+  taxBreakdown!: Array<{ name: string; amount: number }>;
 
   @Prop({ required: true })
   total!: number;
@@ -230,6 +271,9 @@ export class Sale {
 
   @Prop({ type: [SalePaymentEntrySchema], default: [] })
   payments!: SalePaymentEntry[];
+
+  @Prop({ type: [SaleRefundEntrySchema], default: [] })
+  refunds!: SaleRefundEntry[];
 
   /**
    * Property 25, 80: Prescription attachment and association

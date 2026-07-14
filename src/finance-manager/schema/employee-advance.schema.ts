@@ -64,6 +64,9 @@ export class AdvanceItem {
   @Prop({ required: true, min: 0 })
   quantity!: number;
 
+  @Prop({ default: 0, min: 0 })
+  returnedQuantity!: number;
+
   @Prop({ required: true, min: 0 })
   unitPrice!: number;
 

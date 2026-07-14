@@ -10,6 +10,14 @@ import { Type } from 'class-transformer';
 
 export class ReturnItemDto {
   @IsString()
+  @IsOptional()
+  saleItemId?: string;
+
+  @IsString()
+  @IsOptional()
+  batchId?: string;
+
+  @IsString()
   productId!: string;
 
   @IsNumber()

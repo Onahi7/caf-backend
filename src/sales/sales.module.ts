@@ -20,6 +20,8 @@ import { EmailModule } from '../email/email.module.js';
 import { AuditModule } from '../audit/audit.module.js';
 import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
+import { PromotionsModule } from '../promotions/promotions.module.js';
+import { TaxConfig, TaxConfigSchema } from '../settings/schemas/tax-config.schema.js';
 
 /**
  * SalesModule
@@ -34,6 +36,7 @@ import { IdempotencyInterceptor } from '../common/interceptors/idempotency.inter
       { name: Product.name, schema: ProductSchema },
       { name: Branch.name, schema: BranchSchema },
       { name: CashEntry.name, schema: CashEntrySchema },
+      { name: TaxConfig.name, schema: TaxConfigSchema },
     ]),
     forwardRef(() => BatchesModule),
     forwardRef(() => InventoryModule),
@@ -43,6 +46,7 @@ import { IdempotencyInterceptor } from '../common/interceptors/idempotency.inter
     forwardRef(() => EmailModule),
     AuditModule,
     WebSocketModule,
+    PromotionsModule,
   ],
   controllers: [SalesController],
   providers: [SalesRepository, SalesService, CheckoutService, ReceiptService, IdempotencyGuard, IdempotencyInterceptor],

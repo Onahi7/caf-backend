@@ -24,6 +24,8 @@ import { FinanceManagerController } from './finance-manager.controller.js';
 import { LoansAdvancesController } from './loans-advances.controller.js';
 import { WebSocketModule } from '../websocket/websocket.module.js';
 import { AuditModule } from '../audit/audit.module.js';
+import { Product, ProductSchema } from '../products/schemas/product.schema.js';
+import { Batch, BatchSchema } from '../batches/schemas/batch.schema.js';
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { AuditModule } from '../audit/audit.module.js';
       { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
       { name: Branch.name, schema: BranchSchema },
       { name: StockMovement.name, schema: StockMovementSchema },
+      { name: Product.name, schema: ProductSchema },
+      { name: Batch.name, schema: BatchSchema },
     ]),
   ],
   controllers: [FinanceManagerController, LoansAdvancesController],

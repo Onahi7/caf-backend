@@ -6,6 +6,7 @@ import {
   SaleDocument,
   SaleItem,
   SalePaymentEntry,
+  SaleRefundEntry,
   PaymentStatus,
   SaleType,
   SaleStatus,
@@ -60,6 +61,12 @@ export class SalesRepository {
       items: SaleItem[];
       subtotal: number;
       discount: number;
+      manualDiscount: number;
+      manualDiscountBy?: Types.ObjectId;
+      manualDiscountAt?: Date;
+      promotionId?: Types.ObjectId;
+      taxAmount: number;
+      taxBreakdown: Array<{ name: string; amount: number }>;
       total: number;
       paymentMethod: string;
       saleType: SaleType;
@@ -90,6 +97,12 @@ export class SalesRepository {
       items: saleData.items,
       subtotal: saleData.subtotal,
       discount: saleData.discount,
+      manualDiscount: saleData.manualDiscount,
+      manualDiscountBy: saleData.manualDiscountBy,
+      manualDiscountAt: saleData.manualDiscountAt,
+      promotionId: saleData.promotionId,
+      taxAmount: saleData.taxAmount,
+      taxBreakdown: saleData.taxBreakdown,
       total: saleData.total,
       saleType: saleData.saleType,
       paymentMethod: saleData.paymentMethod,
@@ -274,24 +287,66 @@ export class SalesRepository {
    */
   async updateItemReturnedQuantity(
     saleId: string,
-    productId: string,
+    identifier: { saleItemId?: string; batchId?: string },
     returnedQuantity: number,
+    maximumExistingReturned: number,
     session?: ClientSession,
   ): Promise<SaleDocument | null> {
     const options = session ? { new: true, session } : { new: true };
+
+    const lineFilter = identifier.saleItemId
+      ? { 'line.saleItemId': identifier.saleItemId }
+      : { 'line.batchId': new Types.ObjectId(identifier.batchId) };
+    const saleFilter = identifier.saleItemId
+      ? {
+          items: {
+            $elemMatch: {
+              saleItemId: identifier.saleItemId,
+              returnedQuantity: { $lte: maximumExistingReturned },
+            },
+          },
+        }
+      : {
+          items: {
+            $elemMatch: {
+              batchId: new Types.ObjectId(identifier.batchId),
+              returnedQuantity: { $lte: maximumExistingReturned },
+            },
+          },
+        };
 
     return this.saleModel
       .findOneAndUpdate(
         {
           _id: new Types.ObjectId(saleId),
-          'items.productId': new Types.ObjectId(productId),
+          ...saleFilter,
         },
         {
-          $inc: { 'items.$.returnedQuantity': returnedQuantity },
+          $inc: { 'items.$[line].returnedQuantity': returnedQuantity },
         },
-        options,
+        { ...options, arrayFilters: [lineFilter] },
       )
       .exec();
+  }
+
+  async applyReturnAccounting(
+    id: string,
+    status: SaleStatus,
+    returnedAmount: number,
+    amountPaid: number,
+    balanceDue: number,
+    paymentStatus: PaymentStatus,
+    refunds: SaleRefundEntry[],
+    session: ClientSession,
+  ): Promise<SaleDocument | null> {
+    return this.saleModel.findByIdAndUpdate(
+      id,
+      {
+        $set: { status, returnedAmount, amountPaid, balanceDue, paymentStatus },
+        ...(refunds.length ? { $push: { refunds: { $each: refunds } } } : {}),
+      },
+      { new: true, session },
+    ).exec();
   }
 
   /**
@@ -319,24 +374,32 @@ export class SalesRepository {
   async recordPayment(
     id: string,
     payment: SalePaymentEntry,
-    nextAmountPaid: number,
-    nextBalanceDue: number,
-    paymentStatus: PaymentStatus,
+    _nextAmountPaid: number,
+    _nextBalanceDue: number,
+    _paymentStatus: PaymentStatus,
     session?: ClientSession,
   ): Promise<SaleDocument | null> {
     const options = session ? { new: true, session } : { new: true };
 
     return this.saleModel
-      .findByIdAndUpdate(
-        id,
-        {
-          $push: { payments: payment },
-          $set: {
-            amountPaid: nextAmountPaid,
-            balanceDue: nextBalanceDue,
-            paymentStatus,
+      .findOneAndUpdate(
+        { _id: id, balanceDue: { $gte: payment.amount } },
+        [
+          {
+            $set: {
+              payments: { $concatArrays: [{ $ifNull: ['$payments', []] }, [payment]] },
+              amountPaid: { $add: ['$amountPaid', payment.amount] },
+              balanceDue: { $subtract: ['$balanceDue', payment.amount] },
+              paymentStatus: {
+                $cond: [
+                  { $lte: [{ $subtract: ['$balanceDue', payment.amount] }, 0] },
+                  PaymentStatus.PAID,
+                  PaymentStatus.PARTIAL,
+                ],
+              },
+            },
           },
-        },
+        ],
         options,
       )
       .exec();

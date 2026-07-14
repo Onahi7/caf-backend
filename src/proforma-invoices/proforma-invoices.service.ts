@@ -137,22 +137,19 @@ export class ProformaInvoicesService {
       throw new BadRequestException('Only approved proformas can be converted to sales');
     }
 
-    // Build sale items from proforma items
-    const saleItems = pf.items.map((item) => ({
-      productId: item.productId.toString(),
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      quantityInBaseUnits: item.quantity,
-    }));
-
     // Create sale via the Sales module
     const SalesModule = this.model.db.model('Sale');
     const ProductModel = this.model.db.model('Product');
+    const BatchModel = this.model.db.model('Batch');
+    const StockMovementModel = this.model.db.model('StockMovement');
     const productIds = pf.items.map((item) => item.productId);
     const isCreditSale = dto.paymentMethod === PaymentMethod.CREDIT;
     const amountPaid = dto.amountPaid ?? (isCreditSale ? 0 : pf.total);
     if (amountPaid < 0 || amountPaid > pf.total) {
       throw new BadRequestException('Amount paid must be between zero and the proforma total');
+    }
+    if (isCreditSale && amountPaid > 0) {
+      throw new BadRequestException('Record a credit-sale deposit after conversion so its real payment method is captured');
     }
 
     let sale: any;
@@ -187,6 +184,45 @@ export class ProformaInvoicesService {
           }
         }
 
+        const selectedSaleItems: Array<Record<string, unknown>> = [];
+        for (const item of pf.items) {
+          let remaining = item.quantity;
+          const batches = await BatchModel.find({
+            branchId: pf.branchId,
+            productId: item.productId,
+            quantityAvailable: { $gt: 0 },
+            isExpired: false,
+            isDepleted: false,
+            expiryDate: { $gt: new Date() },
+          }).sort({ expiryDate: 1 }).session(session).exec();
+          for (const batch of batches) {
+            if (remaining <= 0) break;
+            const quantity = Math.min(remaining, batch.quantityAvailable);
+            const updated = await BatchModel.findOneAndUpdate(
+              { _id: batch._id, quantityAvailable: { $gte: quantity } },
+              { $inc: { quantityAvailable: -quantity } },
+              { new: true, session },
+            ).exec();
+            if (!updated) throw new BadRequestException('Batch stock changed while converting this proforma');
+            if (updated.quantityAvailable === 0) {
+              await BatchModel.updateOne({ _id: updated._id }, { $set: { isDepleted: true } }, { session }).exec();
+            }
+            selectedSaleItems.push({
+              saleItemId: new Types.ObjectId().toString(),
+              productId: item.productId,
+              batchId: batch._id,
+              quantity,
+              unitPrice: item.unitPrice,
+              subtotal: quantity * item.unitPrice,
+              returnedQuantity: 0,
+            });
+            remaining -= quantity;
+          }
+          if (remaining > 0) {
+            throw new BadRequestException(`Insufficient unexpired batch stock for ${item.productName}`);
+          }
+        }
+
         const stockUpdateResult = await ProductModel.bulkWrite(
           pf.items.map((item) => ({
             updateOne: {
@@ -209,24 +245,21 @@ export class ProformaInvoicesService {
           shiftId: shift._id,
           terminalId: 'ORDER-MGMT',
           cashierId: new Types.ObjectId(userId),
-          items: saleItems.map((si: any) => ({
-            productId: new Types.ObjectId(si.productId),
-            quantity: si.quantity,
-            unitPrice: si.unitPrice,
-            subtotal: si.quantity * si.unitPrice,
-          })),
+          items: selectedSaleItems,
           subtotal: pf.subtotal,
           discount: 0,
+          manualDiscount: 0,
+          taxAmount: pf.taxAmount,
           total: pf.total,
           saleType: isCreditSale ? 'credit' : 'cash',
-          paymentMethod: isCreditSale ? 'credit' : 'cash',
+          paymentMethod: dto.paymentMethod,
           paymentStatus: amountPaid >= pf.total ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid',
           amountPaid,
           balanceDue: Math.max(pf.total - amountPaid, 0),
           payments: amountPaid > 0
             ? [{
                 amount: amountPaid,
-                paymentMethod: isCreditSale ? 'credit' : 'cash',
+                paymentMethod: isCreditSale ? 'cash' : dto.paymentMethod,
                 receivedBy: new Types.ObjectId(userId),
                 receivedAt: new Date(),
                 isInitialPayment: true,
@@ -236,6 +269,22 @@ export class ProformaInvoicesService {
           customerName: pf.customerId ? undefined : undefined,
           status: 'completed',
         }], { session });
+
+        await StockMovementModel.create(
+          selectedSaleItems.map((item) => ({
+            branchId: pf.branchId,
+            productId: item.productId,
+            batchId: item.batchId,
+            quantity: -Number(item.quantity),
+            movementType: 'sale',
+            reason: `Proforma ${pf.proformaNumber} converted to sale`,
+            userId: new Types.ObjectId(userId),
+            referenceId: sale._id,
+            referenceType: 'Sale',
+            timestamp: new Date(),
+          })),
+          { session },
+        );
 
         pf.saleId = sale._id;
         pf.status = ProformaStatus.CONVERTED;

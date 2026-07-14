@@ -6,12 +6,14 @@ import {
   RecurringInvoice,
   RecurringInvoiceSchema,
 } from './schemas/recurring-invoice.schema.js';
+import { ProformaInvoicesModule } from '../proforma-invoices/proforma-invoices.module.js';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: RecurringInvoice.name, schema: RecurringInvoiceSchema },
     ]),
+    ProformaInvoicesModule,
   ],
   controllers: [RecurringInvoicesController],
   providers: [RecurringInvoicesService],

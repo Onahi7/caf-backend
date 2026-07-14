@@ -11,6 +11,7 @@ import { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { User, UserRole } from '../users/schemas/user.schema.js';
 import { Product } from '../products/schemas/product.schema.js';
 import { StockMovement, StockMovementDocument, MovementType } from '../inventory/schemas/stock-movement.schema.js';
+import { Batch, BatchDocument } from '../batches/schemas/batch.schema.js';
 import {
   MarketerProductAssignment,
   MarketerAssignmentStatus,
@@ -35,6 +36,8 @@ export class MarketerService {
     private readonly productModel: Model<Product>,
     @InjectModel(StockMovement.name)
     private readonly stockMovementModel: Model<StockMovementDocument>,
+    @InjectModel(Batch.name)
+    private readonly batchModel: Model<BatchDocument>,
     @InjectConnection()
     private readonly connection: Connection,
   ) {}
@@ -109,6 +112,13 @@ export class MarketerService {
             );
           }
 
+          const batchAllocations = await this.allocateBatches(
+            dto.branchId,
+            item.productId,
+            item.assignedQuantity,
+            session,
+          );
+
           const [assignment] = await this.assignmentModel.create([{
             branchId: dto.branchId,
             marketerId: dto.marketerId,
@@ -118,6 +128,7 @@ export class MarketerService {
             notes: dto.notes,
             assignedBy: actor.userId,
             remainingQuantity: item.assignedQuantity,
+            batchAllocations,
             status: MarketerAssignmentStatus.PENDING,
           }], { session });
 
@@ -290,6 +301,14 @@ export class MarketerService {
           throw new BadRequestException(`Insufficient branch stock to increase assignment by ${quantityDelta} units`);
         }
 
+        const addedAllocations = await this.allocateBatches(
+          assignment.branchId.toString(),
+          assignment.productId.toString(),
+          quantityDelta,
+          session,
+        );
+        assignment.batchAllocations.push(...addedAllocations);
+
         await this.recordMarketerStockMovement({
           branchId: assignment.branchId.toString(),
           productId: assignment.productId.toString(),
@@ -301,6 +320,7 @@ export class MarketerService {
         }, session);
       } else if (quantityDelta < 0) {
         const returnQuantity = Math.abs(quantityDelta);
+        await this.returnAllocatedBatches(assignment, returnQuantity, session);
         await this.productModel.updateOne(
           { _id: assignment.productId, branchId: assignment.branchId },
           { $inc: { quantityAvailable: returnQuantity } },
@@ -327,6 +347,7 @@ export class MarketerService {
 
         if (dto.isActive !== undefined && dto.isActive !== assignment.isActive) {
           if (!dto.isActive && assignment.remainingQuantity > 0) {
+            await this.returnAllocatedBatches(assignment, assignment.remainingQuantity, session);
             await this.productModel.updateOne(
               { _id: assignment.productId, branchId: assignment.branchId },
               { $inc: { quantityAvailable: assignment.remainingQuantity } },
@@ -387,26 +408,34 @@ export class MarketerService {
       );
     }
 
-    assignment.remainingQuantity -= dto.quantity;
-    await assignment.save();
-
     const unitPrice = assignment.assignedUnitPrice;
     const totalAmount = unitPrice * dto.quantity;
-
-    return this.saleModel.create({
-      branchId: assignment.branchId,
-      marketerId: assignment.marketerId,
-      assignmentId: assignment._id,
-      productId: assignment.productId,
-      quantity: dto.quantity,
-      unitPrice,
-      totalAmount,
-      customerName: dto.customerName,
-      customerPhone: dto.customerPhone,
-      customerId: dto.customerId ? new Types.ObjectId(dto.customerId) : undefined,
-      notes: dto.notes,
-      soldAt: new Date(),
-    });
+    const session = await this.connection.startSession();
+    let sale: MarketerSaleDocument | undefined;
+    try {
+      await session.withTransaction(async () => {
+        this.consumeAllocatedBatches(assignment, dto.quantity);
+        assignment.remainingQuantity -= dto.quantity;
+        await assignment.save({ session });
+        [sale] = await this.saleModel.create([{
+          branchId: assignment.branchId,
+          marketerId: assignment.marketerId,
+          assignmentId: assignment._id,
+          productId: assignment.productId,
+          quantity: dto.quantity,
+          unitPrice,
+          totalAmount,
+          customerName: dto.customerName,
+          customerPhone: dto.customerPhone,
+          customerId: dto.customerId ? new Types.ObjectId(dto.customerId) : undefined,
+          notes: dto.notes,
+          soldAt: new Date(),
+        }], { session });
+      });
+    } finally {
+      await session.endSession();
+    }
+    return sale!;
   }
 
   async listSales(filter: MarketerSalesQueryDto, actor: CurrentUserData) {
@@ -617,5 +646,83 @@ export class MarketerService {
       timestamp: new Date(),
       metadata: dto.metadata,
     }], { session });
+  }
+
+  private async allocateBatches(
+    branchId: string,
+    productId: string,
+    quantity: number,
+    session: any,
+  ) {
+    const batches = await this.batchModel.find({
+      branchId: new Types.ObjectId(branchId),
+      productId: new Types.ObjectId(productId),
+      quantityAvailable: { $gt: 0 },
+      isExpired: false,
+      isDepleted: false,
+      expiryDate: { $gt: new Date() },
+    }).sort({ expiryDate: 1 }).session(session).exec();
+    let remaining = quantity;
+    const allocations: Array<{ batchId: Types.ObjectId; quantity: number; remainingQuantity: number }> = [];
+    for (const batch of batches) {
+      if (remaining <= 0) break;
+      const take = Math.min(remaining, batch.quantityAvailable);
+      const updated = await this.batchModel.findOneAndUpdate(
+        { _id: batch._id, quantityAvailable: { $gte: take } },
+        { $inc: { quantityAvailable: -take } },
+        { new: true, session },
+      ).exec();
+      if (!updated) throw new BadRequestException('Batch stock changed while assigning stock');
+      if (updated.quantityAvailable === 0) {
+        await this.batchModel.updateOne({ _id: updated._id }, { $set: { isDepleted: true } }, { session }).exec();
+      }
+      allocations.push({ batchId: batch._id, quantity: take, remainingQuantity: take });
+      remaining -= take;
+    }
+    if (remaining > 0) {
+      throw new BadRequestException(`Insufficient unexpired batch stock. Missing ${remaining} units`);
+    }
+    return allocations;
+  }
+
+  private async returnAllocatedBatches(
+    assignment: MarketerProductAssignmentDocument,
+    quantity: number,
+    session: any,
+  ) {
+    if (!assignment.batchAllocations?.length) {
+      throw new BadRequestException('Legacy assignment has no batch allocation; run operational reconciliation first');
+    }
+    let remaining = quantity;
+    for (const allocation of [...assignment.batchAllocations].reverse()) {
+      if (remaining <= 0) break;
+      const giveBack = Math.min(remaining, allocation.remainingQuantity);
+      if (giveBack <= 0) continue;
+      await this.batchModel.updateOne(
+        { _id: allocation.batchId },
+        { $inc: { quantityAvailable: giveBack }, $set: { isDepleted: false } },
+        { session },
+      ).exec();
+      allocation.remainingQuantity -= giveBack;
+      remaining -= giveBack;
+    }
+    if (remaining > 0) throw new BadRequestException('Assignment batch balance is inconsistent');
+  }
+
+  private consumeAllocatedBatches(
+    assignment: MarketerProductAssignmentDocument,
+    quantity: number,
+  ) {
+    if (!assignment.batchAllocations?.length) {
+      throw new BadRequestException('Legacy assignment has no batch allocation; run operational reconciliation first');
+    }
+    let remaining = quantity;
+    for (const allocation of assignment.batchAllocations) {
+      if (remaining <= 0) break;
+      const used = Math.min(remaining, allocation.remainingQuantity);
+      allocation.remainingQuantity -= used;
+      remaining -= used;
+    }
+    if (remaining > 0) throw new BadRequestException('Assignment batch balance is inconsistent');
   }
 }

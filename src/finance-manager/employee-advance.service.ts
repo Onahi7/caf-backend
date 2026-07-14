@@ -4,12 +4,14 @@ import { ClientSession, Connection, Model, Types } from 'mongoose';
 import {
   EmployeeAdvance, EmployeeAdvanceDocument, AdvanceStatus, AdvanceType, RepaymentType,
 } from './schema/employee-advance.schema.js';
-import { CashEntry, CashEntryDocument, CashEntryType, CashEntryCategory } from './schema/cash-entry.schema.js';
+import { CashEntry, CashEntryDocument, CashEntryType, CashEntryCategory, CashFlowDirection } from './schema/cash-entry.schema.js';
 import { Sale, SaleDocument, SaleType, SaleStatus, PaymentStatus, PaymentMethod } from '../sales/schemas/sale.schema.js';
 import { StockMovement, StockMovementDocument, MovementType } from '../inventory/schemas/stock-movement.schema.js';
 import {
   CreateEmployeeAdvanceDto, RecordAdvanceRepaymentDto, WriteOffAdvanceDto, AdvanceFilterDto,
 } from './dto/employee-advance.dto.js';
+import { Product, ProductDocument } from '../products/schemas/product.schema.js';
+import { Batch, BatchDocument } from '../batches/schemas/batch.schema.js';
 
 @Injectable()
 export class EmployeeAdvanceService {
@@ -21,6 +23,8 @@ export class EmployeeAdvanceService {
     @InjectModel(CashEntry.name) private readonly cashModel: Model<CashEntryDocument>,
     @InjectModel(Sale.name) private readonly saleModel: Model<SaleDocument>,
     @InjectModel(StockMovement.name) private readonly stockModel: Model<StockMovementDocument>,
+    @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
+    @InjectModel(Batch.name) private readonly batchModel: Model<BatchDocument>,
   ) {}
 
   async createAdvance(dto: CreateEmployeeAdvanceDto, userId: string): Promise<EmployeeAdvanceDocument> {
@@ -58,6 +62,7 @@ export class EmployeeAdvanceService {
         const receiptNumber = `STAFF-ADV-${dto.referenceNumber}`;
 
         const saleItems = dto.items.map((item) => ({
+          saleItemId: new Types.ObjectId().toString(),
           productId: new Types.ObjectId(item.productId),
           batchId: item.batchId ? new Types.ObjectId(item.batchId) : undefined,
           quantity: item.quantity,
@@ -90,6 +95,37 @@ export class EmployeeAdvanceService {
         await advanceDoc.save({ session });
 
         for (const item of dto.items) {
+          if (!item.batchId) {
+            throw new BadRequestException(
+              `Batch is required for staff goods item ${item.productId}`,
+            );
+          }
+          const [batch, product] = await Promise.all([
+            this.batchModel.findOneAndUpdate(
+              {
+                _id: new Types.ObjectId(item.batchId),
+                productId: new Types.ObjectId(item.productId),
+                branchId: new Types.ObjectId(dto.branchId),
+                quantityAvailable: { $gte: item.quantity },
+              },
+              { $inc: { quantityAvailable: -item.quantity } },
+              { new: true, session },
+            ).exec(),
+            this.productModel.findOneAndUpdate(
+              {
+                _id: new Types.ObjectId(item.productId),
+                branchId: new Types.ObjectId(dto.branchId),
+                quantityAvailable: { $gte: item.quantity },
+              },
+              { $inc: { quantityAvailable: -item.quantity } },
+              { new: true, session },
+            ).exec(),
+          ]);
+          if (!batch || !product) {
+            throw new BadRequestException(
+              `Insufficient synchronized stock for staff goods item ${item.productId}`,
+            );
+          }
           await this.stockModel.create([{
             branchId: new Types.ObjectId(dto.branchId),
             productId: new Types.ObjectId(item.productId),
@@ -109,6 +145,7 @@ export class EmployeeAdvanceService {
           category: CashEntryCategory.STAFF_ADVANCE,
           branchId: new Types.ObjectId(dto.branchId),
           amount: dto.totalAmount,
+          cashFlowDirection: CashFlowDirection.OUTFLOW,
           description: `Cash advance issued: ${dto.referenceNumber}`,
           referenceId: advanceDoc._id.toString(),
           recordedBy: new Types.ObjectId(userId),
@@ -173,6 +210,7 @@ export class EmployeeAdvanceService {
           category: CashEntryCategory.STAFF_ADVANCE,
           branchId: advance.branchId,
           amount: dto.amount,
+          cashFlowDirection: CashFlowDirection.INFLOW,
           description: `Cash repayment for staff advance ${advance.referenceNumber}`,
           referenceId: advance._id.toString(),
           recordedBy: new Types.ObjectId(userId),
@@ -211,7 +249,7 @@ export class EmployeeAdvanceService {
     }
   }
 
-  async recordSalaryDeduction(employeeId: string, branchId: string, _period: string, _userId: string): Promise<{
+  async recordSalaryDeduction(employeeId: string, branchId: string, _period: string, _userId: string, maximumDeduction = Number.POSITIVE_INFINITY): Promise<{
     totalDeducted: number;
     advancesUpdated: number;
     details: { advanceId: string; referenceNumber: string; amountDeducted: number }[];
@@ -225,14 +263,18 @@ export class EmployeeAdvanceService {
     const details: { advanceId: string; referenceNumber: string; amountDeducted: number }[] = [];
     let totalDeducted = 0;
     let advancesUpdated = 0;
+    let remainingDeduction = Math.max(0, maximumDeduction);
 
     for (const advance of openAdvances) {
+      if (remainingDeduction <= 0) break;
+      const amountDeducted = Math.min(advance.outstandingAmount, remainingDeduction);
       details.push({
         advanceId: advance._id.toString(),
         referenceNumber: advance.referenceNumber,
-        amountDeducted: advance.outstandingAmount,
+        amountDeducted,
       });
-      totalDeducted += advance.outstandingAmount;
+      totalDeducted += amountDeducted;
+      remainingDeduction -= amountDeducted;
       advancesUpdated += 1;
     }
 
@@ -386,11 +428,36 @@ export class EmployeeAdvanceService {
             `Product ${ret.productId} is not part of this advance`,
           );
         }
-        if (ret.quantity > advanceItem.quantity) {
+        const availableToReturn = advanceItem.quantity - (advanceItem.returnedQuantity || 0);
+        if (ret.quantity > availableToReturn) {
           throw new BadRequestException(
-            `Cannot return ${ret.quantity} of ${ret.productId}: only ${advanceItem.quantity} issued`,
+            `Cannot return ${ret.quantity} of ${ret.productId}: only ${availableToReturn} remains returnable`,
           );
         }
+        const batchId = ret.batchId || advanceItem.batchId?.toString();
+        if (!batchId) {
+          throw new BadRequestException(`Original batch is missing for ${ret.productId}`);
+        }
+        const [batch, product] = await Promise.all([
+          this.batchModel.findOneAndUpdate(
+            {
+              _id: new Types.ObjectId(batchId),
+              productId: new Types.ObjectId(ret.productId),
+              branchId: advance.branchId,
+            },
+            { $inc: { quantityAvailable: ret.quantity }, $set: { isDepleted: false } },
+            { new: true, session },
+          ).exec(),
+          this.productModel.findOneAndUpdate(
+            { _id: new Types.ObjectId(ret.productId), branchId: advance.branchId },
+            { $inc: { quantityAvailable: ret.quantity } },
+            { new: true, session },
+          ).exec(),
+        ]);
+        if (!batch || !product) {
+          throw new BadRequestException(`Unable to restore synchronized stock for ${ret.productId}`);
+        }
+        advanceItem.returnedQuantity = (advanceItem.returnedQuantity || 0) + ret.quantity;
         const itemSubtotal = ret.quantity * advanceItem.unitPrice;
         returnedAmount += itemSubtotal;
 

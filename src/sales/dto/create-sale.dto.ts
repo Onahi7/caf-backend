@@ -10,6 +10,7 @@ import {
   MaxLength,
   IsObject,
   IsDateString,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PaymentMethod, SaleType } from '../schemas/sale.schema.js';
@@ -99,6 +100,15 @@ export class CreateSaleDto {
   @Min(0)
   @IsOptional()
   discount?: number;
+
+  /** Server-validated promotion. Client-calculated discounts are rejected. */
+  @IsMongoId()
+  @IsOptional()
+  promotionId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  acceptServerTotal?: boolean;
 
   /**
    * Payment method for the sale

@@ -128,6 +128,7 @@ export class EmailController {
       items: receiptItems,
       subtotal: sale.subtotal,
       discount: sale.discount,
+      taxAmount: sale.taxAmount,
       total: sale.total,
       paymentMethod: sale.paymentMethod,
       timestamp: sale.createdAt || new Date(),

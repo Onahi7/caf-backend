@@ -30,6 +30,7 @@ import { ReceiptService } from './receipt.service.js';
 import { SaleDocument } from './schemas/sale.schema.js';
 import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 import { CreateSaleDto } from './dto/create-sale.dto.js';
+import { CheckoutQuoteDto } from './dto/checkout-quote.dto.js';
 import { ProcessReturnDto } from './dto/process-return.dto.js';
 import { ReceiveSalePaymentDto } from './dto/receive-sale-payment.dto.js';
 import { VerifyPrescriptionDto } from './dto/verify-prescription.dto.js';
@@ -132,6 +133,16 @@ export class SalesController {
    * Property 13: Mobile money reference storage
    * Property 15: Optional mobile money reference
    */
+  @Post('quote')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
+  @HttpCode(HttpStatus.OK)
+  quote(
+    @Body() dto: CheckoutQuoteDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return this.checkoutService.quote(dto, user);
+  }
+
   @Post('checkout')
   @Roles(
     UserRole.SUPER_ADMIN,
@@ -147,7 +158,7 @@ export class SalesController {
   ) {
     const result = await this.checkoutService.processCheckout(
       createSaleDto,
-      user.userId,
+      user,
     );
     const currencyCode = await this.getBranchCurrencyCode(
       result.sale.branchId.toString(),
@@ -169,6 +180,11 @@ export class SalesController {
         discount: result.sale.discount,
         discountFormatted: CurrencyUtil.format(
           result.sale.discount,
+          currencyCode,
+        ),
+        taxAmount: result.sale.taxAmount,
+        taxAmountFormatted: CurrencyUtil.format(
+          result.sale.taxAmount,
           currencyCode,
         ),
         paymentMethod: result.sale.paymentMethod,
@@ -196,7 +212,7 @@ export class SalesController {
   ) {
     const result = await this.salesService.processReturn(
       { ...processReturnDto, saleId },
-      user.userId,
+      user,
     );
     const currencyCode = await this.getBranchCurrencyCode(
       result.sale.branchId.toString(),
@@ -312,6 +328,7 @@ export class SalesController {
       items: receiptItems,
       subtotal: sale.subtotal,
       discount: sale.discount,
+      taxAmount: sale.taxAmount,
       total: sale.total,
       paymentMethod: sale.paymentMethod,
     };

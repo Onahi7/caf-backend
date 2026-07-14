@@ -20,6 +20,7 @@ import {
   PaymentStatus,
   SaleDocument,
   SalePaymentEntry,
+  SaleRefundEntry,
   SaleStatus,
   SaleType,
   PrescriptionStatus,
@@ -31,11 +32,13 @@ import {
   CashEntryCategory,
   CashEntryDocument,
   CashEntryType,
+  CashFlowDirection,
 } from '../finance-manager/schema/cash-entry.schema.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import { AuditService } from '../audit/audit.service.js';
 import { AuditResource } from '../audit/schemas/audit-log.schema.js';
+import { BatchesRepository } from '../batches/batches.repository.js';
 
 /**
  * Return processing result
@@ -62,6 +65,7 @@ export class SalesService implements OnModuleInit {
     private readonly inventoryService: InventoryService,
     private readonly eventsService: EventsService,
     private readonly auditService: AuditService,
+    private readonly batchesRepository: BatchesRepository,
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
     @InjectModel(CashEntry.name) private readonly cashEntryModel: Model<CashEntryDocument>,
@@ -189,6 +193,12 @@ export class SalesService implements OnModuleInit {
           session,
         );
 
+        if (!updatedSale) {
+          throw new BadRequestException(
+            'Payment could not be recorded because the outstanding balance changed. Refresh and try again.',
+          );
+        }
+
         await this.cashEntryModel.create([{
           type: CashEntryType.INCOME,
           category: CashEntryCategory.SALES,
@@ -221,13 +231,16 @@ export class SalesService implements OnModuleInit {
       const cashPayments = (sale.payments || [])
         .filter((payment) => payment.paymentMethod === PaymentMethod.CASH)
         .reduce((paymentSum, payment) => paymentSum + (payment.amount || 0), 0);
+      const cashRefunds = (sale.refunds || [])
+        .filter((refund) => refund.paymentMethod === PaymentMethod.CASH)
+        .reduce((refundSum, refund) => refundSum + (refund.amount || 0), 0);
 
       if (sale.payments?.length) {
-        return sum + cashPayments - (sale.returnedAmount || 0);
+        return sum + cashPayments - cashRefunds;
       }
 
       if (sale.paymentMethod === PaymentMethod.CASH) {
-        return sum + (sale.total || 0) - (sale.returnedAmount || 0);
+        return sum + (sale.total || 0) - cashRefunds;
       }
 
       return sum;
@@ -332,10 +345,11 @@ export class SalesService implements OnModuleInit {
    */
   async processReturn(
     dto: ProcessReturnDto,
-    userId: string,
+    actor: CurrentUserData,
   ): Promise<ReturnResult> {
     // Find the original sale
     const sale = await this.findById(dto.saleId);
+    this.assertCanManageSaleBranch(sale, actor);
 
     // Validate sale can be returned
     if (sale.status === SaleStatus.RETURNED) {
@@ -355,6 +369,7 @@ export class SalesService implements OnModuleInit {
     try {
       // Process each return item
       for (const returnItem of dto.items) {
+        const saleItem = this.resolveReturnItem(sale, returnItem);
         const updatedProduct = await this.productModel
           .findOneAndUpdate(
             {
@@ -373,9 +388,29 @@ export class SalesService implements OnModuleInit {
         }
 
         // Persist item-level returned quantity for accurate partial/full return tracking
-        await this.salesRepository.updateItemReturnedQuantity(
+        const returnedSale = await this.salesRepository.updateItemReturnedQuantity(
           dto.saleId,
-          returnItem.productId,
+          {
+            saleItemId: saleItem.saleItemId,
+            batchId: saleItem.batchId?.toString(),
+          },
+          returnItem.quantity,
+          saleItem.quantity - returnItem.quantity,
+          session,
+        );
+        if (!returnedSale) {
+          throw new BadRequestException(
+            'Return quantity changed while processing. Refresh the sale and try again.',
+          );
+        }
+
+        if (!saleItem.batchId) {
+          throw new BadRequestException(
+            `Sale line ${saleItem.saleItemId} has no source batch and cannot be safely restocked`,
+          );
+        }
+        await this.batchesRepository.updateQuantity(
+          saleItem.batchId.toString(),
           returnItem.quantity,
           session,
         );
@@ -385,7 +420,7 @@ export class SalesService implements OnModuleInit {
           sale.branchId.toString(),
           returnItem.productId,
           returnItem.quantity,
-          userId,
+          actor.userId,
           dto.saleId,
           dto.reason || 'No reason provided',
           session,
@@ -395,13 +430,49 @@ export class SalesService implements OnModuleInit {
       // Determine new sale status
       const newStatus = this.determineReturnStatus(sale, dto.items);
       const totalReturnedAmount = sale.returnedAmount + returnAmount;
+      const remainingObligation = Math.max(0, sale.total - totalReturnedAmount);
+      const adjustedAmountPaid = Math.min(sale.amountPaid, remainingObligation);
+      const cashRefundAmount = Math.max(0, sale.amountPaid - adjustedAmountPaid);
+      const adjustedBalanceDue = Math.max(0, remainingObligation - adjustedAmountPaid);
+      const adjustedPaymentStatus = this.getCreditPaymentStatus(
+        adjustedBalanceDue,
+        adjustedAmountPaid,
+        sale.dueDate,
+      );
+      const refunds = this.allocateRefunds(
+        sale,
+        cashRefundAmount,
+        actor.userId,
+        dto.reason,
+      );
 
-      // Update sale status
-      // Property 48: Sale record update on return
-      const updatedSale = await this.salesRepository.updateStatus(
+      if (refunds.length > 0) {
+        await this.cashEntryModel.create(
+          refunds.map((refund, index) => ({
+            type: CashEntryType.EXPENSE,
+            category: CashEntryCategory.SALES,
+            branchId: sale.branchId,
+            amount: refund.amount,
+            cashFlowDirection: CashFlowDirection.OUTFLOW,
+            description: `Customer refund for sale ${sale.receiptNumber}`,
+            notes: `${refund.paymentMethod}${dto.reason ? ` - ${dto.reason}` : ''}`,
+            receiptNumber: `${sale.receiptNumber}-REF-${String(index + 1).padStart(2, '0')}`,
+            referenceId: dto.saleId,
+            recordedBy: new Types.ObjectId(actor.userId),
+            entryDate: refund.processedAt,
+          })),
+          { session },
+        );
+      }
+
+      const updatedSale = await this.salesRepository.applyReturnAccounting(
         dto.saleId,
         newStatus,
         totalReturnedAmount,
+        adjustedAmountPaid,
+        adjustedBalanceDue,
+        adjustedPaymentStatus,
+        refunds,
         session,
       );
 
@@ -472,16 +543,7 @@ export class SalesService implements OnModuleInit {
         );
       }
 
-      // Find matching item in original sale
-      const saleItem = sale.items.find(
-        (item) => item.productId.toString() === returnItem.productId,
-      );
-
-      if (!saleItem) {
-        throw new BadRequestException(
-          `Item with productId ${returnItem.productId} not found in original sale`,
-        );
-      }
+      const saleItem = this.resolveReturnItem(sale, returnItem);
 
       // Check if return quantity is valid
       const availableForReturn = saleItem.quantity - saleItem.returnedQuantity;
@@ -491,6 +553,47 @@ export class SalesService implements OnModuleInit {
         );
       }
     }
+  }
+
+  private resolveReturnItem(sale: SaleDocument, returnItem: ReturnItemDto) {
+    if (returnItem.saleItemId) {
+      const exact = sale.items.find(
+        (item) => item.saleItemId === returnItem.saleItemId,
+      );
+      if (!exact || exact.productId.toString() !== returnItem.productId) {
+        throw new BadRequestException(
+          `Sale line ${returnItem.saleItemId} is not valid for product ${returnItem.productId}`,
+        );
+      }
+      return exact;
+    }
+
+    if (returnItem.batchId) {
+      const batchLine = sale.items.find(
+        (item) => item.batchId?.toString() === returnItem.batchId,
+      );
+      if (!batchLine || batchLine.productId.toString() !== returnItem.productId) {
+        throw new BadRequestException(
+          `Batch ${returnItem.batchId} is not valid for product ${returnItem.productId}`,
+        );
+      }
+      return batchLine;
+    }
+
+    const matches = sale.items.filter(
+      (item) => item.productId.toString() === returnItem.productId,
+    );
+    if (matches.length === 0) {
+      throw new BadRequestException(
+        `Item with productId ${returnItem.productId} not found in original sale`,
+      );
+    }
+    if (matches.length > 1) {
+      throw new BadRequestException(
+        `Product ${returnItem.productId} was sold from multiple batches; saleItemId is required`,
+      );
+    }
+    return matches[0];
   }
 
   /**
@@ -503,19 +606,66 @@ export class SalesService implements OnModuleInit {
     let returnAmount = 0;
 
     for (const returnItem of returnItems) {
-      const saleItem = sale.items.find(
-        (item) => item.productId.toString() === returnItem.productId,
-      );
-
-      if (saleItem) {
-        const perBaseUnitPrice = saleItem.packSize?.quantityPerPack
-          ? saleItem.unitPrice / saleItem.packSize.quantityPerPack
-          : saleItem.unitPrice;
-        returnAmount += returnItem.quantity * perBaseUnitPrice;
-      }
+      const saleItem = this.resolveReturnItem(sale, returnItem);
+      const perBaseUnitSubtotal = saleItem.subtotal / saleItem.quantity;
+      const netRatio = sale.subtotal > 0 ? sale.total / sale.subtotal : 0;
+      returnAmount += returnItem.quantity * perBaseUnitSubtotal * netRatio;
     }
 
-    return returnAmount;
+    return Math.min(
+      Math.max(0, sale.total - sale.returnedAmount),
+      Math.round(returnAmount * 100) / 100,
+    );
+  }
+
+  private allocateRefunds(
+    sale: SaleDocument,
+    amount: number,
+    userId: string,
+    reason?: string,
+  ): SaleRefundEntry[] {
+    let remaining = Math.round(amount * 100) / 100;
+    if (remaining <= 0) return [];
+
+    const alreadyRefunded = new Map<PaymentMethod, number>();
+    for (const refund of sale.refunds ?? []) {
+      alreadyRefunded.set(
+        refund.paymentMethod,
+        (alreadyRefunded.get(refund.paymentMethod) ?? 0) + refund.amount,
+      );
+    }
+    const available = new Map<PaymentMethod, number>();
+    for (const payment of sale.payments ?? []) {
+      available.set(
+        payment.paymentMethod,
+        (available.get(payment.paymentMethod) ?? 0) + payment.amount,
+      );
+    }
+    if (available.size === 0) {
+      available.set(sale.paymentMethod, sale.amountPaid || sale.total);
+    }
+    for (const [method, refunded] of alreadyRefunded) {
+      available.set(method, Math.max(0, (available.get(method) ?? 0) - refunded));
+    }
+
+    const refunds: SaleRefundEntry[] = [];
+    for (const [paymentMethod, refundable] of [...available.entries()].reverse()) {
+      if (remaining <= 0) break;
+      const refundAmount = Math.min(remaining, refundable);
+      if (refundAmount <= 0) continue;
+      refunds.push({
+        amount: Math.round(refundAmount * 100) / 100,
+        paymentMethod,
+        processedBy: new Types.ObjectId(userId),
+        processedAt: new Date(),
+        reason,
+      });
+      remaining = Math.round((remaining - refundAmount) * 100) / 100;
+    }
+    if (remaining > 0) {
+      throw new BadRequestException('Refund exceeds the recorded paid amount');
+    }
+    return refunds;
   }
 
   /**
@@ -534,8 +684,12 @@ export class SalesService implements OnModuleInit {
       totalReturned += saleItem.returnedQuantity;
 
       // Add current return quantities
-      const currentReturn = returnItems.find(
-        (ri) => ri.productId === saleItem.productId.toString(),
+      const currentReturn = returnItems.find((returnItem) =>
+        returnItem.saleItemId
+          ? returnItem.saleItemId === saleItem.saleItemId
+          : returnItem.batchId
+            ? returnItem.batchId === saleItem.batchId?.toString()
+            : returnItem.productId === saleItem.productId.toString(),
       );
       if (currentReturn) {
         totalReturned += currentReturn.quantity;

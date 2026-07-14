@@ -165,6 +165,17 @@ export function generateReceiptEmailTemplate(data: ReceiptData): string {
                 `
                     : ''
                 }
+                ${
+                  (data.taxAmount ?? 0) > 0
+                    ? `
+                <tr>
+                  <td style="padding: 8px 0; text-align: right; color: #6b7280; font-size: 14px;">Tax:</td>
+                  <td style="padding: 8px 0 8px 24px; text-align: right; color: #111827; font-size: 14px; font-weight: 600;">
+                    ${CurrencyUtil.format(data.taxAmount ?? 0, currencyCode)}
+                  </td>
+                </tr>`
+                    : ''
+                }
                 <tr style="border-top: 2px solid #e5e7eb;">
                   <td style="padding: 16px 0 0; text-align: right; color: #111827; font-size: 18px; font-weight: 700;">
                     Total:

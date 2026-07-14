@@ -24,6 +24,7 @@ import {
 } from './schemas/transfer.schema.js';
 import { Product, ProductDocument } from '../products/schemas/product.schema.js';
 import { User, UserDocument } from '../users/schemas/user.schema.js';
+import { BatchesRepository } from '../batches/batches.repository.js';
 
 @Injectable()
 export class TransfersService {
@@ -33,6 +34,7 @@ export class TransfersService {
     private readonly transfersRepository: TransfersRepository,
     private readonly branchesRepository: BranchesRepository,
     private readonly inventoryService: InventoryService,
+    private readonly batchesRepository: BatchesRepository,
     private readonly auditService: AuditService,
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
@@ -160,6 +162,24 @@ export class TransfersService {
     session.startTransaction();
 
     try {
+      const sourceBatches = await this.batchesRepository.findAvailableForFEFO(
+        transfer.sourceBranchId.toString(),
+        transfer.productId.toString(),
+      );
+      let quantityToMove = transfer.quantity;
+      const batchMoves: Array<{ batch: (typeof sourceBatches)[number]; quantity: number }> = [];
+      for (const batch of sourceBatches) {
+        if (quantityToMove <= 0) break;
+        const quantity = Math.min(quantityToMove, batch.quantityAvailable);
+        batchMoves.push({ batch, quantity });
+        quantityToMove -= quantity;
+      }
+      if (quantityToMove > 0) {
+        throw new BadRequestException(
+          `Insufficient sellable batch stock. Missing ${quantityToMove} units.`,
+        );
+      }
+
       // 1. Approve the transfer
       await this.transfersRepository.approve(transferId, approvedBy, dto.notes, session);
 
@@ -256,6 +276,46 @@ export class TransfersService {
         false,
         session,
       );
+
+      // Move the exact FEFO batch quantities so both branch ledgers remain sellable.
+      const destinationBatches = await this.batchesRepository.findByBranchAndProduct(
+        transfer.destinationBranchId.toString(),
+        destinationProduct._id.toString(),
+      );
+      for (const { batch, quantity } of batchMoves) {
+        await this.batchesRepository.updateQuantity(
+          batch._id.toString(),
+          -quantity,
+          session,
+        );
+        const matchingDestinationBatch = destinationBatches.find(
+          (candidate) => candidate.lotNumber === batch.lotNumber,
+        );
+        if (matchingDestinationBatch) {
+          await this.batchesRepository.updateQuantity(
+            matchingDestinationBatch._id.toString(),
+            quantity,
+            session,
+          );
+        } else {
+          const supplierId =
+            (batch.supplierId as unknown as { _id?: Types.ObjectId })._id ??
+            batch.supplierId;
+          await this.batchesRepository.create(
+            {
+              productId: destinationProduct._id.toString(),
+              branchId: transfer.destinationBranchId.toString(),
+              lotNumber: batch.lotNumber,
+              expiryDate: batch.expiryDate,
+              quantity,
+              purchasePrice: batch.purchasePrice,
+              sellingPrice: batch.sellingPrice,
+              supplierId: supplierId.toString(),
+            },
+            session,
+          );
+        }
+      }
 
       // 6. Mark transfer as completed
       const completedTransfer = await this.transfersRepository.complete(transferId, session);
