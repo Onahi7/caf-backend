@@ -75,12 +75,16 @@ constructor(
   ) {}
 
   async quote(dto: CheckoutQuoteDto, actor: CurrentUserData) {
-    if (
-      actor.role !== UserRole.SUPER_ADMIN &&
-      (!actor.branchId || actor.branchId !== dto.branchId)
-    ) {
-      throw new BadRequestException('Quote is restricted to your assigned branch');
+    const effectiveBranchId =
+      actor.role === UserRole.SUPER_ADMIN
+        ? (dto.branchId || actor.branchId)
+        : (actor.branchId || dto.branchId);
+
+    if (!effectiveBranchId) {
+      throw new BadRequestException('Branch ID is required for quote');
     }
+
+    dto.branchId = effectiveBranchId;
     const items = await this.validateAndNormalizeSaleItems(dto.branchId, dto.items);
     const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     const selections: BatchSelectionResult[] = items.map((item) => ({

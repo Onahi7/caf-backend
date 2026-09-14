@@ -34,6 +34,11 @@ export class SaleItemPackSizeDto {
   @Min(1)
   quantityPerPack!: number; // e.g., 100 for box, 10 for strip
 
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  sellingPrice?: number;
+
   @IsString()
   @IsOptional()
   barcode?: string;

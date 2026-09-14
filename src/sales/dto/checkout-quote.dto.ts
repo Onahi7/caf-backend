@@ -1,20 +1,23 @@
 import { IsArray, IsMongoId, IsNumber, IsOptional, Min, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { SaleItemDto } from './create-sale.dto.js';
 
 export class CheckoutQuoteDto {
   @IsMongoId()
-  branchId!: string;
+  @IsOptional()
+  branchId?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => SaleItemDto)
   items!: SaleItemDto[];
 
+  @Transform(({ value }) => (value === '' || value === null || value === 'null' ? undefined : value))
   @IsMongoId()
   @IsOptional()
   promotionId?: string;
 
+  @Transform(({ value }) => (typeof value === 'string' ? parseFloat(value) : value))
   @IsNumber()
   @Min(0)
   @IsOptional()
