@@ -100,6 +100,8 @@ async function bootstrap() {
       'Authorization',
       'X-Idempotency-Key',
       'x-idempotency-key',
+      'X-Step-Up-Token',
+      'x-step-up-token',
       'X-Requested-With',
       'Accept',
       'Origin',

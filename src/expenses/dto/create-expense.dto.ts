@@ -21,8 +21,8 @@ export class CreateExpenseDto {
   shiftId!: string;
 
   @IsMongoId()
-  @IsNotEmpty()
-  recordedBy!: string;
+  @IsOptional()
+  recordedBy?: string;
 
   @IsNumber()
   @Min(0.01)

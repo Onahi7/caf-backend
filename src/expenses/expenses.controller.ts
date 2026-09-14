@@ -183,7 +183,7 @@ export class ExpensesController {
    * GET /expenses/branch/:branchId/by-category
    */
   @Get('branch/:branchId/by-category')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER, UserRole.AUDITOR)
   async getTotalByCategory(
     @Param('branchId') branchId: string,
     @CurrentUser() user: CurrentUserData,

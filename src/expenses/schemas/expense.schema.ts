@@ -6,6 +6,8 @@ export enum ExpenseCategory {
   MAINTENANCE = 'maintenance',
   UTILITIES = 'utilities',
   PETTY_CASH = 'petty_cash',
+  RENT = 'rent',
+  SALARIES = 'salaries',
   OTHER = 'other',
 }
 
