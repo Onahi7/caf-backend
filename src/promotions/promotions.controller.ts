@@ -8,6 +8,7 @@ import {
   Delete,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PromotionsService } from './promotions.service.js';
@@ -20,15 +21,20 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
+import { AuditInterceptor } from '../common/interceptors/audit.interceptor.js';
+import { Audit } from '../common/decorators/audit.decorator.js';
+import { AuditAction, AuditResource } from '../audit/schemas/audit-log.schema.js';
 
 @ApiTags('Promotions')
 @Controller('promotions')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(AuditInterceptor)
 export class PromotionsController {
   constructor(private readonly promotionsService: PromotionsService) {}
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  @Audit({ action: AuditAction.CREATE, resource: AuditResource.PROMOTION })
   create(
     @Body() createPromotionDto: CreatePromotionDto,
     @CurrentUser() user: CurrentUserData,
@@ -78,6 +84,7 @@ export class PromotionsController {
 
   @Patch(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  @Audit({ action: AuditAction.UPDATE, resource: AuditResource.PROMOTION })
   update(
     @Param('id') id: string,
     @Body() updatePromotionDto: UpdatePromotionDto,
@@ -87,6 +94,7 @@ export class PromotionsController {
 
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  @Audit({ action: AuditAction.DELETE, resource: AuditResource.PROMOTION })
   remove(@Param('id') id: string) {
     return this.promotionsService.remove(id);
   }

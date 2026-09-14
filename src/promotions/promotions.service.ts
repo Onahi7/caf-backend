@@ -164,6 +164,20 @@ export class PromotionsService {
       }
     }
 
+    // BUY_X_GET_Y discount
+    if (promotion.type === PromotionType.BUY_X_GET_Y) {
+      const buyQty = promotion.buyQuantity || 1;
+      const getQty = promotion.getQuantity || 1;
+      const applicableProductIds = promotion.applicableProducts?.map((id) => id.toString()) || [];
+
+      for (const item of items) {
+        if (applicableProductIds.length === 0 || applicableProductIds.includes(item.productId)) {
+          const freeItems = Math.floor(item.quantity / (buyQty + getQty)) * getQty;
+          discountAmount += freeItems * item.unitPrice;
+        }
+      }
+    }
+
     // Apply maximum discount cap if set
     if (
       promotion.maximumDiscount &&

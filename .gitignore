@@ -38,15 +38,15 @@ lerna-debug.log*
 
 # Environment
 .env
+.env.development
+.env.production
 .env.local
 .env.*.local
 
 # Database seed scripts (may contain credentials)
-src/database/seed-service-accounts.ts
-src/database/fix-lab-user.ts
-src/database/fix-caf-users.js
-src/database/setup-congo-cross.js
-src/database/migrate-emr-branches.js
+src/database/seed-*.ts
+src/database/fix-*.ts
+src/database/*.js
 
 # Documentation with secrets
 DEPLOYMENT.md

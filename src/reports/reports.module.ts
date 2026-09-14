@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ReportsService } from './reports.service.js';
 import { ValuationService } from './valuation.service.js';
@@ -21,9 +22,14 @@ import {
   PurchaseOrderSchema,
 } from '../purchases/schemas/purchase-order.schema.js';
 import { Customer, CustomerSchema } from '../customers/schemas/customer.schema.js';
+import { Expense, ExpenseSchema } from '../expenses/schemas/expense.schema.js';
 
 @Module({
   imports: [
+    CacheModule.register({
+      ttl: 60000,
+      max: 100,
+    }),
     MongooseModule.forFeature([
       { name: Sale.name, schema: SaleSchema },
       { name: Batch.name, schema: BatchSchema },
@@ -33,6 +39,7 @@ import { Customer, CustomerSchema } from '../customers/schemas/customer.schema.j
       { name: StockMovement.name, schema: StockMovementSchema },
       { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
       { name: Customer.name, schema: CustomerSchema },
+      { name: Expense.name, schema: ExpenseSchema },
     ]),
   ],
   controllers: [ReportsController],

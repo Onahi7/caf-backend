@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -12,6 +13,8 @@ import {
 
 @Injectable()
 export class SavedReportsService {
+  private readonly logger = new Logger(SavedReportsService.name);
+
   constructor(
     @InjectModel(SavedReport.name)
     private readonly model: Model<SavedReportDocument>,
@@ -67,6 +70,38 @@ export class SavedReportsService {
       .exec();
     if (res.deletedCount === 0) {
       throw new NotFoundException('Saved report not found');
+    }
+  }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async executeScheduledReports() {
+    const now = new Date();
+    const reports = await this.model
+      .find({ schedule: { $ne: 'none' } })
+      .exec();
+
+    for (const report of reports) {
+      if (!report.lastRunAt || this.shouldRun(report.schedule, report.lastRunAt, now)) {
+        this.logger.log(`Executing scheduled report: ${report.name} (${report._id})`);
+        report.lastRunAt = now;
+        await report.save();
+      }
+    }
+  }
+
+  private shouldRun(schedule: string, lastRun: Date, now: Date): boolean {
+    const diff = now.getTime() - lastRun.getTime();
+    const hour = 60 * 60 * 1000;
+    const day = 24 * hour;
+    switch (schedule) {
+      case 'daily':
+        return diff >= day;
+      case 'weekly':
+        return diff >= 7 * day;
+      case 'monthly':
+        return diff >= 30 * day;
+      default:
+        return false;
     }
   }
 }

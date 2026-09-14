@@ -35,8 +35,22 @@ import {
   TransferReportDto,
   TransferReportResult,
 } from './dto/transfer-report.dto.js';
+import { Expense, ExpenseDocument } from '../expenses/schemas/expense.schema.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { PAYMENT_METHOD_LABELS } from '../common/constants/payment-methods.constant.js';
+import {
+  ProfitLossReportDto,
+  ProfitLossReportResult,
+} from './dto/profit-loss-report.dto.js';
+import {
+  ExpenseReportDto,
+  ExpenseReportResult,
+  ExpenseReportGroupBy,
+} from './dto/expense-report.dto.js';
+import {
+  DeadStockReportDto,
+  DeadStockReportResult,
+} from './dto/dead-stock-report.dto.js';
 
 /**
  * ReportsService
@@ -56,6 +70,7 @@ export class ReportsService {
     @InjectModel(PurchaseOrder.name)
     private purchaseOrderModel: Model<PurchaseOrderDocument>,
     @InjectModel(Customer.name) private customerModel: Model<CustomerDocument>,
+    @InjectModel(Expense.name) private expenseModel: Model<ExpenseDocument>,
   ) {}
 
   private idFilter(id?: string) {
@@ -1468,6 +1483,383 @@ export class ReportsService {
       pendingTransfers: pendingTransferRows,
       lowStockAlerts,
       expiryAlerts,
+    };
+  }
+
+  /**
+   * Generate Profit & Loss report
+   * Combines revenue from sales, COGS from batches, and expenses
+   */
+  async generateProfitLossReport(
+    dto: ProfitLossReportDto,
+  ): Promise<ProfitLossReportResult> {
+    this.logger.log('Generating profit & loss report');
+
+    const currencyCode = await this.getBranchCurrencyCode(dto.branchId);
+    const dateFilter = this.dateMatch(dto.from, dto.to);
+
+    // Build match conditions
+    const saleMatch: Record<string, unknown> = {};
+    const expenseMatch: Record<string, unknown> = { isDeleted: { $ne: true } };
+    if (dto.branchId) {
+      const branchOid = new Types.ObjectId(dto.branchId);
+      saleMatch.branchId = branchOid;
+      expenseMatch.branchId = branchOid;
+    }
+    if (dateFilter) {
+      saleMatch.createdAt = dateFilter;
+      expenseMatch.createdAt = dateFilter;
+    }
+
+    // Revenue from sales
+    const [revenueResult] = await this.saleModel.aggregate([
+      { $match: saleMatch },
+      {
+        $group: {
+          _id: null,
+          totalSales: { $sum: '$totalAmount' },
+          totalReturns: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'returned'] }, '$totalAmount', 0],
+            },
+          },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const totalSales = revenueResult?.totalSales ?? 0;
+    const totalReturns = revenueResult?.totalReturns ?? 0;
+    const netRevenue = totalSales - totalReturns;
+
+    // Get sales COGS from sale items
+    const salesForCogs = await this.saleModel.aggregate([
+      { $match: saleMatch },
+      { $unwind: '$items' },
+      {
+        $lookup: {
+          from: 'batches',
+          localField: 'items.batchId',
+          foreignField: '_id',
+          as: 'batchInfo',
+        },
+      },
+      { $unwind: { path: '$batchInfo', preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: null,
+          totalCOGS: {
+            $sum: {
+              $multiply: [
+                '$items.quantity',
+                { $ifNull: ['$batchInfo.purchasePrice', 0] },
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    const totalCOGS = salesForCogs[0]?.totalCOGS ?? 0;
+    const grossProfit = netRevenue - totalCOGS;
+    const grossMargin = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
+
+    // Expenses by category
+    const expensesByCategory = await this.expenseModel.aggregate([
+      { $match: expenseMatch },
+      {
+        $group: {
+          _id: '$category',
+          total: { $sum: '$amount' },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { total: -1 } },
+    ]);
+
+    const totalExpenses = expensesByCategory.reduce(
+      (sum, cat) => sum + cat.total,
+      0,
+    );
+    const operatingProfit = grossProfit - totalExpenses;
+    const operatingMargin =
+      netRevenue > 0 ? (operatingProfit / netRevenue) * 100 : 0;
+
+    return {
+      branchId: dto.branchId,
+      currencyCode,
+      revenue: {
+        totalSales,
+        totalReturns,
+        netRevenue,
+        netRevenueFormatted: CurrencyUtil.format(netRevenue, currencyCode),
+      },
+      costOfGoodsSold: {
+        totalCOGS,
+        totalCOGSFormatted: CurrencyUtil.format(totalCOGS, currencyCode),
+      },
+      grossProfit: {
+        amount: grossProfit,
+        amountFormatted: CurrencyUtil.format(grossProfit, currencyCode),
+        margin: Math.round(grossMargin * 100) / 100,
+      },
+      expenses: {
+        totalExpenses,
+        totalExpensesFormatted: CurrencyUtil.format(
+          totalExpenses,
+          currencyCode,
+        ),
+        byCategory: expensesByCategory.map((cat) => ({
+          category: cat._id ?? 'uncategorized',
+          total: cat.total,
+          totalFormatted: CurrencyUtil.format(cat.total, currencyCode),
+          count: cat.count,
+        })),
+      },
+      operatingProfit: {
+        amount: operatingProfit,
+        amountFormatted: CurrencyUtil.format(operatingProfit, currencyCode),
+        margin: Math.round(operatingMargin * 100) / 100,
+      },
+      period: {
+        from: dto.from ?? 'N/A',
+        to: dto.to ?? 'N/A',
+      },
+    };
+  }
+
+  /**
+   * Generate Expense Report
+   * Breakdown by category, time period, and top expenses
+   */
+  async generateExpenseReport(
+    dto: ExpenseReportDto,
+  ): Promise<ExpenseReportResult> {
+    this.logger.log('Generating expense report');
+
+    const currencyCode = await this.getBranchCurrencyCode(dto.branchId);
+    const dateFilter = this.dateMatch(dto.from, dto.to);
+
+    const match: Record<string, unknown> = { isDeleted: { $ne: true } };
+    if (dto.branchId) {
+      match.branchId = new Types.ObjectId(dto.branchId);
+    }
+    if (dateFilter) {
+      match.createdAt = dateFilter;
+    }
+
+    const groupBy = dto.groupBy || ExpenseReportGroupBy.CATEGORY;
+
+    const [summaryResult, byCategory, byPeriod, topExpenses] =
+      await Promise.all([
+        // Summary
+        this.expenseModel.aggregate([
+          { $match: match },
+          {
+            $group: {
+              _id: null,
+              totalExpenses: { $sum: '$amount' },
+              totalCount: { $sum: 1 },
+            },
+          },
+        ]),
+
+        // By category
+        this.expenseModel.aggregate([
+          { $match: match },
+          {
+            $group: {
+              _id: '$category',
+              total: { $sum: '$amount' },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { total: -1 } },
+        ]),
+
+        // By period
+        this.expenseModel.aggregate([
+          { $match: match },
+          {
+            $group: {
+              _id:
+                groupBy === ExpenseReportGroupBy.MONTH
+                  ? { $dateToString: { format: '%Y-%m', date: '$createdAt' } }
+                  : groupBy === ExpenseReportGroupBy.WEEK
+                    ? { $dateToString: { format: '%G-W%V', date: '$createdAt' } }
+                    : { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+              total: { $sum: '$amount' },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } },
+        ]),
+
+        // Top 10 expenses
+        this.expenseModel
+          .find(match)
+          .sort({ amount: -1 })
+          .limit(10)
+          .populate('recordedBy', 'firstName lastName')
+          .lean(),
+      ]);
+
+    const summary = summaryResult[0] ?? { totalExpenses: 0, totalCount: 0 };
+    const averageExpense =
+      summary.totalCount > 0 ? summary.totalExpenses / summary.totalCount : 0;
+
+    const totalForPercentage = summary.totalExpenses || 1;
+
+    return {
+      branchId: dto.branchId,
+      currencyCode,
+      summary: {
+        totalExpenses: summary.totalExpenses,
+        totalExpensesFormatted: CurrencyUtil.format(
+          summary.totalExpenses,
+          currencyCode,
+        ),
+        totalCount: summary.totalCount,
+        averageExpense: Math.round(averageExpense * 100) / 100,
+        averageExpenseFormatted: CurrencyUtil.format(
+          averageExpense,
+          currencyCode,
+        ),
+      },
+      byCategory: byCategory.map((cat) => ({
+        category: cat._id ?? 'uncategorized',
+        total: cat.total,
+        totalFormatted: CurrencyUtil.format(cat.total, currencyCode),
+        count: cat.count,
+        percentage:
+          Math.round((cat.total / totalForPercentage) * 10000) / 100,
+      })),
+      byPeriod: byPeriod.map((period) => ({
+        date: period._id,
+        total: period.total,
+        totalFormatted: CurrencyUtil.format(period.total, currencyCode),
+        count: period.count,
+      })),
+      topExpenses: topExpenses.map((expense: any) => ({
+        expenseId: expense._id.toString(),
+        description: expense.description,
+        category: expense.category,
+        amount: expense.amount,
+        amountFormatted: CurrencyUtil.format(expense.amount, currencyCode),
+        date: expense.createdAt,
+        recordedByName: expense.recordedBy
+          ? [expense.recordedBy.firstName, expense.recordedBy.lastName]
+              .filter(Boolean)
+              .join(' ')
+          : undefined,
+      })),
+    };
+  }
+
+  /**
+   * Generate Dead Stock Report
+   * Identifies products with stock but no sales within the specified period
+   */
+  async generateDeadStockReport(
+    dto: DeadStockReportDto,
+  ): Promise<DeadStockReportResult> {
+    this.logger.log('Generating dead stock report');
+
+    const currencyCode = await this.getBranchCurrencyCode(dto.branchId);
+    const daysWithoutSale = dto.daysWithoutSale ?? 90;
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysWithoutSale);
+
+    // Get all active products with stock
+    const productMatch: Record<string, unknown> = {
+      isActive: true,
+      quantityAvailable: { $gt: 0 },
+    };
+    if (dto.branchId) {
+      productMatch.branchId = new Types.ObjectId(dto.branchId);
+    }
+
+    const productsWithStock = await this.productModel
+      .find(productMatch)
+      .populate('branchId', 'name')
+      .lean();
+
+    // Find products that had sales within the cutoff period
+    const saleMatch: Record<string, unknown> = {
+      createdAt: { $gte: cutoffDate },
+      status: { $ne: 'returned' },
+    };
+    if (dto.branchId) {
+      saleMatch.branchId = new Types.ObjectId(dto.branchId);
+    }
+
+    const recentSales = await this.saleModel.aggregate([
+      { $match: saleMatch },
+      { $unwind: '$items' },
+      {
+        $group: {
+          _id: '$items.productId',
+          lastSaleDate: { $max: '$createdAt' },
+          totalSold: { $sum: '$items.quantity' },
+        },
+      },
+    ]);
+
+    const activeProductIds = new Set(
+      recentSales.map((s) => s._id.toString()),
+    );
+
+    // Filter to dead stock items
+    const deadStockItems = productsWithStock
+      .filter((product) => !activeProductIds.has(product._id.toString()))
+      .map((product: any) => {
+        const costPrice = product.costPrice || product.basePrice || 0;
+        const totalValue = product.quantityAvailable * costPrice;
+        const branchName = product.branchId?.name || 'Unknown';
+
+        return {
+          productId: product._id.toString(),
+          productName: product.name,
+          sku: product.sku,
+          branchId:
+            product.branchId?._id?.toString() ||
+            product.branchId?.toString() ||
+            '',
+          branchName,
+          quantityAvailable: product.quantityAvailable,
+          costPrice,
+          costPriceFormatted: CurrencyUtil.format(costPrice, currencyCode),
+          totalValue,
+          totalValueFormatted: CurrencyUtil.format(totalValue, currencyCode),
+          lastSaleDate: undefined as Date | undefined,
+          daysSinceLastSale: daysWithoutSale,
+          expiryDate: product.expiryDate,
+        };
+      })
+      .sort((a, b) => b.totalValue - a.totalValue);
+
+    const totalDeadStockValue = deadStockItems.reduce(
+      (sum, item) => sum + item.totalValue,
+      0,
+    );
+    const totalQuantity = deadStockItems.reduce(
+      (sum, item) => sum + item.quantityAvailable,
+      0,
+    );
+
+    return {
+      branchId: dto.branchId,
+      currencyCode,
+      summary: {
+        totalDeadStockItems: deadStockItems.length,
+        totalDeadStockValue,
+        totalDeadStockValueFormatted: CurrencyUtil.format(
+          totalDeadStockValue,
+          currencyCode,
+        ),
+        totalQuantity,
+      },
+      items: deadStockItems,
     };
   }
 }

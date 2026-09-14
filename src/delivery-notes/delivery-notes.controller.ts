@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Res,
+  Controller, Get, Post, Patch, Param, Body, Query, UseGuards, UseInterceptors, Res,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -10,18 +10,24 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import { DeliveryNotesService } from './delivery-notes.service.js';
+import { DeliveryStatus } from './schemas/delivery-note.schema.js';
 import { CreateDeliveryNoteDto, DeliveryNoteFilterDto, MarkDeliveredDto } from './dto/delivery-note.dto.js';
 import { apiResponse, apiListResponse } from '../common/utils/api-response.util.js';
 import { assignResolvedBranchId } from '../common/utils/branch-scope.util.js';
+import { AuditInterceptor } from '../common/interceptors/audit.interceptor.js';
+import { Audit } from '../common/decorators/audit.decorator.js';
+import { AuditAction, AuditResource } from '../audit/schemas/audit-log.schema.js';
 
 @ApiTags('Delivery Notes')
 @Controller('delivery-notes')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(AuditInterceptor)
 export class DeliveryNotesController {
   constructor(private readonly service: DeliveryNotesService) {}
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  @Audit({ action: AuditAction.CREATE, resource: AuditResource.TRANSFER })
   async create(
     @Body() dto: CreateDeliveryNoteDto,
     @CurrentUser() user: CurrentUserData,
@@ -50,12 +56,24 @@ export class DeliveryNotesController {
 
   @Patch(':id/deliver')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  @Audit({ action: AuditAction.UPDATE, resource: AuditResource.TRANSFER })
   async markDelivered(
     @Param('id') id: string,
     @Body() dto: MarkDeliveredDto,
     @CurrentUser() user: CurrentUserData,
   ) {
     const dn = await this.service.markDelivered(id, user.userId, dto);
+    return apiResponse(dn);
+  }
+
+  @Patch(':id/status')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() body: { status: DeliveryStatus; notes?: string },
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    const dn = await this.service.updateStatus(id, user.userId, body.status, body.notes);
     return apiResponse(dn);
   }
 

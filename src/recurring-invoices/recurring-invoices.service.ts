@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -14,11 +15,30 @@ import { ProformaInvoicesService } from '../proforma-invoices/proforma-invoices.
 
 @Injectable()
 export class RecurringInvoicesService {
+  private readonly logger = new Logger(RecurringInvoicesService.name);
+
   constructor(
     @InjectModel(RecurringInvoice.name)
     private readonly model: Model<RecurringInvoiceDocument>,
     private readonly proformaService: ProformaInvoicesService,
   ) {}
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async materializeDueInvoices() {
+    const now = new Date();
+    const due = await this.model
+      .find({ active: true, nextRunAt: { $lte: now } })
+      .exec();
+
+    for (const doc of due) {
+      try {
+        this.logger.log(`Materializing recurring invoice: ${doc._id} (${doc.description})`);
+        await this.materialize(doc._id.toString(), doc.createdBy.toString());
+      } catch (err) {
+        this.logger.error(`Failed to materialize recurring invoice ${doc._id}: ${err}`);
+      }
+    }
+  }
 
   private normalizeTotals(items: CreateRecurringInvoiceDto['items'], discount = 0) {
     const normalizedItems = items.map((item) => ({

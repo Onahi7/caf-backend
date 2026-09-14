@@ -88,6 +88,7 @@ export class FinanceManagerController {
   // --- Finance Push (EMR/LAB -> CAF) ---------------------
   @Post('finance-push')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.FINANCE_MANAGER)
+  @Audit({ action: AuditAction.CREATE, resource: AuditResource.CASH_ENTRY, description: 'Finance push from external service' })
   async receiveFinancePush(
     @Body() dto: DailyFinancePushDto,
     @CurrentUser() user: CurrentUserData,

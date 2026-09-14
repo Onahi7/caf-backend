@@ -83,6 +83,8 @@ export class ValuationService {
 
     if (method === ValuationMethod.FIFO) {
       return this.calculateFIFOValuation(productId, branchId);
+    } else if (method === ValuationMethod.LIFO) {
+      return this.calculateLIFOValuation(productId, branchId);
     } else {
       return this.calculateMovingAverageValuation(productId, branchId);
     }
@@ -128,6 +130,49 @@ export class ValuationService {
       averageCost,
       averageCostFormatted: CurrencyUtil.format(averageCost, currencyCode),
       method: ValuationMethod.FIFO,
+    };
+  }
+
+  /**
+   * Calculate LIFO (Last In First Out) valuation
+   * Property 53: Valuation method support
+   */
+  private async calculateLIFOValuation(
+    productId: string,
+    branchId: string,
+  ): Promise<ValuationResult> {
+    const [currencyCode, batches] = await Promise.all([
+      this.getBranchCurrencyCode(branchId),
+      this.batchModel
+        .find({
+          productId,
+          branchId,
+          isDepleted: false,
+          quantityAvailable: { $gt: 0 },
+        })
+        .sort({ createdAt: -1 }) // Newest first for LIFO
+        .lean(),
+    ]);
+
+    let totalQuantity = 0;
+    let totalValue = 0;
+
+    for (const batch of batches) {
+      totalQuantity += batch.quantityAvailable;
+      totalValue += batch.quantityAvailable * batch.purchasePrice;
+    }
+
+    const averageCost = totalQuantity > 0 ? totalValue / totalQuantity : 0;
+
+    return {
+      productId,
+      branchId,
+      quantity: totalQuantity,
+      totalValue,
+      totalValueFormatted: CurrencyUtil.format(totalValue, currencyCode),
+      averageCost,
+      averageCostFormatted: CurrencyUtil.format(averageCost, currencyCode),
+      method: ValuationMethod.LIFO,
     };
   }
 

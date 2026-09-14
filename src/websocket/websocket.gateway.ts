@@ -13,6 +13,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import { JwtService } from '@nestjs/jwt';
 import { OnEvent } from '@nestjs/event-emitter';
+import { Interval } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import type {
@@ -43,12 +44,33 @@ export class WebSocketGateway
   private readonly logger = new Logger(WebSocketGateway.name);
   private pubClient!: ReturnType<typeof createClient>;
   private subClient!: ReturnType<typeof createClient>;
+  private branchCache = new Map<string, { name: string; currencyCode: string; cachedAt: number }>();
+  private branchCacheTtl = 5 * 60 * 1000;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
     @InjectModel(Branch.name) private readonly branchModel: Model<BranchDocument>,
   ) {}
+
+  private async getCachedBranch(branchId: string): Promise<{ name: string; currencyCode: string }> {
+    const cached = this.branchCache.get(branchId);
+    if (cached && Date.now() - cached.cachedAt < this.branchCacheTtl) {
+      return cached;
+    }
+    const branch = await this.branchModel.findById(branchId).lean().exec();
+    const name = branch?.name || 'Unknown Branch';
+    const currencyCode = branch?.currencyCode || 'SLE';
+    this.branchCache.set(branchId, { name, currencyCode, cachedAt: Date.now() });
+    return { name, currencyCode };
+  }
+
+  @Interval(30000)
+  handleHeartbeat() {
+    if (this.server) {
+      this.server.emit('server:heartbeat', { timestamp: Date.now() });
+    }
+  }
 
   private isOriginAllowed(origin: string | undefined): boolean {
     if (!origin) {
@@ -354,8 +376,7 @@ export class WebSocketGateway
   @OnEvent('sale.updated')
   async handleSaleUpdateEvent(event: SaleUpdateEvent) {
     // Format currency and get payment method label
-    const branch = await this.branchModel.findById(event.branchId).exec();
-    const currencyCode = branch?.currencyCode || 'SLE';
+    const { currencyCode } = await this.getCachedBranch(event.branchId);
 
     this.broadcastSaleUpdate(event.branchId, {
       saleId: event.saleId,

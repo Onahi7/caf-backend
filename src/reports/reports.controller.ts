@@ -4,10 +4,12 @@ import {
   Query,
   Res,
   UseGuards,
+  UseInterceptors,
   HttpStatus,
   Logger,
   BadRequestException,
 } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -32,6 +34,9 @@ import {
   ExpiryReportDto,
   TransferReportDto,
   ValuationMethod,
+  ProfitLossReportDto,
+  ExpenseReportDto,
+  DeadStockReportDto,
 } from './dto/index.js';
 
 /**
@@ -42,6 +47,7 @@ import {
 @ApiTags('Reports')
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(CacheInterceptor)
 export class ReportsController {
   private readonly logger = new Logger(ReportsController.name);
 
@@ -70,6 +76,7 @@ export class ReportsController {
    * Requirements: 14.1
    */
   @Get('dashboard-stats')
+  @CacheTTL(30000)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
@@ -156,6 +163,7 @@ export class ReportsController {
    * Property 60: Report export formats
    */
   @Get('sales')
+  @CacheTTL(30000)
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR, UserRole.CASHIER)
   async getSalesReport(
     @CurrentUser() user: CurrentUserData,
@@ -222,6 +230,7 @@ export class ReportsController {
    * Property 54: Valuation report structure
    */
   @Get('inventory')
+  @CacheTTL(60000)
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
   async getInventoryReport(
     @CurrentUser() user: CurrentUserData,
@@ -427,6 +436,7 @@ export class ReportsController {
    * Property 53: Valuation method support
    */
   @Get('valuation')
+  @CacheTTL(120000)
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
   async getValuation(
     @CurrentUser() user: CurrentUserData,
@@ -508,7 +518,7 @@ export class ReportsController {
 
   /**
    * GET /reports/customers/export
-   * Export customer report to CSV
+   * Export customer report to PDF/Excel
    */
   @Get('customers/export')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR, UserRole.CASHIER)
@@ -518,7 +528,7 @@ export class ReportsController {
     @Query('from') from: string,
     @Query('to') to: string,
     @Query('groupBy') _groupBy: string = 'day',
-    @Query('format') _format: string = 'csv',
+    @Query('format') format: string = 'pdf',
     @Res() res: Response,
   ) {
     const resolvedBranchId = resolveBranchId(user, branchId);
@@ -530,24 +540,29 @@ export class ReportsController {
       to,
       groupBy: _groupBy as 'day' | 'week' | 'month',
     });
-    const csvRows = report.topCustomers.map((customer) =>
-      [
-        customer.customerName,
-        customer.totalPurchases,
-        customer.purchaseCount,
-        customer.loyaltyPoints,
-      ]
-        .map((value) => JSON.stringify(value ?? ''))
-        .join(','),
-    );
-    const csv = ['Customer Name,Total Purchases,Purchase Count,Loyalty Points', ...csvRows].join('\n');
 
-    res.setHeader('Content-Type', 'text/csv');
+    const exportFormat = this.normalizeExportFormat(format);
+    if (exportFormat === ExportFormat.EXCEL) {
+      const buffer =
+        await this.exportService.exportCustomerReportToExcel(report);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=customer-report-${Date.now()}.xlsx`,
+      );
+      return res.send(buffer);
+    }
+
+    const buffer = await this.exportService.exportCustomerReportToPDF(report);
+    res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename=customer-report-${from}-${to}.csv`,
+      `attachment; filename=customer-report-${Date.now()}.pdf`,
     );
-    return res.send(csv);
+    return res.send(buffer);
   }
 
   /**
@@ -576,7 +591,7 @@ export class ReportsController {
 
   /**
    * GET /reports/purchases/export
-   * Export purchase report
+   * Export purchase report to PDF/Excel
    */
   @Get('purchases/export')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
@@ -586,7 +601,7 @@ export class ReportsController {
     @Query('to') to: string,
     @Query('groupBy') _groupBy: string = 'day',
     @Query('branchId') branchId: string,
-    @Query('format') _format: string = 'csv',
+    @Query('format') format: string = 'pdf',
     @Res() res: Response,
   ) {
     const resolvedBranchId = resolveBranchId(user, branchId);
@@ -598,17 +613,204 @@ export class ReportsController {
       to,
       groupBy: _groupBy as 'day' | 'week' | 'month',
     });
-    const csvRows = report.bySupplier.map((supplier) =>
-      [supplier.supplierName, supplier.purchaseCount, supplier.totalAmount]
-        .map((value) => JSON.stringify(value ?? ''))
-        .join(','),
+
+    const exportFormat = this.normalizeExportFormat(format);
+    if (exportFormat === ExportFormat.EXCEL) {
+      const buffer =
+        await this.exportService.exportPurchaseReportToExcel(report);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=purchase-report-${Date.now()}.xlsx`,
+      );
+      return res.send(buffer);
+    }
+
+    const buffer = await this.exportService.exportPurchaseReportToPDF(report);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=purchase-report-${Date.now()}.pdf`,
     );
-    const csv = ['Supplier,Purchase Count,Total Amount', ...csvRows].join('\n');
+    return res.send(buffer);
+  }
+
+  /**
+   * GET /reports/profit-loss
+   * Generate Profit & Loss report
+   */
+  @Get('profit-loss')
+  @CacheTTL(120000)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  async getProfitLossReport(
+    @CurrentUser() user: CurrentUserData,
+    @Query() dto: ProfitLossReportDto,
+  ) {
+    this.logger.log('Generating profit & loss report');
+    assignResolvedBranchId(user, dto);
+    return this.reportsService.generateProfitLossReport(dto);
+  }
+
+  /**
+   * GET /reports/profit-loss/export
+   * Export P&L report
+   */
+  @Get('profit-loss/export')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  async exportProfitLossReport(
+    @CurrentUser() user: CurrentUserData,
+    @Query() dto: ProfitLossReportDto,
+    @Query('format') _format: string,
+    @Res() res: Response,
+  ) {
+    assignResolvedBranchId(user, dto);
+    const report = await this.reportsService.generateProfitLossReport(dto);
+    const csv = [
+      'Profit & Loss Report',
+      `Period,${report.period.from} to ${report.period.to}`,
+      '',
+      'Revenue',
+      `Total Sales,${report.revenue.totalSales}`,
+      `Total Returns,${report.revenue.totalReturns}`,
+      `Net Revenue,${report.revenue.netRevenue}`,
+      '',
+      'Cost of Goods Sold',
+      `Total COGS,${report.costOfGoodsSold.totalCOGS}`,
+      '',
+      'Gross Profit',
+      `Amount,${report.grossProfit.amount}`,
+      `Margin,${report.grossProfit.margin}%`,
+      '',
+      'Expenses',
+      `Total Expenses,${report.expenses.totalExpenses}`,
+      ...report.expenses.byCategory.map(
+        (cat) => `  ${cat.category},${cat.total}`,
+      ),
+      '',
+      'Operating Profit',
+      `Amount,${report.operatingProfit.amount}`,
+      `Margin,${report.operatingProfit.margin}%`,
+    ].join('\n');
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename=purchase-report-${from}-${to}.csv`,
+      `attachment; filename=profit-loss-report-${Date.now()}.csv`,
+    );
+    return res.send(csv);
+  }
+
+  /**
+   * GET /reports/expenses
+   * Generate expense report
+   */
+  @Get('expenses')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  async getExpenseReport(
+    @CurrentUser() user: CurrentUserData,
+    @Query() dto: ExpenseReportDto,
+  ) {
+    this.logger.log('Generating expense report');
+    assignResolvedBranchId(user, dto);
+    return this.reportsService.generateExpenseReport(dto);
+  }
+
+  /**
+   * GET /reports/expenses/export
+   * Export expense report
+   */
+  @Get('expenses/export')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  async exportExpenseReport(
+    @CurrentUser() user: CurrentUserData,
+    @Query() dto: ExpenseReportDto,
+    @Query('format') _format: string,
+    @Res() res: Response,
+  ) {
+    assignResolvedBranchId(user, dto);
+    const report = await this.reportsService.generateExpenseReport(dto);
+
+    const csvRows = report.byCategory.map((cat) =>
+      [cat.category, cat.total, cat.count, `${cat.percentage}%`]
+        .map((v) => JSON.stringify(v ?? ''))
+        .join(','),
+    );
+    const csv = [
+      'Category,Total,Count,Percentage',
+      ...csvRows,
+      '',
+      `Total Expenses,${report.summary.totalExpenses}`,
+      `Total Count,${report.summary.totalCount}`,
+      `Average,${report.summary.averageExpense}`,
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=expense-report-${Date.now()}.csv`,
+    );
+    return res.send(csv);
+  }
+
+  /**
+   * GET /reports/dead-stock
+   * Generate dead stock report
+   */
+  @Get('dead-stock')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  async getDeadStockReport(
+    @CurrentUser() user: CurrentUserData,
+    @Query() dto: DeadStockReportDto,
+  ) {
+    this.logger.log('Generating dead stock report');
+    assignResolvedBranchId(user, dto);
+    return this.reportsService.generateDeadStockReport(dto);
+  }
+
+  /**
+   * GET /reports/dead-stock/export
+   * Export dead stock report
+   */
+  @Get('dead-stock/export')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  async exportDeadStockReport(
+    @CurrentUser() user: CurrentUserData,
+    @Query() dto: DeadStockReportDto,
+    @Query('format') _format: string,
+    @Res() res: Response,
+  ) {
+    assignResolvedBranchId(user, dto);
+    const report = await this.reportsService.generateDeadStockReport(dto);
+
+    const csvRows = report.items.map((item) =>
+      [
+        item.productName,
+        item.sku,
+        item.branchName,
+        item.quantityAvailable,
+        item.costPrice,
+        item.totalValue,
+        item.daysSinceLastSale,
+      ]
+        .map((v) => JSON.stringify(v ?? ''))
+        .join(','),
+    );
+    const csv = [
+      'Product,SKU,Branch,Quantity,Cost Price,Total Value,Days Without Sale',
+      ...csvRows,
+      '',
+      `Total Dead Stock Items,${report.summary.totalDeadStockItems}`,
+      `Total Value,${report.summary.totalDeadStockValue}`,
+      `Total Quantity,${report.summary.totalQuantity}`,
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=dead-stock-report-${Date.now()}.csv`,
     );
     return res.send(csv);
   }
@@ -619,6 +821,7 @@ export class ReportsController {
    * Replaces Nx3 per-branch API calls with a single efficient query.
    */
   @Get('hq-summary')
+  @CacheTTL(120000)
   @Roles(UserRole.SUPER_ADMIN)
   async getHQDashboardSummary(@CurrentUser() user: CurrentUserData) {
     this.logger.log(`HQ dashboard summary requested by user: ${user.userId}`);

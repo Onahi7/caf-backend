@@ -142,6 +142,31 @@ export class ExpensesService {
     return deletedExpense;
   }
 
+  async update(id: string, updateExpenseDto: Partial<CreateExpenseDto>): Promise<ExpenseDocument> {
+    const expense = await this.expensesRepository.findById(id);
+
+    if (!expense) {
+      throw new NotFoundException(`Expense with ID ${id} not found`);
+    }
+
+    // Check if the shift is still open for editing
+    const shift = await this.shiftsRepository.findById(
+      expense.shiftId.toString(),
+    );
+
+    if (shift && shift.status !== 'open') {
+      throw new ForbiddenException('Cannot edit expense from a closed shift');
+    }
+
+    const updated = await this.expensesRepository.update(id, updateExpenseDto);
+
+    if (!updated) {
+      throw new NotFoundException(`Expense with ID ${id} not found`);
+    }
+
+    return updated;
+  }
+
   /**
    * Permanently delete an expense
    */

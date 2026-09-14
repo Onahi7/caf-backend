@@ -70,6 +70,20 @@ export class CreatePromotionDto {
   usageLimit?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(1)
+  buyQuantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  getQuantity?: number;
+
+  @IsOptional()
+  @IsMongoId()
+  getProductId?: string;
+
+  @IsOptional()
   @IsString()
   code?: string;
 

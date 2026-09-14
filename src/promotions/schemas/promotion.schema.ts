@@ -60,6 +60,15 @@ export class Promotion extends Document {
   @Prop({ default: 0 })
   usageCount!: number;
 
+  @Prop({ default: 0 })
+  buyQuantity!: number;
+
+  @Prop({ default: 0 })
+  getQuantity!: number;
+
+  @Prop({ type: Types.ObjectId, ref: 'Product' })
+  getProductId?: Types.ObjectId;
+
   @Prop()
   code?: string; // optional promo code
 

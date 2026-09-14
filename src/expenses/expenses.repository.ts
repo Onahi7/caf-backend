@@ -171,6 +171,17 @@ export class ExpensesRepository {
     );
   }
 
+  async update(
+    id: string,
+    data: Partial<CreateExpenseDto>,
+  ): Promise<ExpenseDocument | null> {
+    return this.expenseModel.findByIdAndUpdate(
+      id,
+      { $set: data },
+      { new: true },
+    ).exec();
+  }
+
   async delete(id: string): Promise<void> {
     await this.expenseModel.findByIdAndDelete(id);
   }

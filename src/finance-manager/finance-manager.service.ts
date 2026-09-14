@@ -22,6 +22,7 @@ import { EventsService } from '../websocket/events.service.js';
 @Injectable()
 export class FinanceManagerService {
   private readonly logger = new Logger(FinanceManagerService.name);
+  private readonly varianceThreshold = Number(process.env.RECONCILIATION_VARIANCE_THRESHOLD) || 1;
 
   constructor(
     @InjectConnection() private readonly connection: Connection,
@@ -58,7 +59,7 @@ export class FinanceManagerService {
     this.logger.log(`Reconciliation created: ${dto.source} ${dto.period} for branch ${dto.branchId}`);
 
     const absDisc = Math.abs(discrepancy);
-    if (absDisc > 1) {
+    if (absDisc > this.varianceThreshold) {
       const severity = this.varianceSeverity(absDisc);
       this.eventsService.emitReconciliationVariance({
         reconciliationId: recon._id.toString(),
@@ -491,6 +492,27 @@ export class FinanceManagerService {
       throw new BadRequestException('Source must be "emr" or "lab"');
     }
 
+    // Idempotency check: prevent duplicate pushes for same source/date/branch
+    const startOfDay = new Date(dto.date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(dto.date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const existingEntries = await this.cashModel.find({
+      branchId: new Types.ObjectId(dto.branchId),
+      category: CashEntryCategory.SALES,
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+      notes: { $regex: `source:${dto.source.toLowerCase()}` },
+    }).exec();
+
+    if (existingEntries.length > 0) {
+      return {
+        message: 'Finance push already processed for this date/source',
+        entries: existingEntries,
+        duplicate: true,
+      } as any;
+    }
+
     const branchObjectId = new Types.ObjectId(dto.branchId);
     const entryDate = new Date(dto.date);
     const sourceLabel = source.toUpperCase();
@@ -502,7 +524,8 @@ export class FinanceManagerService {
       amount: dto.totalRevenue || 0,
       description: `${sourceLabel} Daily Revenue - ${dto.date}`,
       notes: [
-        dto.notes?.slice(0, 500),
+        `source:${source}`,
+        dto.notes?.slice(0, 1000),
         `Payment breakdown: Cash=${dto.cashCollected || 0}, Orange=${dto.orangeMoneyCollected || 0}, Afri=${dto.afrimoneyCollected || 0}`,
         `Orders: ${dto.orderCount || 0}, Outstanding: ${dto.outstandingBalance || 0}`,
         dto.submittedBy ? `Submitted by: ${dto.submittedBy}` : undefined,

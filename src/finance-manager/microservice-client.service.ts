@@ -3,11 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-
-interface ServiceToken {
-  token: string;
-  expiresAt: number;
-}
+import { RedisService } from '../redis/redis.service.js';
 
 interface PaymentStats {
   totalRevenue: number;
@@ -85,14 +81,16 @@ export interface ExternalFinancialData {
 export class MicroserviceClientService implements OnModuleInit {
   private readonly logger = new Logger(MicroserviceClientService.name);
   private readonly staleAfterMs = 15 * 60 * 1000;
-  private emrToken: ServiceToken | null = null;
-  private labToken: ServiceToken | null = null;
   private cachedFinancialData: ExternalFinancialData | null = null;
   private lastSyncStartedAt = 0;
+  private emrCircuitBroken = false;
+  private labCircuitBroken = false;
+  private readonly circuitResetMs = 60000;
 
   constructor(
     private readonly config: ConfigService,
     private readonly http: HttpService,
+    private readonly redisService: RedisService,
   ) {}
 
   onModuleInit(): void {
@@ -101,88 +99,122 @@ export class MicroserviceClientService implements OnModuleInit {
 
   // --- Authentication --------------------------------------
 
-  private async getEmrToken(): Promise<string> {
-    if (this.emrToken && Date.now() < this.emrToken.expiresAt) {
-      return this.emrToken.token;
-    }
-    const baseUrl = this.config.get<string>('EMR_API_BASE_URL');
-    const username = this.config.get<string>('EMR_API_USERNAME');
-    const password = this.config.get<string>('EMR_API_PASSWORD');
-    if (!baseUrl || !username || !password) {
-      throw new Error('EMR API credentials not configured');
-    }
+  private async getEmrToken(): Promise<string | null> {
     try {
+      const cached = await this.redisService.get<string>('microservice:emr:token');
+      if (cached) return cached;
+
+      const baseUrl = this.config.get<string>('EMR_API_BASE_URL');
+      const username = this.config.get<string>('EMR_API_USERNAME');
+      const password = this.config.get<string>('EMR_API_PASSWORD');
+      if (!baseUrl || !username || !password) return null;
+
       const res = await firstValueFrom(
         this.http.post(`${baseUrl}/auth/login`, { username, password }),
       );
       const data = res.data;
-      this.emrToken = {
-        token: data.accessToken || data.access_token || data.token,
-        expiresAt: Date.now() + 50 * 60 * 1000,
-      };
-      this.logger.log('EMR token obtained');
-      return this.emrToken.token;
+      const token = data.accessToken || data.access_token || data.token;
+      if (token) {
+        await this.redisService.set('microservice:emr:token', token, 3000 * 1000);
+        this.logger.log('EMR token obtained and cached in Redis');
+      }
+      return token || null;
     } catch (error: any) {
-      this.logger.error(`EMR auth failed: ${error.message}`);
-      throw error;
+      this.logger.warn(`Failed to get EMR token: ${error.message}`);
+      return null;
     }
   }
 
-  private async getLabToken(): Promise<string> {
-    if (this.labToken && Date.now() < this.labToken.expiresAt) {
-      return this.labToken.token;
-    }
-    const baseUrl = this.config.get<string>('LAB_API_BASE_URL');
-    const username = this.config.get<string>('LAB_API_USERNAME');
-    const password = this.config.get<string>('LAB_API_PASSWORD');
-    if (!baseUrl || !username || !password) {
-      throw new Error('LAB API credentials not configured');
-    }
+  private async getLabToken(): Promise<string | null> {
     try {
+      const cached = await this.redisService.get<string>('microservice:lab:token');
+      if (cached) return cached;
+
+      const baseUrl = this.config.get<string>('LAB_API_BASE_URL');
+      const username = this.config.get<string>('LAB_API_USERNAME');
+      const password = this.config.get<string>('LAB_API_PASSWORD');
+      if (!baseUrl || !username || !password) return null;
+
       const res = await firstValueFrom(
         this.http.post(`${baseUrl}/auth/login`, { username, password }),
       );
       const data = res.data;
-      this.labToken = {
-        token: data.accessToken || data.access_token || data.token,
-        expiresAt: Date.now() + 50 * 60 * 1000,
-      };
-      this.logger.log('LAB token obtained');
-      return this.labToken.token;
+      const token = data.accessToken || data.access_token || data.token;
+      if (token) {
+        await this.redisService.set('microservice:lab:token', token, 3000 * 1000);
+        this.logger.log('LAB token obtained and cached in Redis');
+      }
+      return token || null;
     } catch (error: any) {
-      this.logger.error(`LAB auth failed: ${error.message}`);
-      throw error;
+      this.logger.warn(`Failed to get LAB token: ${error.message}`);
+      return null;
     }
+  }
+
+  private async withRetry<T>(
+    fn: () => Promise<T>,
+    maxRetries = 3,
+    baseDelayMs = 1000,
+  ): Promise<T> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt === maxRetries) throw error;
+        const delay = baseDelayMs * Math.pow(2, attempt - 1);
+        this.logger.warn(`Attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+    throw new Error('Unreachable');
   }
 
   private async emrGet<T>(path: string): Promise<T | null> {
+    if (this.emrCircuitBroken) {
+      this.logger.warn('EMR circuit is open, skipping call');
+      return null;
+    }
     try {
       const token = await this.getEmrToken();
+      if (!token) return null;
       const baseUrl = this.config.get<string>('EMR_API_BASE_URL');
-      const res = await firstValueFrom(
-        this.http.get(`${baseUrl}${path}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+      const res = await this.withRetry(() =>
+        firstValueFrom(
+          this.http.get(`${baseUrl}${path}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ),
       );
       return (res.data?.data ?? res.data) as T;
     } catch (error: any) {
-      this.logger.warn(`EMR GET ${path} failed: ${error.message}`);
+      this.logger.warn(`EMR GET ${path} failed after retries: ${error.message}`);
+      this.emrCircuitBroken = true;
+      setTimeout(() => { this.emrCircuitBroken = false; }, this.circuitResetMs);
       return null;
     }
   }
 
   private async labGet<T>(path: string): Promise<T | null> {
+    if (this.labCircuitBroken) {
+      this.logger.warn('LAB circuit is open, skipping call');
+      return null;
+    }
     try {
       const token = await this.getLabToken();
+      if (!token) return null;
       const baseUrl = this.config.get<string>('LAB_API_BASE_URL');
-      const res = await firstValueFrom(
-        this.http.get(`${baseUrl}${path}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+      const res = await this.withRetry(() =>
+        firstValueFrom(
+          this.http.get(`${baseUrl}${path}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ),
       );
       return (res.data?.data ?? res.data) as T;
     } catch (error: any) {
-      this.logger.warn(`LAB GET ${path} failed: ${error.message}`);
+      this.logger.warn(`LAB GET ${path} failed after retries: ${error.message}`);
+      this.labCircuitBroken = true;
+      setTimeout(() => { this.labCircuitBroken = false; }, this.circuitResetMs);
       return null;
     }
   }

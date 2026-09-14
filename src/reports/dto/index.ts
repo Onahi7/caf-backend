@@ -2,3 +2,8 @@ export * from './sales-report.dto.js';
 export * from './inventory-report.dto.js';
 export * from './expiry-report.dto.js';
 export * from './transfer-report.dto.js';
+export * from './customer-report.dto.js';
+export * from './purchase-report.dto.js';
+export * from './profit-loss-report.dto.js';
+export * from './expense-report.dto.js';
+export * from './dead-stock-report.dto.js';

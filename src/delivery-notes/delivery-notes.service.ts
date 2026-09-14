@@ -58,6 +58,26 @@ export class DeliveryNotesService {
     return dn.save();
   }
 
+  async updateStatus(id: string, userId: string, status: DeliveryStatus, notes?: string): Promise<DeliveryNoteDocument> {
+    const dn = await this.findById(id);
+    const validTransitions: Record<string, DeliveryStatus[]> = {
+      [DeliveryStatus.PENDING]: [DeliveryStatus.IN_TRANSIT, DeliveryStatus.DELIVERED],
+      [DeliveryStatus.IN_TRANSIT]: [DeliveryStatus.DELIVERED, DeliveryStatus.PARTIAL],
+      [DeliveryStatus.PARTIAL]: [DeliveryStatus.DELIVERED, DeliveryStatus.IN_TRANSIT],
+    };
+    const allowed = validTransitions[dn.status] || [];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(`Cannot transition from ${dn.status} to ${status}`);
+    }
+    dn.status = status;
+    if (status === DeliveryStatus.DELIVERED) {
+      dn.deliveredAt = new Date();
+      dn.deliveredBy = new Types.ObjectId(userId);
+    }
+    if (notes) dn.notes = notes;
+    return dn.save();
+  }
+
   async generatePdf(id: string): Promise<Buffer> {
     const dn = await this.findById(id);
     const customer = (dn as any).customerId;

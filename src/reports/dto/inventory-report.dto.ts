@@ -2,6 +2,7 @@ import { IsOptional, IsString, IsBoolean, IsEnum } from 'class-validator';
 
 export enum ValuationMethod {
   FIFO = 'fifo',
+  LIFO = 'lifo',
   MOVING_AVERAGE = 'moving_average',
 }
 

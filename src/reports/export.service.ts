@@ -9,6 +9,7 @@ import {
   ExpiryReportResult,
   TransferReportResult,
 } from './dto/index.js';
+import type { CustomerReportResult, PurchaseReportResult } from './dto/index.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 
@@ -707,6 +708,248 @@ export class ExportService {
       column.width = 20;
     });
 
+    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+  }
+
+  /**
+   * Export customer report to PDF
+   */
+  async exportCustomerReportToPDF(report: CustomerReportResult): Promise<Buffer> {
+    this.logger.log('Exporting customer report to PDF');
+    const currencyCode = report.currencyCode || 'SLE';
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50 });
+      const chunks: Buffer[] = [];
+
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      doc.fontSize(20).text('Customer Report', { align: 'center' });
+      doc.moveDown();
+      doc.fontSize(10).text(`Generated: ${new Date().toLocaleString()}`, { align: 'right' });
+      doc.moveDown(2);
+
+      doc.fontSize(14).text('Summary', { underline: true });
+      doc.moveDown();
+      doc.fontSize(10);
+      doc.text(`Total Customers: ${report.totalCustomers}`);
+      doc.text(`Active Customers: ${report.activeCustomers}`);
+      doc.text(`New Customers: ${report.newCustomers}`);
+      doc.text(`Total Loyalty Points: ${report.totalLoyaltyPoints}`);
+      doc.moveDown(2);
+
+      doc.fontSize(14).text('Segmentation', { underline: true });
+      doc.moveDown();
+      doc.fontSize(10);
+      doc.text(`High Value: ${report.segmentation.highValue}`);
+      doc.text(`Medium: ${report.segmentation.medium}`);
+      doc.text(`Low: ${report.segmentation.low}`);
+      doc.text(`Inactive: ${report.segmentation.inactive}`);
+      doc.moveDown(2);
+
+      if (report.topCustomers.length > 0) {
+        doc.fontSize(14).text('Top Customers', { underline: true });
+        doc.moveDown();
+        doc.fontSize(10);
+        report.topCustomers.forEach((c, i) => {
+          doc.text(`${i + 1}. ${c.customerName} - Purchases: ${CurrencyUtil.format(c.totalPurchases, currencyCode)}, Orders: ${c.purchaseCount}, Points: ${c.loyaltyPoints}`);
+          doc.moveDown(0.5);
+        });
+      }
+
+      doc.end();
+    });
+  }
+
+  /**
+   * Export customer report to Excel
+   */
+  async exportCustomerReportToExcel(report: CustomerReportResult): Promise<Buffer> {
+    this.logger.log('Exporting customer report to Excel');
+    const currencyCode = report.currencyCode || 'SLE';
+    const numFmt = this.getCurrencyNumFmt(currencyCode);
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Customer Report');
+
+    worksheet.mergeCells('A1:E1');
+    worksheet.getCell('A1').value = 'Customer Report';
+    worksheet.getCell('A1').font = { size: 16, bold: true };
+    worksheet.getCell('A1').alignment = { horizontal: 'center' };
+
+    let row = 3;
+    worksheet.getCell(`A${row}`).value = 'Summary';
+    worksheet.getCell(`A${row}`).font = { bold: true, size: 12 };
+    row++;
+
+    const summaryData = [
+      ['Total Customers', report.totalCustomers],
+      ['Active Customers', report.activeCustomers],
+      ['New Customers', report.newCustomers],
+      ['Total Loyalty Points', report.totalLoyaltyPoints],
+    ];
+    summaryData.forEach(([label, value]) => {
+      worksheet.getCell(`A${row}`).value = label;
+      worksheet.getCell(`B${row}`).value = value;
+      row++;
+    });
+
+    row += 2;
+    worksheet.getCell(`A${row}`).value = 'Segmentation';
+    worksheet.getCell(`A${row}`).font = { bold: true, size: 12 };
+    row++;
+    const segData = [
+      ['High Value', report.segmentation.highValue],
+      ['Medium', report.segmentation.medium],
+      ['Low', report.segmentation.low],
+      ['Inactive', report.segmentation.inactive],
+    ];
+    segData.forEach(([label, value]) => {
+      worksheet.getCell(`A${row}`).value = label;
+      worksheet.getCell(`B${row}`).value = value;
+      row++;
+    });
+
+    row += 2;
+    worksheet.getCell(`A${row}`).value = 'Customer Name';
+    worksheet.getCell(`B${row}`).value = 'Total Purchases';
+    worksheet.getCell(`C${row}`).value = 'Order Count';
+    worksheet.getCell(`D${row}`).value = 'Loyalty Points';
+    worksheet.getRow(row).font = { bold: true };
+    row++;
+
+    report.topCustomers.forEach((c) => {
+      worksheet.getCell(`A${row}`).value = c.customerName;
+      worksheet.getCell(`B${row}`).value = c.totalPurchases;
+      worksheet.getCell(`B${row}`).numFmt = numFmt;
+      worksheet.getCell(`C${row}`).value = c.purchaseCount;
+      worksheet.getCell(`D${row}`).value = c.loyaltyPoints;
+      row++;
+    });
+
+    worksheet.columns.forEach((column) => { column.width = 20; });
+    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+  }
+
+  /**
+   * Export purchase report to PDF
+   */
+  async exportPurchaseReportToPDF(report: PurchaseReportResult): Promise<Buffer> {
+    this.logger.log('Exporting purchase report to PDF');
+    const currencyCode = report.currencyCode || 'SLE';
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50 });
+      const chunks: Buffer[] = [];
+
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      doc.fontSize(20).text('Purchase Report', { align: 'center' });
+      doc.moveDown();
+      doc.fontSize(10).text(`Generated: ${new Date().toLocaleString()}`, { align: 'right' });
+      doc.moveDown(2);
+
+      doc.fontSize(14).text('Summary', { underline: true });
+      doc.moveDown();
+      doc.fontSize(10);
+      doc.text(`Total Purchases: ${report.totalPurchases}`);
+      doc.text(`Total Amount: ${CurrencyUtil.format(report.totalAmount, currencyCode)}`);
+      doc.text(`Total Items: ${report.totalItems}`);
+      doc.moveDown(2);
+
+      if (report.bySupplier.length > 0) {
+        doc.fontSize(14).text('By Supplier', { underline: true });
+        doc.moveDown();
+        doc.fontSize(10);
+        report.bySupplier.forEach((s) => {
+          doc.text(`${s.supplierName} - Count: ${s.purchaseCount}, Amount: ${CurrencyUtil.format(s.totalAmount, currencyCode)}`);
+          doc.moveDown(0.5);
+        });
+        doc.moveDown();
+      }
+
+      if (report.byProduct.length > 0) {
+        doc.fontSize(14).text('Top Products', { underline: true });
+        doc.moveDown();
+        doc.fontSize(10);
+        report.byProduct.forEach((p) => {
+          doc.text(`${p.productName} - Qty: ${p.quantity}, Amount: ${CurrencyUtil.format(p.totalAmount, currencyCode)}`);
+          doc.moveDown(0.5);
+        });
+      }
+
+      doc.end();
+    });
+  }
+
+  /**
+   * Export purchase report to Excel
+   */
+  async exportPurchaseReportToExcel(report: PurchaseReportResult): Promise<Buffer> {
+    this.logger.log('Exporting purchase report to Excel');
+    const currencyCode = report.currencyCode || 'SLE';
+    const numFmt = this.getCurrencyNumFmt(currencyCode);
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Purchase Report');
+
+    worksheet.mergeCells('A1:D1');
+    worksheet.getCell('A1').value = 'Purchase Report';
+    worksheet.getCell('A1').font = { size: 16, bold: true };
+    worksheet.getCell('A1').alignment = { horizontal: 'center' };
+
+    let row = 3;
+    worksheet.getCell(`A${row}`).value = 'Summary';
+    worksheet.getCell(`A${row}`).font = { bold: true, size: 12 };
+    row++;
+
+    const summaryData = [
+      ['Total Purchases', report.totalPurchases],
+      ['Total Amount', report.totalAmount],
+      ['Total Items', report.totalItems],
+    ];
+    summaryData.forEach(([label, value]) => {
+      worksheet.getCell(`A${row}`).value = label;
+      worksheet.getCell(`B${row}`).value = value;
+      if (label === 'Total Amount') worksheet.getCell(`B${row}`).numFmt = numFmt;
+      row++;
+    });
+
+    row += 2;
+    worksheet.getCell(`A${row}`).value = 'Supplier';
+    worksheet.getCell(`B${row}`).value = 'Purchase Count';
+    worksheet.getCell(`C${row}`).value = 'Total Amount';
+    worksheet.getRow(row).font = { bold: true };
+    row++;
+
+    report.bySupplier.forEach((s) => {
+      worksheet.getCell(`A${row}`).value = s.supplierName;
+      worksheet.getCell(`B${row}`).value = s.purchaseCount;
+      worksheet.getCell(`C${row}`).value = s.totalAmount;
+      worksheet.getCell(`C${row}`).numFmt = numFmt;
+      row++;
+    });
+
+    row += 2;
+    worksheet.getCell(`A${row}`).value = 'Product';
+    worksheet.getCell(`B${row}`).value = 'Quantity';
+    worksheet.getCell(`C${row}`).value = 'Total Amount';
+    worksheet.getRow(row).font = { bold: true };
+    row++;
+
+    report.byProduct.forEach((p) => {
+      worksheet.getCell(`A${row}`).value = p.productName;
+      worksheet.getCell(`B${row}`).value = p.quantity;
+      worksheet.getCell(`C${row}`).value = p.totalAmount;
+      worksheet.getCell(`C${row}`).numFmt = numFmt;
+      row++;
+    });
+
+    worksheet.columns.forEach((column) => { column.width = 20; });
     return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
   }
 }

@@ -13,13 +13,24 @@ import {
 } from '@nestjs/common';
 import { NotificationsService } from './notifications.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { RolesGuard } from '../auth/guards/roles.guard.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
+import { UserRole } from '../users/schemas/user.schema.js';
 
 interface AuthedRequest extends Request {
   user: { sub: string; role: string; branchId?: string };
 }
 
 @Controller('notifications')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(
+  UserRole.SUPER_ADMIN,
+  UserRole.BRANCH_MANAGER,
+  UserRole.FINANCE_MANAGER,
+  UserRole.AUDITOR,
+  UserRole.CASHIER,
+  UserRole.MARKETER,
+)
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 

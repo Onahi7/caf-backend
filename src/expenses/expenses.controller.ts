@@ -29,10 +29,15 @@ import {
 import { apiResponse, apiListResponse, apiMessageResponse } from '../common/utils/api-response.util.js';
 import { IdempotencyGuard } from '../common/guards/idempotency.guard.js';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor.js';
+import { AuditInterceptor } from '../common/interceptors/audit.interceptor.js';
+import { Audit } from '../common/decorators/audit.decorator.js';
+import { AuditAction, AuditResource } from '../audit/schemas/audit-log.schema.js';
+import { UpdateExpenseDto } from './dto/update-expense.dto.js';
 
 @ApiTags('Expenses')
 @Controller('expenses')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(AuditInterceptor)
 export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}
 
@@ -48,6 +53,7 @@ export class ExpensesController {
   )
   @UseGuards(IdempotencyGuard)
   @UseInterceptors(IdempotencyInterceptor)
+  @Audit({ action: AuditAction.CREATE, resource: AuditResource.EXPENSE })
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createExpenseDto: CreateExpenseDto,
@@ -188,6 +194,17 @@ export class ExpensesController {
     const start = startDate ? new Date(startDate) : undefined;
     const end = endDate ? new Date(endDate) : undefined;
     return this.expensesService.getTotalByCategory(resolvedBranchId, start, end);
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  @Audit({ action: AuditAction.UPDATE, resource: AuditResource.EXPENSE })
+  async update(
+    @Param('id') id: string,
+    @Body() updateExpenseDto: UpdateExpenseDto,
+  ): Promise<{ success: true; data: ExpenseDocument }> {
+    const expense = await this.expensesService.update(id, updateExpenseDto);
+    return apiResponse(expense);
   }
 
   /**

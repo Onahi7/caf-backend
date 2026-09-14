@@ -14,13 +14,23 @@ import {
 import { SavedReportsService } from './saved-reports.service.js';
 import { CreateSavedReportDto, UpdateSavedReportDto } from './dto/saved-report.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { RolesGuard } from '../auth/guards/roles.guard.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
+import { UserRole } from '../users/schemas/user.schema.js';
 
 interface AuthedRequest extends Request {
   user: { sub: string };
 }
 
 @Controller('saved-reports')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(
+  UserRole.SUPER_ADMIN,
+  UserRole.BRANCH_MANAGER,
+  UserRole.FINANCE_MANAGER,
+  UserRole.AUDITOR,
+  UserRole.CASHIER,
+)
 export class SavedReportsController {
   constructor(private readonly service: SavedReportsService) {}
 
