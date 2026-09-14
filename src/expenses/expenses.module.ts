@@ -5,11 +5,13 @@ import { ExpensesService } from './expenses.service.js';
 import { ExpensesRepository } from './expenses.repository.js';
 import { Expense, ExpenseSchema } from './schemas/expense.schema.js';
 import { ShiftsModule } from '../shifts/shifts.module.js';
+import { AuditModule } from '../audit/audit.module.js';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Expense.name, schema: ExpenseSchema }]),
     forwardRef(() => ShiftsModule),
+    AuditModule,
   ],
   controllers: [ExpensesController],
   providers: [ExpensesService, ExpensesRepository],

@@ -5,11 +5,13 @@ import { DeliveryNotesController } from './delivery-notes.controller.js';
 import { DeliveryNotesService } from './delivery-notes.service.js';
 import { DeliveryNotesRepository } from './delivery-notes.repository.js';
 import { CommonServicesModule } from '../common/services/common-services.module.js';
+import { AuditModule } from '../audit/audit.module.js';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: DeliveryNote.name, schema: DeliveryNoteSchema }]),
     CommonServicesModule,
+    AuditModule,
   ],
   controllers: [DeliveryNotesController],
   providers: [DeliveryNotesService, DeliveryNotesRepository],

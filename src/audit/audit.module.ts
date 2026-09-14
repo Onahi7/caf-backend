@@ -1,10 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, Global } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuditController } from './audit.controller.js';
 import { AuditService } from './audit.service.js';
 import { AuditRepository } from './audit.repository.js';
 import { AuditLog, AuditLogSchema } from './schemas/audit-log.schema.js';
 
+@Global()
 @Module({
   imports: [
     MongooseModule.forFeature([
