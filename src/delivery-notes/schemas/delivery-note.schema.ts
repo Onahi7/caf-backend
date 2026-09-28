@@ -65,4 +65,3 @@ export class DeliveryNote {
 
 export const DeliveryNoteSchema = SchemaFactory.createForClass(DeliveryNote);
 DeliveryNoteSchema.index({ branchId: 1, createdAt: -1 });
-DeliveryNoteSchema.index({ proformaInvoiceId: 1 });

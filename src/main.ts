@@ -1,3 +1,4 @@
+import dns from 'node:dns';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -5,6 +6,35 @@ import helmet from 'helmet';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+
+// Resolve MongoDB SRV records and cloud endpoints reliably across local routers
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+  dns.setDefaultResultOrder('ipv4first');
+
+  const origLookup = dns.lookup.bind(dns);
+  (dns as any).lookup = function (hostname: string, options: any, callback: any) {
+    const cb = typeof options === 'function' ? options : callback;
+    const opts = typeof options === 'object' && options !== null ? options : {};
+
+    origLookup(hostname, options, (err: any, address: any, family: any) => {
+      if (err && (err.code === 'EAI_AGAIN' || err.code === 'ENOTFOUND')) {
+        dns.resolve4(hostname, (resErr, addresses) => {
+          if (!resErr && addresses && addresses.length > 0) {
+            return opts.all
+              ? cb(null, addresses.map((a) => ({ address: a, family: 4 })))
+              : cb(null, addresses[0], 4);
+          }
+          return cb(err, address, family);
+        });
+        return;
+      }
+      return cb(err, address, family);
+    });
+  };
+} catch {
+  // ignore
+}
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');

@@ -45,6 +45,4 @@ export class Customer extends Document {
 export const CustomerSchema = SchemaFactory.createForClass(Customer);
 
 // Indexes
-CustomerSchema.index({ phone: 1 });
-CustomerSchema.index({ email: 1 });
 CustomerSchema.index({ firstName: 1, lastName: 1 });

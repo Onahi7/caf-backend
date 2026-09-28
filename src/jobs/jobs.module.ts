@@ -69,8 +69,8 @@ export class JobsModule {
             return {
               redis: {
                 ...redisOptions,
-                maxRetriesPerRequest: 1,
-                enableReadyCheck: true,
+                maxRetriesPerRequest: null,
+                enableReadyCheck: false,
                 enableOfflineQueue: false,
                 connectTimeout: 5000,
                 retryStrategy: (times: number) => {

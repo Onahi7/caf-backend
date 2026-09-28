@@ -135,4 +135,3 @@ export class ProformaInvoice {
 export const ProformaInvoiceSchema = SchemaFactory.createForClass(ProformaInvoice);
 ProformaInvoiceSchema.index({ branchId: 1, createdAt: -1 });
 ProformaInvoiceSchema.index({ status: 1, branchId: 1 });
-ProformaInvoiceSchema.index({ customerId: 1 });
