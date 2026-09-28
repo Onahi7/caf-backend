@@ -16,6 +16,7 @@ import { ShiftFilterDto } from './dto/shift-filter.dto.js';
 import { ShiftDocument, ShiftStatus } from './schemas/shift.schema.js';
 import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { SalesService } from '../sales/sales.service.js';
+import { ExpensesService } from '../expenses/expenses.service.js';
 import { Connection } from 'mongoose';
 import {
   PaymentMethod,
@@ -34,6 +35,8 @@ export class ShiftsService {
     private readonly shiftsRepository: ShiftsRepository,
     @Inject(forwardRef(() => SalesService))
     private readonly salesService: SalesService,
+    @Inject(forwardRef(() => ExpensesService))
+    private readonly expensesService: ExpensesService,
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Branch.name) private readonly branchModel: Model<BranchDocument>,
   ) {}
@@ -167,7 +170,9 @@ export class ShiftsService {
     }
 
     this.validateCashAmount(closeShiftDto.closingCash, 'closingCash');
-    this.validateCashAmount(totalSales, 'totalSales');
+    if (!Number.isFinite(totalSales)) {
+      throw new BadRequestException('Invalid total sales: must be a finite number');
+    }
 
     const shift = await this.shiftsRepository.findById(closeShiftDto.shiftId);
 
@@ -181,8 +186,8 @@ export class ShiftsService {
       throw new BadRequestException('Shift is already closed');
     }
 
-    // Calculate expected cash: opening cash + total sales
-    const expectedCash = shift.openingCash + totalSales;
+    // Calculate expected cash: opening cash + net cash movement (cash sales - expenses)
+    const expectedCash = Math.max(0, shift.openingCash + totalSales);
 
     const closedShift = await this.shiftsRepository.closeShift(
       closeShiftDto.shiftId,
@@ -312,6 +317,8 @@ export class ShiftsService {
     openingCash: number;
     closingCash: number;
     expectedCash: number;
+    totalExpenses: number;
+    totalExpensesFormatted: string;
     totalCashSales: number;
     totalCardSales: number;
     totalMobileSales: number;
@@ -353,10 +360,26 @@ export class ShiftsService {
       )
       .reduce((sum, item) => sum + item.total, 0);
 
+    const totalExpenses = await this.expensesService.getTotalByShift(shiftId);
+    const cashCollections = await this.salesService.calculateShiftCashCollections(shiftId);
+
     const openingCash = shift.openingCash;
-    const expectedCash = shift.expectedCash || (shift.openingCash + totalSales);
+    // Expected cash in drawer = opening cash + cash collected - expenses disbursed
+    const computedExpectedCash = Math.max(
+      0,
+      openingCash + (cashCollections || totalCashSales) - totalExpenses,
+    );
+    const expectedCash =
+      shift.status === ShiftStatus.CLOSED &&
+      shift.expectedCash !== undefined &&
+      shift.expectedCash !== null
+        ? shift.expectedCash
+        : computedExpectedCash;
     const closingCash = shift.closingCash || 0;
-    const variance = shift.variance || 0;
+    const variance =
+      shift.status === ShiftStatus.CLOSED && shift.variance !== undefined
+        ? shift.variance
+        : closingCash - expectedCash;
 
     const branch =
       typeof shift.branchId === 'object' && 'currencyCode' in shift.branchId
@@ -392,7 +415,9 @@ export class ShiftsService {
       openingCash,
       closingCash,
       expectedCash,
-      totalCashSales,
+      totalExpenses,
+      totalExpensesFormatted: CurrencyUtil.format(totalExpenses, currencyCode),
+      totalCashSales: cashCollections || totalCashSales,
       totalCardSales,
       totalMobileSales,
       paymentMethodTotals,
