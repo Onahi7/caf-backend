@@ -18,8 +18,41 @@ import { AuditService } from '../audit/audit.service.js';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly ACCESS_TOKEN_EXPIRY = 14 * 60 * 60; // 14 hours in seconds
-  private readonly REFRESH_TOKEN_EXPIRY = 7 * 24 * 60 * 60; // 7 days in seconds
+  private readonly REFRESH_TOKEN_EXPIRY = 30 * 24 * 60 * 60; // 30 days in seconds
+
+  /**
+   * Determine access token expiration based on user role.
+   * Admin roles (super_admin, branch_manager, auditor, finance_manager) receive 7 days of seamless session,
+   * while operational roles (cashier, marketer) receive 24 hours.
+   */
+  private getAccessTokenExpiration(role?: string): { expiresIn: string; expiresInSeconds: number } {
+    const isAdmin = ['super_admin', 'branch_manager', 'auditor', 'finance_manager'].includes(role || '');
+    const envAdminExp = this.configService.get<string>('JWT_ADMIN_EXPIRATION');
+    const envExp = this.configService.get<string>('JWT_EXPIRATION');
+
+    if (isAdmin) {
+      const expStr = envAdminExp || (envExp && envExp !== '15m' ? envExp : '7d');
+      return { expiresIn: expStr, expiresInSeconds: this.parseDurationToSeconds(expStr, 7 * 24 * 60 * 60) };
+    }
+
+    const expStr = envExp && envExp !== '15m' ? envExp : '24h';
+    return { expiresIn: expStr, expiresInSeconds: this.parseDurationToSeconds(expStr, 24 * 60 * 60) };
+  }
+
+  private parseDurationToSeconds(duration: string, fallback: number): number {
+    if (!duration) return fallback;
+    const match = duration.match(/^(\d+)([smhd])$/);
+    if (!match) return fallback;
+    const val = parseInt(match[1], 10);
+    const unit = match[2];
+    switch (unit) {
+      case 's': return val;
+      case 'm': return val * 60;
+      case 'h': return val * 3600;
+      case 'd': return val * 86400;
+      default: return fallback;
+    }
+  }
 
   constructor(
     private usersService: UsersService,
@@ -82,7 +115,10 @@ export class AuthService {
       branchId: user.branchId?.toString(),
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const tokenExp = this.getAccessTokenExpiration(user.role);
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: tokenExp.expiresIn as any,
+    });
 
     const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
     if (!refreshSecret) {
@@ -90,7 +126,7 @@ export class AuthService {
       throw new InternalServerErrorException('Authentication service configuration error');
     }
 
-    const refreshExpiration = this.configService.get<string>('JWT_REFRESH_EXPIRATION') || '7d';
+    const refreshExpiration = this.configService.get<string>('JWT_REFRESH_EXPIRATION') || '30d';
     const refreshToken = this.jwtService.sign(
       payload as Record<string, any>,
       {
@@ -102,7 +138,7 @@ export class AuthService {
     await this.redisService.set(
       `refresh_token:${user._id.toString()}`,
       refreshToken,
-      this.REFRESH_TOKEN_EXPIRY,
+      this.REFRESH_TOKEN_EXPIRY * 1000,
     );
 
     return {
@@ -117,7 +153,7 @@ export class AuthService {
       },
       accessToken,
       refreshToken,
-      expiresIn: this.ACCESS_TOKEN_EXPIRY,
+      expiresIn: tokenExp.expiresInSeconds,
       refreshExpiresIn: this.REFRESH_TOKEN_EXPIRY,
     };
   }
@@ -139,7 +175,7 @@ export class AuthService {
         `refresh_token:${payload.sub}`,
       );
 
-      if (!storedToken || storedToken !== refreshToken) {
+      if (storedToken && storedToken !== refreshToken) {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
@@ -157,7 +193,17 @@ export class AuthService {
         branchId: user.branchId?.toString(),
       };
 
-      const accessToken = this.jwtService.sign(newPayload);
+      const tokenExp = this.getAccessTokenExpiration(user.role);
+      const accessToken = this.jwtService.sign(newPayload, {
+        expiresIn: tokenExp.expiresIn as any,
+      });
+
+      // Slide the 30-day refresh token window forward in Redis
+      await this.redisService.set(
+        `refresh_token:${user._id.toString()}`,
+        refreshToken,
+        this.REFRESH_TOKEN_EXPIRY * 1000,
+      );
 
       this.logger.log(`Token refreshed for user ${user.username}`);
 
@@ -173,7 +219,7 @@ export class AuthService {
         },
         accessToken,
         refreshToken, // Return the same refresh token
-        expiresIn: this.ACCESS_TOKEN_EXPIRY,
+        expiresIn: tokenExp.expiresInSeconds,
         refreshExpiresIn: this.REFRESH_TOKEN_EXPIRY,
       };
     } catch (error) {
@@ -249,7 +295,7 @@ export class AuthService {
 
     const biometricToken = randomBytes(40).toString('hex');
     const key = `biometric:${userId}:${deviceId}`;
-    await this.redisService.set(key, biometricToken, this.BIOMETRIC_TOKEN_EXPIRY);
+    await this.redisService.set(key, biometricToken, this.BIOMETRIC_TOKEN_EXPIRY * 1000);
 
     this.logger.log(`Biometric registered for user ${user.username} device ${deviceId}`);
     return { biometricToken };
@@ -281,10 +327,13 @@ export class AuthService {
       branchId: user.branchId?.toString(),
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const tokenExp = this.getAccessTokenExpiration(user.role);
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: tokenExp.expiresIn as any,
+    });
 
     const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET')!;
-    const refreshExpiration = this.configService.get<string>('JWT_REFRESH_EXPIRATION') || '7d';
+    const refreshExpiration = this.configService.get<string>('JWT_REFRESH_EXPIRATION') || '30d';
     const refreshToken = this.jwtService.sign(payload as Record<string, any>, {
       secret: refreshSecret,
       expiresIn: refreshExpiration as any,
@@ -293,7 +342,7 @@ export class AuthService {
     await this.redisService.set(
       `refresh_token:${user._id.toString()}`,
       refreshToken,
-      this.REFRESH_TOKEN_EXPIRY,
+      this.REFRESH_TOKEN_EXPIRY * 1000,
     );
 
     this.logger.log(`Biometric login successful for user ${user.username}`);
@@ -310,7 +359,7 @@ export class AuthService {
       },
       accessToken,
       refreshToken,
-      expiresIn: this.ACCESS_TOKEN_EXPIRY,
+      expiresIn: tokenExp.expiresInSeconds,
       refreshExpiresIn: this.REFRESH_TOKEN_EXPIRY,
     };
   }
