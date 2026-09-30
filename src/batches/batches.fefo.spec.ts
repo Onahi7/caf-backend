@@ -129,7 +129,7 @@ describe('FEFO Batch Selection Logic', () => {
         { id: '1', expiryDate: yesterday, quantity: 50, price: 100 },
         {
           id: '2',
-          expiryDate: new Date('2025-06-01'),
+          expiryDate: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000),
           quantity: 100,
           price: 100,
         },
