@@ -74,6 +74,11 @@ const PRODUCT_TEMPLATE_COLUMNS = [
   'category',
   'brand',
   'unit',
+  'contents_description',
+  'purchase_unit',
+  'units_per_purchase_unit',
+  'received_quantity',
+  'received_unit_cost',
   'reorder_level',
   'max_stock_level',
   'base_price',
@@ -90,6 +95,14 @@ const PRODUCT_TEMPLATE_COLUMNS = [
   'initial_expiry_date',
   'initial_supplier_name',
   'pack_sizes_json',
+  'pack_1_name',
+  'pack_1_quantity',
+  'pack_1_price',
+  'pack_1_barcode',
+  'pack_2_name',
+  'pack_2_quantity',
+  'pack_2_price',
+  'pack_2_barcode',
 ] as const;
 
 const PRODUCT_CATEGORIES = [
@@ -285,7 +298,7 @@ export class ProductExcelService {
     }
 
     const { headerMap, headerRowNumber } = this.readHeaderMap(worksheet);
-    const missingHeaders = PRODUCT_TEMPLATE_COLUMNS.filter(
+    const missingHeaders = ['name', 'barcode', 'category', 'brand', 'unit', 'base_price', 'cost_price'].filter(
       (column) => !headerMap.has(column),
     );
     if (missingHeaders.length > 0) {
@@ -412,8 +425,13 @@ export class ProductExcelService {
     ]);
     sheet.addRow([
       'pack_sizes_json',
-      'Use a JSON array, for example: [{"name":"Box","unit":"box","quantityPerPack":12,"sellingPrice":1500,"barcode":"BOX-001"}]',
+      'Advanced / legacy option for additional selling packs. Use either pack_sizes_json or the pack_1 / pack_2 columns, not both.',
     ]);
+    sheet.addRow(['unit', 'Smallest item you sell. For cards containing 14 tablets sold only as cards, enter card. The 14 tablets are descriptive contents, not stock.']);
+    sheet.addRow(['contents_description', 'Optional information, e.g. 14 tablets per card. Does not enable sales of individual tablets.']);
+    sheet.addRow(['Receiving stock', 'Enter purchase_unit, units_per_purchase_unit and received_quantity. Example: pack, 3, 10 = 30 cards. Leave initial_stock blank when using received_quantity, or supply the matching total in selling units.']);
+    sheet.addRow(['received_unit_cost', 'Optional purchase cost per received pack/box. Automatically divided by units_per_purchase_unit. base_price and cost_price remain prices per smallest selling unit.']);
+    sheet.addRow(['Selling whole packs', 'Optional: pack_1_name, pack_1_quantity, pack_1_price, pack_1_barcode. Example: Pack of 3 cards, 3, 150, BOX123. Leave blank to sell only cards. A second selling pack can use pack_2 columns.']);
     sheet.addRow([
       'is_active',
       'Optional. Defaults to true when blank.',
@@ -594,6 +612,43 @@ export class ProductExcelService {
       pack_sizes_json: inhalerPackSizes,
     });
 
+    sheet.addRow({
+      branch_code: branchCode,
+      name: 'Sample Amlodipine Cards',
+      barcode: 'SAMPLE-AMLO-CARD',
+      category: 'prescription',
+      brand: 'Sample Brand',
+      unit: 'card',
+      contents_description: '14 tablets per card',
+      purchase_unit: 'pack',
+      units_per_purchase_unit: 3,
+      received_quantity: 10,
+      received_unit_cost: 90,
+      base_price: 50,
+      cost_price: 30,
+      initial_expiry_date: '2028-12-31',
+      initial_supplier_name: supplierName,
+    });
+    sheet.addRow({
+      branch_code: branchCode,
+      name: 'Sample Laboratory Rapid-Test Kit',
+      barcode: 'SAMPLE-LAB-KIT',
+      category: 'laboratory',
+      brand: 'Sample Brand',
+      unit: 'kit',
+      contents_description: 'One individually sellable test kit',
+      purchase_unit: 'box',
+      units_per_purchase_unit: 25,
+      received_quantity: 5,
+      base_price: 20,
+      cost_price: 10,
+      initial_expiry_date: '2028-12-31',
+      initial_supplier_name: supplierName,
+      pack_1_name: 'Box of 25 kits',
+      pack_1_quantity: 25,
+      pack_1_price: 450,
+    });
+
     sheet.views = [{ state: 'frozen', ySplit: 3 }];
     sheet.autoFilter = {
       from: { row: 3, column: 1 },
@@ -752,11 +807,31 @@ export class ProductExcelService {
       resolvedBranchId,
     );
 
-    const initialStock = this.getOptionalNumber(
+    const legacyStock = this.getOptionalNumber(
       row,
       headerMap.get('initial_stock'),
-      0,
-    ) ?? 0;
+    );
+    const unit = this.getRequiredText(row, headerMap.get('unit'), 'unit');
+    const purchaseUnit = this.getOptionalText(row, headerMap.get('purchase_unit')) || unit;
+    const purchaseFactor = this.getOptionalNumber(row, headerMap.get('units_per_purchase_unit'), 1)!;
+    if (!Number.isInteger(purchaseFactor) || purchaseFactor < 1) {
+      throw new BadRequestException('units_per_purchase_unit must be a whole number of at least 1');
+    }
+    if (purchaseUnit.toLowerCase() === unit.toLowerCase() && purchaseFactor !== 1) {
+      throw new BadRequestException('units_per_purchase_unit must be 1 when receiving the smallest selling unit directly');
+    }
+    const receivedQuantity = this.getOptionalNumber(row, headerMap.get('received_quantity'));
+    if (receivedQuantity !== undefined && (receivedQuantity < 0 || (!['ml', 'mg', 'g'].includes(purchaseUnit.toLowerCase()) && !Number.isInteger(receivedQuantity)))) {
+      throw new BadRequestException('received_quantity must be a non-negative whole quantity for packs and individual items');
+    }
+    const convertedStock = receivedQuantity === undefined ? undefined : Number((receivedQuantity * purchaseFactor).toFixed(6));
+    if (legacyStock !== undefined && convertedStock !== undefined && Math.abs(legacyStock - convertedStock) > 0.000001) {
+      throw new BadRequestException(`initial_stock conflicts with received_quantity: expected ${convertedStock} ${unit}`);
+    }
+    const initialStock = convertedStock ?? legacyStock ?? 0;
+    if (!Number.isFinite(initialStock) || initialStock < 0) throw new BadRequestException('initial_stock must be non-negative and finite');
+    const receivedUnitCost = this.getOptionalNumber(row, headerMap.get('received_unit_cost'));
+    if (receivedUnitCost !== undefined && receivedUnitCost < 0) throw new BadRequestException('received_unit_cost cannot be negative');
     const supplierName = this.getCellText(
       row,
       headerMap.get('initial_supplier_name'),
@@ -790,7 +865,10 @@ export class ProductExcelService {
         'category',
       ),
       brand: this.getRequiredText(row, headerMap.get('brand'), 'brand'),
-      unit: this.getRequiredText(row, headerMap.get('unit'), 'unit'),
+      unit,
+      contentsDescription: this.getOptionalText(row, headerMap.get('contents_description')),
+      purchaseUnit,
+      unitsPerPurchaseUnit: purchaseFactor,
       reorderLevel:
         this.getOptionalNumber(
         row,
@@ -835,7 +913,7 @@ export class ProductExcelService {
         true,
       ),
       initialStock,
-      initialPurchasePrice: this.getOptionalNumber(
+      initialPurchasePrice: receivedUnitCost !== undefined ? receivedUnitCost / purchaseFactor : this.getOptionalNumber(
         row,
         headerMap.get('initial_purchase_price'),
       ),
@@ -849,9 +927,7 @@ export class ProductExcelService {
       ),
       initialExpiryDate,
       initialSupplierId: supplier?._id.toString(),
-      packSizes: this.parsePackSizes(
-        this.getOptionalText(row, headerMap.get('pack_sizes_json')),
-      ),
+      packSizes: this.parseSellingPacks(row, headerMap),
     };
 
     if (initialStock > 0) {
@@ -1003,6 +1079,25 @@ export class ProductExcelService {
       );
     }
     return parsed.toISOString();
+  }
+
+  private parseSellingPacks(row: ExcelJS.Row, headerMap: Map<string, number>): PackSizeInput[] | undefined {
+    const packs: PackSizeInput[] = [];
+    for (const index of [1, 2]) {
+      const prefix = `pack_${index}`;
+      const name = this.getOptionalText(row, headerMap.get(`${prefix}_name`));
+      const quantityPerPack = this.getOptionalNumber(row, headerMap.get(`${prefix}_quantity`));
+      const sellingPrice = this.getOptionalNumber(row, headerMap.get(`${prefix}_price`));
+      const barcode = this.getOptionalText(row, headerMap.get(`${prefix}_barcode`));
+      if (!name && quantityPerPack === undefined && sellingPrice === undefined && !barcode) continue;
+      if (!name || !Number.isInteger(quantityPerPack) || quantityPerPack! < 1 || sellingPrice === undefined || sellingPrice < 0) {
+        throw new BadRequestException(`${prefix} requires a name, a whole quantity >= 1 and a price >= 0`);
+      }
+      packs.push({ name, unit: name.toLowerCase().replace(/\s+/g, '-'), quantityPerPack: quantityPerPack!, sellingPrice, barcode });
+    }
+    const legacy = this.getOptionalText(row, headerMap.get('pack_sizes_json'));
+    if (legacy && packs.length) throw new BadRequestException('Use selling pack columns or pack_sizes_json, not both');
+    return packs.length ? packs : this.parsePackSizes(legacy);
   }
 
   private parsePackSizes(value?: string): PackSizeInput[] | undefined {

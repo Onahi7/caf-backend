@@ -35,6 +35,19 @@ export class CreateProductDto {
   @IsString()
   unit!: string;
 
+  @IsOptional()
+  @IsString()
+  contentsDescription?: string;
+
+  @IsOptional()
+  @IsString()
+  purchaseUnit?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  unitsPerPurchaseUnit?: number;
+
   @IsNumber()
   @Min(0)
   reorderLevel!: number;

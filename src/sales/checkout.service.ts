@@ -450,6 +450,11 @@ let session;
           );
         }
 
+        const allowsFractionalQuantity = !item.packSize && ['ml', 'mg', 'g'].includes(product.unit.toLowerCase());
+        if (!Number.isFinite(item.quantity) || item.quantity <= 0 || (!allowsFractionalQuantity && !Number.isInteger(item.quantity))) {
+          throw new BadRequestException(`Sell whole ${item.packSize?.name || product.unit}s only for ${product.name}`);
+        }
+
         const normalized: SaleItemDto = { ...item };
         if (item.packSize) {
           const matchedPack = product.packSizes.find((pack) =>

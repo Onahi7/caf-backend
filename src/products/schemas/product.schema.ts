@@ -60,6 +60,15 @@ export class Product {
   @Prop({ required: true })
   unit!: string; // Base unit: "tablet", "capsule", "ml", "g", "piece"
 
+  @Prop()
+  contentsDescription?: string; // Informational only, e.g. "14 tablets per card".
+
+  @Prop()
+  purchaseUnit?: string; // Receiving package; does not enable sales of its contents.
+
+  @Prop({ min: 1 })
+  unitsPerPurchaseUnit?: number;
+
   @Prop({ required: true, default: 0 })
   reorderLevel!: number;
 
