@@ -23,9 +23,7 @@ describe('RBAC Property Tests', () => {
   let reflector: Reflector;
 
   // Arbitraries
-  const branchIdArb = fc
-    .string({ minLength: 24, maxLength: 24 })
-    .filter((s) => /^[0-9a-f]{24}$/.test(s));
+  const branchIdArb = fc.array(fc.constantFrom(...'0123456789abcdef'), { minLength: 24, maxLength: 24 }).map(chars => chars.join(''));
   const roleArb = fc.constantFrom(...Object.values(UserRole));
 
   beforeEach(async () => {

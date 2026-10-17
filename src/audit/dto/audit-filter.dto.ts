@@ -23,6 +23,10 @@ export class AuditFilterDto {
   branchId?: string;
 
   @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
   @IsDateString()
   startDate?: string;
 

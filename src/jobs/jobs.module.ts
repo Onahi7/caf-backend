@@ -71,7 +71,7 @@ export class JobsModule {
                 ...redisOptions,
                 maxRetriesPerRequest: null,
                 enableReadyCheck: false,
-                enableOfflineQueue: false,
+                enableOfflineQueue: true,
                 connectTimeout: 5000,
                 retryStrategy: (times: number) => {
                   if (times > 3) return null;

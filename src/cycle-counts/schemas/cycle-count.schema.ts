@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -25,13 +26,13 @@ export interface CycleCountLine {
 
 @Schema({ timestamps: true })
 export class CycleCount {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User' })
   createdBy!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   approvedBy?: Types.ObjectId;
 
   @Prop({
@@ -48,8 +49,8 @@ export class CycleCount {
   @Prop({
     type: [
       {
-        productId: { type: Types.ObjectId, ref: 'Product', required: true },
-        batchId: { type: Types.ObjectId, ref: 'Product', required: true },
+        productId: { type: MongooseSchema.Types.ObjectId, ref: 'Product', required: true },
+        batchId: { type: MongooseSchema.Types.ObjectId, ref: 'Batch', required: true },
         lotNumber: { type: String, default: 'Product total' },
         systemQuantity: { type: Number, required: true },
         countedQuantity: { type: Number, default: null },

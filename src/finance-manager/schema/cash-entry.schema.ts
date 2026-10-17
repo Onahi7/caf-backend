@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -43,7 +44,7 @@ export class CashEntry {
   @Prop({ required: true, enum: CashEntryCategory, index: true })
   category!: CashEntryCategory;
 
-  @Prop({ type: Types.ObjectId, ref: 'Branch', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', required: true, index: true })
   branchId!: Types.ObjectId;
 
   @Prop({ required: true, min: 0 })
@@ -64,7 +65,7 @@ export class CashEntry {
   @Prop({ maxlength: 200 })
   referenceId?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   recordedBy!: Types.ObjectId;
 
   @Prop({ default: Date.now })

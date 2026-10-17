@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -12,7 +13,7 @@ export enum ReportSchedule {
 
 @Schema({ timestamps: true, collection: 'saved_reports' })
 export class SavedReport {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true, index: true })
   userId!: Types.ObjectId;
 
   @Prop({ required: true })

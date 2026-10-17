@@ -1,3 +1,4 @@
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { BatchesService } from './batches.service.js';
@@ -30,6 +31,9 @@ describe('BatchesService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BatchesService,
+        { provide: getConnectionToken(), useValue: {} },
+        { provide: getModelToken('Product'), useValue: {} },
+        { provide: getModelToken('StockMovement'), useValue: {} },
         {
           provide: BatchesRepository,
           useValue: mockBatchesRepository,
@@ -207,7 +211,7 @@ describe('BatchesService', () => {
         // Missing other required fields
       };
 
-      await expect(service.create(invalidDto)).rejects.toThrow(
+      await expect(service.create(invalidDto, new Types.ObjectId().toString())).rejects.toThrow(
         BadRequestException,
       );
     });

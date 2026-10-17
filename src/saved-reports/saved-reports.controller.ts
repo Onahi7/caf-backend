@@ -19,7 +19,7 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 
 interface AuthedRequest extends Request {
-  user: { sub: string };
+  user: { userId: string };
 }
 
 @Controller('saved-reports')
@@ -36,17 +36,17 @@ export class SavedReportsController {
 
   @Get()
   list(@Req() req: AuthedRequest) {
-    return this.service.list(req.user.sub);
+    return this.service.list(req.user.userId);
   }
 
   @Get(':id')
   get(@Param('id') id: string, @Req() req: AuthedRequest) {
-    return this.service.get(id, req.user.sub);
+    return this.service.get(id, req.user.userId);
   }
 
   @Post()
   create(@Body() dto: CreateSavedReportDto, @Req() req: AuthedRequest) {
-    return this.service.create(req.user.sub, dto);
+    return this.service.create(req.user.userId, dto);
   }
 
   @Patch(':id')
@@ -55,12 +55,12 @@ export class SavedReportsController {
     @Body() dto: UpdateSavedReportDto,
     @Req() req: AuthedRequest,
   ) {
-    return this.service.update(id, req.user.sub, dto);
+    return this.service.update(id, req.user.userId, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string, @Req() req: AuthedRequest) {
-    return this.service.remove(id, req.user.sub);
+    return this.service.remove(id, req.user.userId);
   }
 }

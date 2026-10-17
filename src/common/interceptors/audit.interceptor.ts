@@ -1,3 +1,4 @@
+import { referenceId } from '../utils/reference-id.js';
 import {
   Injectable,
   NestInterceptor,
@@ -127,8 +128,8 @@ export class AuditInterceptor implements NestInterceptor {
   private extractBranchIdFromResponse(response: unknown): string | undefined {
     if (response && typeof response === 'object') {
       const r = response as any;
-      if (r.data && typeof r.data === 'object' && r.data.branchId) return String(r.data.branchId);
-      if (r.branchId) return String(r.branchId);
+      if (r.data && typeof r.data === 'object' && r.data.branchId) return referenceId(r.data.branchId);
+      if (r.branchId) return referenceId(r.branchId);
     }
     return undefined;
   }

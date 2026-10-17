@@ -110,6 +110,28 @@ export class SalesService implements OnModuleInit {
   }
 
   /**
+   * Count sales matching a filter (for pagination metadata)
+   */
+  async countAll(filter?: SaleFilterDto): Promise<number> {
+    if (!filter || filter.saleType === SaleType.CREDIT) {
+      await this.markOverdueCreditSales(filter?.branchId);
+    }
+    return this.salesRepository.countWithFilter(filter || {});
+  }
+
+  /**
+   * Aggregate credit-sale stats for the header cards
+   */
+  async getCreditSummary(filter: { branchId?: string; cashierId?: string }): Promise<{
+    openCount: number;
+    outstandingBalance: number;
+    paidCount: number;
+  }> {
+    await this.markOverdueCreditSales(filter?.branchId);
+    return this.salesRepository.getCreditSummary(filter);
+  }
+
+  /**
    * Find sales by shift
    */
   async findByShift(shiftId: string): Promise<SaleDocument[]> {

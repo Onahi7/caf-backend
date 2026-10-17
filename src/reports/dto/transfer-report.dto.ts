@@ -1,3 +1,4 @@
+import { ExportQueryDto } from './export-query.dto.js';
 import { IsOptional, IsString, IsDateString, IsEnum } from 'class-validator';
 import { TransferStatus } from '../../transfers/schemas/transfer.schema.js';
 
@@ -6,7 +7,7 @@ import { TransferStatus } from '../../transfers/schemas/transfer.schema.js';
  * Requirements: 14.3
  * Property 58: Transfer log structure
  */
-export class TransferReportDto {
+export class TransferReportDto extends ExportQueryDto {
   @IsOptional()
   @IsString()
   branchId?: string;

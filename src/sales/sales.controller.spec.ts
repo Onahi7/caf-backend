@@ -39,6 +39,7 @@ describe('SalesController', () => {
     receiptNumber: 'RCP-001',
     returnedAmount: 0,
     status: 'completed',
+    populate: jest.fn().mockResolvedValue(undefined),
     toObject: function () {
       return { ...this };
     },
@@ -49,6 +50,7 @@ describe('SalesController', () => {
       findById: jest.fn(),
       findByReceiptNumber: jest.fn(),
       findAll: jest.fn(),
+      countAll: jest.fn().mockResolvedValue(2),
       findByShift: jest.fn(),
       findByBranch: jest.fn(),
       calculateShiftTotal: jest.fn(),
@@ -170,7 +172,7 @@ describe('SalesController', () => {
       salesService.findById.mockResolvedValue(mockSale);
 
       // Act
-      const result = await controller.findById('507f1f77bcf86cd799439011');
+      const result = await controller.findById({ userId: '507f1f77bcf86cd799439014', username: 'admin', role: 'super_admin' }, '507f1f77bcf86cd799439011');
 
       // Assert
       expect(result.data.totalFormatted).toBe(CurrencyUtil.format(45000));

@@ -370,7 +370,10 @@ export class SalesController {
     if (user.role === UserRole.CASHIER) {
       filter.cashierId = user.userId;
     }
-    const sales = await this.salesService.findAll(filter);
+    const [sales, total] = await Promise.all([
+      this.salesService.findAll(filter),
+      this.salesService.countAll(filter),
+    ]);
 
     return {
       success: true,
@@ -378,7 +381,33 @@ export class SalesController {
         sales.map((sale) => this.formatSaleData(sale)),
       ),
       count: sales.length,
+      total,
     };
+  }
+
+  /**
+   * GET /sales/credit-summary
+   * Aggregate stats for credit sales (open count, outstanding balance, paid count)
+   */
+  @Get('credit-summary')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.BRANCH_MANAGER,
+    UserRole.CASHIER,
+    UserRole.AUDITOR,
+  )
+  async creditSummary(
+    @CurrentUser() user: CurrentUserData,
+    @Query('branchId') branchId?: string,
+  ) {
+    const resolvedBranchId = resolveBranchId(user, branchId);
+    const cashierId =
+      user.role === UserRole.CASHIER ? user.userId : undefined;
+    const summary = await this.salesService.getCreditSummary({
+      branchId: resolvedBranchId ?? undefined,
+      cashierId,
+    });
+    return { success: true, data: summary };
   }
 
   /**

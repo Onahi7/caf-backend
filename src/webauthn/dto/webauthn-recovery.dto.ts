@@ -1,4 +1,6 @@
-import { IsOptional, IsString, Length } from 'class-validator';
+import { IsDefined, IsOptional, IsString, Length, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { WebAuthnAuthenticatorAssertionResponseJSON } from './webauthn.dto.js';
 
 export class GenerateRecoveryCodesDto {
   @IsOptional()
@@ -37,12 +39,10 @@ export class StepUpFinishDto {
   @IsString()
   type!: string;
 
-  response!: {
-    clientDataJSON: string;
-    authenticatorData: string;
-    signature: string;
-    userHandle?: string;
-  };
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => WebAuthnAuthenticatorAssertionResponseJSON)
+  response!: WebAuthnAuthenticatorAssertionResponseJSON;
 
   /** Opaque reason string for the audit log (e.g. "refund", "role-change") */
   @IsString()

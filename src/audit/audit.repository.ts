@@ -55,6 +55,17 @@ export class AuditRepository {
       query.branchId = new Types.ObjectId(filter.branchId);
     }
 
+    if (filter.search) {
+      const escaped = filter.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rx = new RegExp(escaped, 'i');
+      query.$or = [
+        { username: rx },
+        { description: rx },
+        { action: rx },
+        { resource: rx },
+      ];
+    }
+
     if (filter.startDate || filter.endDate) {
       query.createdAt = {};
       if (filter.startDate) {

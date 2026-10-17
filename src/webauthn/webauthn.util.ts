@@ -74,17 +74,10 @@ export function verifyEcdsaSha256(
   publicKey: Buffer,
 ): boolean {
   try {
+    if (publicKey.length !== 65 || publicKey[0] !== 4) return false;
     const keyObj = createPublicKey({
-      key: Buffer.concat([
-        // PEM header for raw EC public key
-        Buffer.from(
-          '-----BEGIN PUBLIC KEY-----\n',
-        ),
-        publicKey,
-        Buffer.from('\n-----END PUBLIC KEY-----\n'),
-      ]),
-      format: 'pem',
-      type: 'spki',
+      key: { kty: 'EC', crv: 'P-256', x: publicKey.subarray(1, 33).toString('base64url'), y: publicKey.subarray(33).toString('base64url') },
+      format: 'jwk',
     });
     return verify('sha256', data, { key: keyObj, dsaEncoding: 'der' }, signature);
   } catch {
@@ -147,6 +140,7 @@ function readCborArg(
     throw new Error(`CBOR additional info ${additional} reserved`);
   }
 
+  if (!Number.isSafeInteger(length) || length < 0 || ((majorType >= 2 && majorType <= 5) && length > buf.length - offset)) throw new Error('Invalid CBOR length');
   switch (majorType) {
     case 0: {
       return { value: length, next: offset };
@@ -243,10 +237,12 @@ export function parseAuthData(authData: Buffer): ParsedAuthData {
   let attestedCredentialData: ParsedAuthData['attestedCredentialData'];
   if (flags & 0x40) {
     // AT flag set
+    if (authData.length < pos + 18) throw new Error('Truncated attested data');
     const aaguid = authData.subarray(pos, pos + 16);
     pos += 16;
     const credIdLen = authData.readUInt16BE(pos);
     pos += 2;
+    if (!credIdLen || pos + credIdLen >= authData.length) throw new Error('Invalid credential ID length');
     const credentialId = authData.subarray(pos, pos + credIdLen);
     pos += credIdLen;
     // The publicKey is a CBOR map; we need to find its end. Decode a map at `pos`

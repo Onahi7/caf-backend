@@ -131,6 +131,7 @@ export class AuthService {
       payload as Record<string, any>,
       {
         secret: refreshSecret,
+        jwtid: randomBytes(16).toString('hex'),
         expiresIn: refreshExpiration as any,
       },
     );
@@ -175,7 +176,7 @@ export class AuthService {
         `refresh_token:${payload.sub}`,
       );
 
-      if (storedToken && storedToken !== refreshToken) {
+      if (!storedToken || storedToken !== refreshToken) {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
@@ -198,13 +199,7 @@ export class AuthService {
         expiresIn: tokenExp.expiresIn as any,
       });
 
-      // Slide the 30-day refresh token window forward in Redis
-      await this.redisService.set(
-        `refresh_token:${user._id.toString()}`,
-        refreshToken,
-        this.REFRESH_TOKEN_EXPIRY * 1000,
-      );
-
+      // Do not recreate session state: an overlapping logout must remain revoked.
       this.logger.log(`Token refreshed for user ${user.username}`);
 
       return {
@@ -336,6 +331,7 @@ export class AuthService {
     const refreshExpiration = this.configService.get<string>('JWT_REFRESH_EXPIRATION') || '30d';
     const refreshToken = this.jwtService.sign(payload as Record<string, any>, {
       secret: refreshSecret,
+      jwtid: randomBytes(16).toString('hex'),
       expiresIn: refreshExpiration as any,
     });
 

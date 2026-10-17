@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -12,13 +13,13 @@ export enum RecurringCadence {
 
 @Schema({ timestamps: true, collection: 'recurring_invoices' })
 export class RecurringInvoice {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true, index: true })
   createdBy!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Branch', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', required: true, index: true })
   branchId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Customer', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Customer', required: true, index: true })
   customerId!: Types.ObjectId;
 
   @Prop()
@@ -31,7 +32,7 @@ export class RecurringInvoice {
   @Prop({
     type: [
       {
-        productId: { type: Types.ObjectId, ref: 'Product' },
+        productId: { type: MongooseSchema.Types.ObjectId, ref: 'Product' },
         productName: { type: String, required: true },
         sku: { type: String },
         quantity: { type: Number, required: true },

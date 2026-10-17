@@ -1,7 +1,8 @@
 import { Module, Global, Logger } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { redisStore } from 'cache-manager-ioredis-yet';
+import KeyvRedis from '@keyv/redis';
+import { createSessionCache } from './keyv-cache.js';
 import { RedisService } from './redis.service.js';
 
 @Global()
@@ -49,41 +50,21 @@ import { RedisService } from './redis.service.js';
                     : undefined,
               };
 
-          const store = await redisStore({
-            ...redisOptions,
-            ttl: 60 * 60 * 1000, // 1 hour default TTL in milliseconds
-            // Connection pool settings
-            maxRetriesPerRequest: 1,
-            enableReadyCheck: true,
-            enableOfflineQueue: false,
-            connectTimeout: 5000,
-            // Reconnection strategy
-            retryStrategy: (times: number) => {
-              if (times > 3) {
-                logger.error(
-                  'Redis connection failed after 3 retries. Falling back to in-memory cache.',
-                );
-                return null; // Stop retrying
-              }
-              const delay = Math.min(times * 50, 2000);
-              return delay;
-            },
-          });
+          const fallbackUrl = new URL(`${redisOptions.tls ? 'rediss' : 'redis'}://${redisOptions.host}:${redisOptions.port}`);
+          if (redisOptions.password) fallbackUrl.password = redisOptions.password;
+          const store = new KeyvRedis(redisUrl || fallbackUrl.toString(), { throwOnErrors: true, connectionTimeout: 5000 });
+          await store.set('caf:cache-readiness', 'ready', 1000);
 
           logger.log('Redis cache connected successfully');
           return {
-            store,
+            stores: [createSessionCache(store)],
             isGlobal: true,
           };
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : 'Unknown error';
-          logger.error(
-            `Redis connection failed: ${errorMessage}. Using in-memory cache instead.`,
-          );
-          return {
-            isGlobal: true,
-          };
+          logger.error(`Redis connection failed: ${errorMessage}`);
+          throw error;
         }
       },
     }),

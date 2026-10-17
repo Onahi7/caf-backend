@@ -151,7 +151,7 @@ export class SalesRepository {
   /**
    * Find sales with filtering
    */
-  async findWithFilter(filter: SaleFilterDto): Promise<SaleDocument[]> {
+  private buildFilterQuery(filter: SaleFilterDto): Record<string, unknown> {
     const query: Record<string, unknown> = {};
 
     if (filter.branchId) {
@@ -186,7 +186,11 @@ export class SalesRepository {
       query.saleType = filter.saleType;
     }
     if (filter.paymentStatus) {
-      query.paymentStatus = filter.paymentStatus;
+      const statuses = String(filter.paymentStatus)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      query.paymentStatus = statuses.length > 1 ? { $in: statuses } : statuses[0];
     }
 
     // Date range filtering
@@ -200,6 +204,12 @@ export class SalesRepository {
       }
     }
 
+    return query;
+  }
+
+  async findWithFilter(filter: SaleFilterDto): Promise<SaleDocument[]> {
+    const query = this.buildFilterQuery(filter);
+
     let queryBuilder = this.saleModel.find(query).sort({ createdAt: -1 });
 
     if (filter.skip) {
@@ -210,6 +220,68 @@ export class SalesRepository {
     }
 
     return queryBuilder.exec();
+  }
+
+  async countWithFilter(filter: SaleFilterDto): Promise<number> {
+    const query = this.buildFilterQuery(filter);
+    return this.saleModel.countDocuments(query).exec();
+  }
+
+  async getCreditSummary(filter: {
+    branchId?: string;
+    cashierId?: string;
+  }): Promise<{
+    openCount: number;
+    outstandingBalance: number;
+    paidCount: number;
+  }> {
+    const query: Record<string, unknown> = { saleType: SaleType.CREDIT };
+    if (filter.branchId) {
+      query.branchId = new Types.ObjectId(filter.branchId);
+    }
+    if (filter.cashierId) {
+      query.cashierId = new Types.ObjectId(filter.cashierId);
+    }
+
+    const openStatuses = [
+      PaymentStatus.UNPAID,
+      PaymentStatus.PARTIAL,
+      PaymentStatus.OVERDUE,
+    ];
+
+    const results = await this.saleModel.aggregate<{
+      openCount: number;
+      outstandingBalance: number;
+      paidCount: number;
+    }>([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          openCount: {
+            $sum: { $cond: [{ $in: ['$paymentStatus', openStatuses] }, 1, 0] },
+          },
+          outstandingBalance: {
+            $sum: {
+              $cond: [
+                { $in: ['$paymentStatus', openStatuses] },
+                { $ifNull: ['$balanceDue', 0] },
+                0,
+              ],
+            },
+          },
+          paidCount: {
+            $sum: {
+              $cond: [{ $eq: ['$paymentStatus', PaymentStatus.PAID] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]);
+
+    return (
+      results[0] ?? { openCount: 0, outstandingBalance: 0, paidCount: 0 }
+    );
   }
 
   /**

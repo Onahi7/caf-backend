@@ -1,3 +1,4 @@
+import { ExportQueryDto } from './export-query.dto.js';
 import { IsOptional, IsString, IsDateString, IsEnum } from 'class-validator';
 
 export enum SalesReportGroupBy {
@@ -12,7 +13,7 @@ export enum SalesReportGroupBy {
  * Requirements: 14.1
  * Property 56: Sales report filtering
  */
-export class SalesReportDto {
+export class SalesReportDto extends ExportQueryDto {
   @IsOptional()
   @IsString()
   branchId?: string;

@@ -1,3 +1,4 @@
+import { ExportQueryDto } from './export-query.dto.js';
 import { IsOptional, IsString, IsDateString, IsEnum } from 'class-validator';
 
 export enum PurchaseReportGroupBy {
@@ -6,7 +7,7 @@ export enum PurchaseReportGroupBy {
   MONTH = 'month',
 }
 
-export class PurchaseReportDto {
+export class PurchaseReportDto extends ExportQueryDto {
   @IsOptional()
   @IsString()
   branchId?: string;

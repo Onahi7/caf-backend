@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
@@ -55,7 +55,7 @@ export class PricingService {
   ): Promise<ProductPricing> {
     const product = await this.productModel.findById(productId);
     if (!product) {
-      throw new Error('Product not found');
+      throw new NotFoundException(`Product ${productId} not found`);
     }
 
     const batchQuery = branchId
@@ -127,30 +127,32 @@ export class PricingService {
     let updatedBatches = 0;
 
     // Update product-level pricing
-    if (request.strategy.useProductBasePrice && request.newBasePrice) {
+    if (request.strategy.useProductBasePrice && request.newBasePrice !== undefined) {
       const productQuery = request.applyToProducts?.length
         ? { _id: { $in: request.applyToProducts } }
         : {};
 
-      const result = await this.productModel.updateMany(productQuery, {
+      const scopedQuery = { ...productQuery, ...(request.applyToBranches?.length ? { branchId: { $in: request.applyToBranches } } : {}) };
+      const result = await this.productModel.updateMany(scopedQuery, {
         $set: { basePrice: request.newBasePrice },
       });
       updatedProducts += result.modifiedCount;
     }
 
-    if (request.strategy.useCostPlusMarkup && request.newMarkupPercentage) {
+    if (request.strategy.useCostPlusMarkup && request.newMarkupPercentage !== undefined) {
       const productQuery = request.applyToProducts?.length
         ? { _id: { $in: request.applyToProducts } }
         : {};
 
-      const result = await this.productModel.updateMany(productQuery, {
+      const scopedQuery = { ...productQuery, ...(request.applyToBranches?.length ? { branchId: { $in: request.applyToBranches } } : {}) };
+      const result = await this.productModel.updateMany(scopedQuery, {
         $set: { markupPercentage: request.newMarkupPercentage },
       });
       updatedProducts += result.modifiedCount;
 
       // Update batch selling prices based on new markup
       if (request.strategy.useCostPlusMarkup) {
-        const products = await this.productModel.find(productQuery);
+        const products = await this.productModel.find(scopedQuery);
 
         for (const product of products) {
           const newSellingPrice =
@@ -183,7 +185,7 @@ export class PricingService {
   ): Promise<number> {
     const product = await this.productModel.findById(productId);
     if (!product) {
-      throw new Error('Product not found');
+      throw new NotFoundException(`Product ${productId} not found`);
     }
 
     let newSellingPrice = product.basePrice;

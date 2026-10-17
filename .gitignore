@@ -60,3 +60,6 @@ DOCUMENTATION.md
 
 # Generated exports
 products-export-*.xlsx
+
+# Generated local API validation reports and server logs
+test/results/

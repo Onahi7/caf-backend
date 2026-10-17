@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -5,8 +6,8 @@ export type WebAuthnChallengeDocument = WebAuthnChallenge & Document;
 
 @Schema({ timestamps: { createdAt: true, updatedAt: false }, collection: 'webauthn_challenges' })
 export class WebAuthnChallenge {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
-  userId!: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', index: true })
+  userId?: Types.ObjectId;
 
   // "registration", "authentication", or "step-up"
   @Prop({ required: true, enum: ['registration', 'authentication', 'step-up'] })

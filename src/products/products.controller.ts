@@ -1,3 +1,4 @@
+import { BulkPriceUpdateDto } from './dto/bulk-price-update.dto.js';
 import {
   Controller,
   Get,
@@ -27,7 +28,6 @@ import { ProductDocument } from './schemas/product.schema.js';
 import {
   PricingService,
   ProductPricing,
-  type BulkPriceUpdateRequest,
 } from './pricing.service.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -421,8 +421,11 @@ export class ProductsController {
   @Post('bulk-price-update')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async bulkUpdatePricing(
-    @Body() request: BulkPriceUpdateRequest,
+    @Body() request: BulkPriceUpdateDto,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<{ updatedProducts: number; updatedBatches: number }> {
+    const branchId = resolveBranchId(user);
+    if (branchId) request.applyToBranches = [branchId];
     return this.pricingService.bulkUpdatePricing(request);
   }
 }

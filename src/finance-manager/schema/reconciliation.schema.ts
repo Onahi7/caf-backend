@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -48,7 +49,7 @@ export class Reconciliation {
   @Prop({ required: true, enum: ReconciliationSource, index: true })
   source!: ReconciliationSource;
 
-  @Prop({ type: Types.ObjectId, ref: 'Branch', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', required: true, index: true })
   branchId!: Types.ObjectId;
 
   @Prop({ required: true, index: true })
@@ -84,7 +85,7 @@ export class Reconciliation {
   @Prop({ required: true, enum: ReconciliationStatus, default: ReconciliationStatus.PENDING })
   status!: ReconciliationStatus;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   reviewedBy?: Types.ObjectId;
 
   @Prop()
@@ -96,7 +97,7 @@ export class Reconciliation {
   @Prop({ type: [ReconciliationItemSchema], default: [] })
   items!: ReconciliationItem[];
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User' })
   createdBy!: Types.ObjectId;
 
   @Prop()

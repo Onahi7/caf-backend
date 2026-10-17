@@ -23,7 +23,7 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 
 interface AuthedRequest extends Request {
-  user: { sub: string; role: string; branchId?: string };
+  user: { userId: string; role: string; branchId?: string };
 }
 
 @Controller('recurring-invoices')
@@ -42,17 +42,17 @@ export class RecurringInvoicesController {
     @Query('branchId') branchId?: string,
     @Query('activeOnly') activeOnly?: string,
   ) {
-    return this.service.list(req.user.sub, branchId, { activeOnly: activeOnly === 'true' });
+    return this.service.list(req.user.userId, branchId, { activeOnly: activeOnly === 'true' });
   }
 
   @Get(':id')
   get(@Param('id') id: string, @Req() req: AuthedRequest) {
-    return this.service.get(id, req.user.sub);
+    return this.service.get(id, req.user.userId);
   }
 
   @Post()
   create(@Body() dto: CreateRecurringInvoiceDto, @Req() req: AuthedRequest) {
-    return this.service.create(req.user.sub, dto);
+    return this.service.create(req.user.userId, dto);
   }
 
   @Patch(':id')
@@ -61,19 +61,19 @@ export class RecurringInvoicesController {
     @Body() dto: UpdateRecurringInvoiceDto,
     @Req() req: AuthedRequest,
   ) {
-    return this.service.update(id, req.user.sub, dto);
+    return this.service.update(id, req.user.userId, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string, @Req() req: AuthedRequest) {
-    return this.service.remove(id, req.user.sub);
+    return this.service.remove(id, req.user.userId);
   }
 
   /** Create a draft invoice and advance the schedule. */
   @Post(':id/run-now')
   async runNow(@Param('id') id: string, @Req() req: AuthedRequest) {
-    const result = await this.service.materialize(id, req.user.sub);
+    const result = await this.service.materialize(id, req.user.userId);
     return { ok: true, ...result };
   }
 
@@ -83,7 +83,7 @@ export class RecurringInvoicesController {
    */
   @Get(':id/template')
   async getTemplate(@Param('id') id: string, @Req() req: AuthedRequest) {
-    const doc = await this.service.get(id, req.user.sub);
+    const doc = await this.service.get(id, req.user.userId);
     return this.service.toSaleTemplate(doc);
   }
 }

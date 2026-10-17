@@ -41,7 +41,10 @@ export class BranchesRepository {
     updateBranchDto: UpdateBranchDto,
   ): Promise<BranchDocument | null> {
     return this.branchModel
-      .findByIdAndUpdate(id, updateBranchDto, { new: true })
+      .findByIdAndUpdate(id, updateBranchDto, {
+        new: true,
+        runValidators: true,
+      })
       .exec();
   }
 

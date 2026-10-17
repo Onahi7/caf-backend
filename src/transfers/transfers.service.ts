@@ -1,3 +1,4 @@
+import { referenceId } from '../common/utils/reference-id.js';
 import {
   Injectable,
   NotFoundException,
@@ -163,8 +164,8 @@ export class TransfersService {
 
     try {
       const sourceBatches = await this.batchesRepository.findAvailableForFEFO(
-        transfer.sourceBranchId.toString(),
-        transfer.productId.toString(),
+        referenceId(transfer.sourceBranchId),
+        referenceId(transfer.productId),
       );
       let quantityToMove = transfer.quantity;
       const batchMoves: Array<{ batch: (typeof sourceBatches)[number]; quantity: number }> = [];
@@ -201,8 +202,8 @@ export class TransfersService {
 
       // 3. Record source stock movement
       await this.inventoryService.recordTransferMovement(
-        transfer.sourceBranchId.toString(),
-        transfer.productId.toString(),
+        referenceId(transfer.sourceBranchId),
+        referenceId(transfer.productId),
         transfer.quantity,
         approvedBy,
         transferId,
@@ -236,7 +237,7 @@ export class TransfersService {
       } else {
         // Product doesn't exist at destination - create it
         const newProductData = {
-          branchId: new Types.ObjectId(transfer.destinationBranchId.toString()),
+          branchId: new Types.ObjectId(referenceId(transfer.destinationBranchId)),
           name: sourceProduct.name,
           sku: sourceProduct.sku,
           barcode: sourceProduct.barcode,
@@ -268,7 +269,7 @@ export class TransfersService {
 
       // 5. Record destination stock movement
       await this.inventoryService.recordTransferMovement(
-        transfer.destinationBranchId.toString(),
+        referenceId(transfer.destinationBranchId),
         destinationProduct._id.toString(),
         transfer.quantity,
         approvedBy,
@@ -279,7 +280,7 @@ export class TransfersService {
 
       // Move the exact FEFO batch quantities so both branch ledgers remain sellable.
       const destinationBatches = await this.batchesRepository.findByBranchAndProduct(
-        transfer.destinationBranchId.toString(),
+        referenceId(transfer.destinationBranchId),
         destinationProduct._id.toString(),
       );
       for (const { batch, quantity } of batchMoves) {
@@ -304,7 +305,7 @@ export class TransfersService {
           await this.batchesRepository.create(
             {
               productId: destinationProduct._id.toString(),
-              branchId: transfer.destinationBranchId.toString(),
+              branchId: referenceId(transfer.destinationBranchId),
               lotNumber: batch.lotNumber,
               expiryDate: batch.expiryDate,
               quantity,
@@ -332,7 +333,7 @@ export class TransfersService {
         transferId,
         { status: 'pending' },
         { status: 'completed', quantity: transfer.quantity, productName: sourceProduct.name },
-        transfer.sourceBranchId.toString(),
+        referenceId(transfer.sourceBranchId),
       );
 
       this.logger.log(`Transfer ${transferId} approved by ${approverName}: ${transfer.quantity} x ${sourceProduct.name}`);
@@ -378,7 +379,7 @@ export class TransfersService {
       transferId,
       { status: 'pending' },
       { status: 'rejected', rejectionReason: dto.rejectionReason },
-      transfer.sourceBranchId.toString(),
+      referenceId(transfer.sourceBranchId),
     );
 
     this.logger.log(`Transfer ${transferId} rejected by ${rejectorName}: ${dto.rejectionReason}`);

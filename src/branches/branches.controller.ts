@@ -19,6 +19,8 @@ import { BranchDocument } from './schemas/branch.schema.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 
 @ApiTags('Branches')
 @Controller('branches')
@@ -81,8 +83,9 @@ export class BranchesController {
   async update(
     @Param('id') id: string,
     @Body() updateBranchDto: UpdateBranchDto,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<BranchDocument> {
-    return this.branchesService.update(id, updateBranchDto);
+    return this.branchesService.update(id, updateBranchDto, user);
   }
 
   @Patch(':id/configuration')
@@ -90,8 +93,9 @@ export class BranchesController {
   async updateConfiguration(
     @Param('id') id: string,
     @Body() config: BranchConfigDto,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<BranchDocument> {
-    return this.branchesService.updateConfiguration(id, config);
+    return this.branchesService.updateConfiguration(id, config, user);
   }
 
   @Post(':id/terminals/:terminalId')
@@ -99,8 +103,9 @@ export class BranchesController {
   async assignTerminal(
     @Param('id') branchId: string,
     @Param('terminalId') terminalId: string,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<{ branchId: string; terminalId: string }> {
-    return this.branchesService.assignTerminal(branchId, terminalId);
+    return this.branchesService.assignTerminal(branchId, terminalId, user);
   }
 
   @Delete(':id')

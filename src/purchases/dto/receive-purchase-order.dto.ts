@@ -12,6 +12,10 @@ import {
 import { Type } from 'class-transformer';
 
 export class ReceivedItemDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  lotNumber?: string;
   @IsNotEmpty()
   @IsMongoId()
   productId!: string;

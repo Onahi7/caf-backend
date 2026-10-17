@@ -6,9 +6,11 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { WebSocketGateway } from './websocket.gateway.js';
 import { EventsService } from './events.service.js';
 import { Branch, BranchSchema } from '../branches/schemas/branch.schema.js';
+import { UsersModule } from '../users/users.module.js';
 
 @Module({
   imports: [
+    UsersModule,
     EventEmitterModule.forRoot(),
     MongooseModule.forFeature([
       { name: Branch.name, schema: BranchSchema },

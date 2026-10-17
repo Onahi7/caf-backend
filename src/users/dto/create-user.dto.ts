@@ -6,6 +6,7 @@ import {
   IsString,
   MinLength,
   Matches,
+  IsMongoId,
 } from 'class-validator';
 import { UserRole } from '../schemas/user.schema.js';
 
@@ -38,6 +39,6 @@ export class CreateUserDto {
   role!: UserRole;
 
   @IsOptional()
-  @IsString()
+  @IsMongoId()
   branchId?: string;
 }

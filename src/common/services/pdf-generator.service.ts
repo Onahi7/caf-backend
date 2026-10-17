@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import * as PdfPrinter from 'pdfmake';
+import PdfPrinter from 'pdfmake';
 import { TDocumentDefinitions, TFontDictionary } from 'pdfmake/interfaces';
 
 interface ProformaData {

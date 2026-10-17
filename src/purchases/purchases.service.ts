@@ -1,3 +1,4 @@
+import { referenceId } from '../common/utils/reference-id.js';
 import {
   Injectable,
   NotFoundException,
@@ -16,6 +17,7 @@ import {
   PurchaseOrderStatus,
 } from './schemas/purchase-order.schema.js';
 import { Product, ProductDocument } from '../products/schemas/product.schema.js';
+import { BatchesRepository } from '../batches/batches.repository.js';
 
 /**
  * Result of receiving a purchase order
@@ -42,6 +44,7 @@ export class PurchasesService {
     private readonly inventoryService: InventoryService,
     @InjectConnection() private readonly connection: Connection,
     @InjectModel(Product.name) private readonly productModel: Model<ProductDocument>,
+    private readonly batchesRepository: BatchesRepository,
   ) {}
 
   /**
@@ -122,6 +125,10 @@ export class PurchasesService {
   ): Promise<ReceiveResult> {
     const purchaseOrder = await this.findById(id);
 
+    if (!receiveDto.receivedItems.length || new Set(receiveDto.receivedItems.map(item => item.productId)).size !== receiveDto.receivedItems.length) {
+      throw new BadRequestException('Receive each product once per request');
+    }
+
     // Validate PO status
     if (purchaseOrder.status === PurchaseOrderStatus.COMPLETED) {
       throw new BadRequestException(
@@ -138,7 +145,7 @@ export class PurchasesService {
     // Validate received items match PO items
     for (const receivedItem of receiveDto.receivedItems) {
       const poItem = purchaseOrder.items.find(
-        (item) => item.productId.toString() === receivedItem.productId,
+        (item) => referenceId(item.productId) === receivedItem.productId,
       );
 
       if (!poItem) {
@@ -167,7 +174,7 @@ export class PurchasesService {
       for (const receivedItem of receiveDto.receivedItems) {
         // Find the PO item to get the purchase price
         const poItem = purchaseOrder.items.find(
-          (item) => item.productId.toString() === receivedItem.productId,
+          (item) => referenceId(item.productId) === receivedItem.productId,
         );
 
         // Try to find existing product at this branch
@@ -203,7 +210,7 @@ export class PurchasesService {
           if (sourceProduct) {
             // Create a copy of the product for this branch
             const newProductData = {
-              branchId: new Types.ObjectId(purchaseOrder.branchId.toString()),
+              branchId: new Types.ObjectId(referenceId(purchaseOrder.branchId)),
               name: sourceProduct.name,
               sku: sourceProduct.sku,
               barcode: sourceProduct.barcode || `BAR-${Date.now()}`,
@@ -233,7 +240,7 @@ export class PurchasesService {
           } else {
             // Source product also doesn't exist - create a minimal product
             const minimalProduct = {
-              branchId: new Types.ObjectId(purchaseOrder.branchId.toString()),
+              branchId: new Types.ObjectId(referenceId(purchaseOrder.branchId)),
               name: `Product ${receivedItem.productId}`,
               sku: `SKU-${Date.now()}`,
               barcode: `BAR-${Date.now()}`,
@@ -265,9 +272,24 @@ export class PurchasesService {
 
         productsUpdated++;
 
+        // Receiving must increase both the product total and its sellable batch ledger.
+        const expiryDate = receivedItem.expiryDate
+          ? new Date(receivedItem.expiryDate)
+          : updatedProduct.expiryDate ?? new Date(Date.now() + 365 * 86400000);
+        await this.batchesRepository.create({
+          productId: updatedProduct._id.toString(),
+          branchId: referenceId(purchaseOrder.branchId),
+          supplierId: referenceId(purchaseOrder.supplierId),
+          lotNumber: receivedItem.lotNumber || `PO-${id}-${new Types.ObjectId().toHexString()}`,
+          quantity: receivedItem.receivedQuantity,
+          expiryDate,
+          purchasePrice: receivedItem.purchasePrice ?? poItem!.unitPrice,
+          sellingPrice: receivedItem.sellingPrice,
+        }, session);
+
         // Create stock movement for the purchase
         await this.inventoryService.recordPurchaseMovement(
-          purchaseOrder.branchId.toString(),
+          referenceId(purchaseOrder.branchId),
           updatedProduct._id.toString(),
           receivedItem.receivedQuantity,
           receiveDto.receivedBy,
@@ -279,12 +301,14 @@ export class PurchasesService {
         // Update received quantity in PO
         const newReceivedQuantity =
           poItem!.receivedQuantity + receivedItem.receivedQuantity;
-        await this.purchasesRepository.updateItemReceivedQuantity(
+        const received = await this.purchasesRepository.updateItemReceivedQuantity(
           id,
           receivedItem.productId,
           newReceivedQuantity,
           session,
+          poItem!.receivedQuantity,
         );
+        if (!received) throw new BadRequestException('Purchase order changed before receipt; reload and retry');
       }
 
       // Determine new status

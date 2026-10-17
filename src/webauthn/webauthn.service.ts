@@ -125,7 +125,6 @@ export class WebAuthnService {
       challenge,
       pubKeyCredParams: [
         { type: 'public-key', alg: -7 }, // ES256
-        { type: 'public-key', alg: -257 }, // RS256
       ],
       timeout: 60_000,
       attestation: 'none',
@@ -167,6 +166,8 @@ export class WebAuthnService {
       .findOneAndDelete({
         userId: new Types.ObjectId(userId),
         purpose: 'registration',
+        challenge: this.clientChallenge(response.response.clientDataJSON),
+        expiresAt: { $gt: new Date() },
       })
       .sort({ createdAt: -1 })
       .exec();
@@ -175,7 +176,7 @@ export class WebAuthnService {
     }
 
     const clientDataJSON = base64UrlDecode(response.response.clientDataJSON);
-    const { challenge, type } = verifyClientData(
+    const { challenge, type } = this.verifyCeremony(
       clientDataJSON,
       challengeDoc.challenge,
       'webauthn.create',
@@ -188,26 +189,9 @@ export class WebAuthnService {
     }
 
     const attestation = base64UrlDecode(response.response.attestationObject);
-    // We only support "none" attestation format (which is the recommended default)
-    const fmt = attestation.toString('utf8', 0, 4);
-    if (fmt !== 'none') {
-      // For "none" format, the attestation statement is an empty CBOR map
-      // We've consumed the first 4 bytes (the fmt string); the authData follows.
-      // Other formats we don't support - would require CBOR attestation parsing.
-      // Bail safely:
-      if (fmt === 'packed' || fmt === 'fido-u2f' || fmt === 'tpm' || fmt === 'android-key' || fmt === 'apple') {
-        // For simplicity we accept any format but only extract authData
-      } else {
-        throw new BadRequestException(`Unsupported attestation format: ${fmt}`);
-      }
-    }
-
-    // Skip the attestation statement: for "none" it's a 0-length CBOR map,
-    // for other formats it's a CBOR map of varying length. We need to find
-    // the end of the authData. Parse from the end backwards - authData is
-    // the last element, but its length isn't known without decoding.
-    // The simplest path: decode the whole attestation as CBOR.
-    const att = decodeAttestationObject(attestation);
+    let att: ReturnType<typeof decodeAttestationObject>;
+    try { att = decodeAttestationObject(attestation); }
+    catch { throw new BadRequestException('Invalid or unsupported attestation object'); }
     const authData = att.authData;
     const parsed = parseAuthData(authData);
 
@@ -223,7 +207,7 @@ export class WebAuthnService {
 
     const credentialIdB64Url = base64UrlEncode(parsed.attestedCredentialData.credentialId);
     // Sanity: must match the credentialId in the response
-    if (credentialIdB64Url !== response.id && credentialIdB64Url !== response.rawId) {
+    if (credentialIdB64Url !== response.id || credentialIdB64Url !== response.rawId) {
       throw new BadRequestException('Credential ID mismatch');
     }
 
@@ -288,13 +272,13 @@ export class WebAuthnService {
     const filter: Record<string, unknown> = { revoked: false };
     if (userId) filter.userId = new Types.ObjectId(userId);
 
-    const credentials = await this.credentialModel.find(filter).lean().exec();
+    const credentials = userId ? await this.credentialModel.find(filter).lean().exec() : [];
     if (credentials.length === 0) {
       // Don't leak that there are no credentials; let the ceremony fail on the client
     }
 
     await this.challengeModel.create({
-      userId: userId ? new Types.ObjectId(userId) : new Types.ObjectId(), // dummy for un-attributable
+      userId: userId ? new Types.ObjectId(userId) : undefined,
       purpose: 'authentication',
       challenge,
       expiresAt: new Date(Date.now() + 5 * 60_000),
@@ -370,7 +354,7 @@ export class WebAuthnService {
     reason: string,
   ): Promise<{ token: string; expiresAt: number }> {
     const challengeDoc = await this.challengeModel
-      .findOneAndDelete({ userId: new Types.ObjectId(userId), purpose: 'step-up' })
+      .findOneAndDelete({ userId: new Types.ObjectId(userId), purpose: 'step-up', challenge: this.clientChallenge(response.response.clientDataJSON), expiresAt: { $gt: new Date() } })
       .sort({ createdAt: -1 })
       .exec();
     if (!challengeDoc) {
@@ -387,7 +371,7 @@ export class WebAuthnService {
     }
 
     const clientDataJSON = base64UrlDecode(response.response.clientDataJSON);
-    const { challenge } = verifyClientData(
+    const { challenge } = this.verifyCeremony(
       clientDataJSON,
       challengeDoc.challenge,
       'webauthn.get',
@@ -465,7 +449,7 @@ export class WebAuthnService {
   ): Promise<TokenResponseDto> {
     // Find the most recent authentication challenge (across all users if username unknown)
     const challengeDoc = await this.challengeModel
-      .findOneAndDelete({ purpose: 'authentication' })
+      .findOneAndDelete({ purpose: 'authentication', challenge: this.clientChallenge(response.response.clientDataJSON), expiresAt: { $gt: new Date() } })
       .sort({ createdAt: -1 })
       .exec();
     if (!challengeDoc) {
@@ -482,7 +466,7 @@ export class WebAuthnService {
     }
 
     const clientDataJSON = base64UrlDecode(response.response.clientDataJSON);
-    const { challenge } = verifyClientData(
+    const { challenge } = this.verifyCeremony(
       clientDataJSON,
       challengeDoc.challenge,
       'webauthn.get',
@@ -713,6 +697,25 @@ export class WebAuthnService {
     };
   }
 
+  private clientChallenge(encoded: string): string {
+    try {
+      const data = JSON.parse(base64UrlDecode(encoded).toString('utf8'));
+      if (typeof data.challenge !== 'string') throw new Error();
+      return data.challenge;
+    } catch { throw new BadRequestException('Invalid client data'); }
+  }
+
+  private verifyCeremony(data: Buffer, challenge: string, type: 'webauthn.create' | 'webauthn.get') {
+    try {
+      const result = verifyClientData(data, challenge, type);
+      const configured = this.config.get<string>('WEBAUTHN_ORIGINS');
+      const developmentOrigins = this.rpId === 'localhost' ? ['http://localhost:5173', 'http://localhost:3000', 'http://localhost', 'https://localhost', 'capacitor://localhost'] : [];
+      const origins = configured ? configured.split(',').map(origin => origin.trim()) : [...(this.config.get<string>('CORS_ORIGIN') || '').split(',').map(origin => origin.trim()), ...developmentOrigins];
+      if (!origins.includes(result.origin) || result.crossOrigin) throw new Error('Invalid ceremony origin');
+      return result;
+    } catch { throw new UnauthorizedException('Invalid client data or origin'); }
+  }
+
   private defaultDeviceName(flags: number): string {
     const date = new Date().toISOString().slice(0, 10);
     return `Device registered ${date}${flags & 0x04 ? ' - UV' : ''}`;
@@ -726,23 +729,18 @@ export class WebAuthnService {
  */
 function decodeAttestationObject(buf: Buffer): { fmt: string; authData: Buffer } {
   // The attestation object is a CBOR map with 3+ keys: fmt (3), attStmt (?), authData (...)
-  const { value } = readCborValueAny(buf, 0);
+  const { value, next } = readCborValueAny(buf, 0);
+  if (next !== buf.length) throw new Error('Trailing CBOR data');
   if (!(value instanceof Map)) {
     throw new Error('Attestation object is not a CBOR map');
   }
-  const fmt = value.get(3) as string | undefined;
-  // Find the bytes value of length 37+ (authData is always >= 37 bytes)
-  let foundAuthData: Buffer | undefined;
-  for (const v of value.values()) {
-    if (Buffer.isBuffer(v) && v.length >= 37) {
-      foundAuthData = v;
-      break;
-    }
+  const fmt = value.get('fmt');
+  const authData = value.get('authData');
+  const statement = value.get('attStmt');
+  if (fmt !== 'none' || !(statement instanceof Map) || statement.size !== 0 || !Buffer.isBuffer(authData) || authData.length < 37) {
+    throw new Error('Unsupported attestation');
   }
-  if (!foundAuthData) {
-    throw new Error('authData not found in attestation object');
-  }
-  return { fmt: fmt ?? 'unknown', authData: foundAuthData };
+  return { fmt, authData };
 }
 
 // Re-declare the readCborValue from webauthn.util - but we can't import the private fn.
@@ -783,6 +781,7 @@ function readCborArgAny(
     throw new Error(`CBOR additional info ${additional} not supported`);
   }
 
+  if (!Number.isSafeInteger(length) || length < 0 || ((majorType >= 2 && majorType <= 5) && length > buf.length - offset)) throw new Error('Invalid CBOR length');
   switch (majorType) {
     case 0:
       return { value: length, next: offset };
@@ -812,6 +811,7 @@ function readCborArgAny(
       for (let i = 0; i < length; i++) {
         const { value: k, next: kEnd } = readCborValueAny(buf, pos);
         const { value: v, next: vEnd } = readCborValueAny(buf, kEnd);
+        if (map.has(k as string)) throw new Error('Duplicate CBOR key');
         if (typeof k === 'number') {
           map.set(k, v);
         } else {

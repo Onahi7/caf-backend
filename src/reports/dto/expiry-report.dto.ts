@@ -1,3 +1,4 @@
+import { ExportQueryDto } from './export-query.dto.js';
 import { IsOptional, IsString, IsNumber, Min } from 'class-validator';
 
 /**
@@ -6,7 +7,7 @@ import { IsOptional, IsString, IsNumber, Min } from 'class-validator';
  * Property 49: Expiry report filtering
  * Property 51: Expiry loss calculation
  */
-export class ExpiryReportDto {
+export class ExpiryReportDto extends ExportQueryDto {
   @IsOptional()
   @IsString()
   branchId?: string;

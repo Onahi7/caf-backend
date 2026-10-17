@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -5,21 +6,21 @@ export type MarketerSaleDocument = MarketerSale & Document;
 
 @Schema({ timestamps: true })
 export class MarketerSale {
-  @Prop({ type: Types.ObjectId, ref: 'Branch', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', required: true, index: true })
   branchId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true, index: true })
   marketerId!: Types.ObjectId;
 
   @Prop({
-    type: Types.ObjectId,
+    type: MongooseSchema.Types.ObjectId,
     ref: 'MarketerProductAssignment',
     required: true,
     index: true,
   })
   assignmentId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Product', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Product', required: true, index: true })
   productId!: Types.ObjectId;
 
   @Prop({ required: true, min: 1 })
@@ -37,7 +38,7 @@ export class MarketerSale {
   @Prop()
   customerPhone?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'Customer', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Customer', index: true })
   customerId?: Types.ObjectId;
 
   @Prop()

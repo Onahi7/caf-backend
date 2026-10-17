@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -12,7 +13,7 @@ export enum DeliveryStatus {
 
 @Schema()
 export class DeliveryNoteItem {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Product' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product' })
   productId!: Types.ObjectId;
 
   @Prop({ required: true })
@@ -29,16 +30,16 @@ export class DeliveryNote {
   @Prop({ required: true, unique: true, index: true })
   deliveryNumber!: string;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'ProformaInvoice', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'ProformaInvoice', index: true })
   proformaInvoiceId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Sale' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Sale' })
   saleId?: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Customer', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Customer', index: true })
   customerId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId!: Types.ObjectId;
 
   @Prop({ required: true, type: [DeliveryNoteItemSchema] })
@@ -50,7 +51,7 @@ export class DeliveryNote {
   @Prop()
   deliveredAt?: Date;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   deliveredBy?: Types.ObjectId;
 
   @Prop()

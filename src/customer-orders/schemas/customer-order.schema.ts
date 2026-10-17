@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -27,7 +28,7 @@ export class CustomerOrderItem {
   @Prop()
   extractedUnitPrice?: number;
 
-  @Prop({ type: Types.ObjectId, ref: 'Product' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Product' })
   matchedProductId?: Types.ObjectId;
 
   @Prop()
@@ -61,10 +62,10 @@ export class CustomerOrder {
   @Prop({ required: true, unique: true, index: true })
   orderNumber!: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'Customer' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Customer' })
   customerId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Branch', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', required: true, index: true })
   branchId!: Types.ObjectId;
 
   @Prop({ type: SourceFileInfoSchema })
@@ -89,7 +90,7 @@ export class CustomerOrder {
   @Prop()
   notes?: string;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User' })
   createdBy!: Types.ObjectId;
 
   @Prop()

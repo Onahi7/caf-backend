@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -25,7 +26,7 @@ export enum PaymentMethod {
 
 @Schema()
 export class ProformaItem {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Product' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product' })
   productId!: Types.ObjectId;
 
   @Prop({ required: true })
@@ -57,7 +58,7 @@ export class PaymentEntry {
   @Prop({ required: true, default: () => new Date() })
   paidAt!: Date;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User' })
   receivedBy!: Types.ObjectId;
 }
 
@@ -68,13 +69,13 @@ export class ProformaInvoice {
   @Prop({ required: true, unique: true, index: true })
   proformaNumber!: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'CustomerOrder' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'CustomerOrder' })
   customerOrderId?: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Customer', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Customer', index: true })
   customerId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId!: Types.ObjectId;
 
   @Prop({ required: true, type: [ProformaItemSchema] })
@@ -104,10 +105,10 @@ export class ProformaInvoice {
   @Prop({ type: [PaymentEntrySchema], default: [] })
   payments!: PaymentEntry[];
 
-  @Prop({ type: Types.ObjectId, ref: 'Sale' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Sale' })
   saleId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   approvedBy?: Types.ObjectId;
 
   @Prop()
@@ -122,7 +123,7 @@ export class ProformaInvoice {
   @Prop()
   terms?: string;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User' })
   createdBy!: Types.ObjectId;
 
   @Prop()

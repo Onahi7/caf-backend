@@ -6,6 +6,7 @@ import { JwtService } from '@nestjs/jwt';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PAYMENT_METHOD_LABELS } from '../common/constants/payment-methods.constant';
 import { Branch } from '../branches/schemas/branch.schema';
+import { UsersService } from '../users/users.service';
 import type { SaleUpdateEvent } from './events.service';
 
 describe('WebSocketGateway - Sale Update Events', () => {
@@ -15,6 +16,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WebSocketGateway,
+        { provide: UsersService, useValue: { findById: jest.fn(), assertActiveAssignment: jest.fn() } },
         {
           provide: ConfigService,
           useValue: {
@@ -39,6 +41,7 @@ describe('WebSocketGateway - Sale Update Events', () => {
           provide: getModelToken(Branch.name),
           useValue: {
             findById: jest.fn().mockReturnValue({
+              lean: jest.fn().mockReturnThis(),
               exec: jest.fn().mockResolvedValue({ currencyCode: 'SLE' }),
             }),
           },

@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
@@ -33,7 +34,7 @@ export class User {
   @Prop({ required: true, enum: Object.values(UserRole) })
   role!: UserRole;
 
-  @Prop({ type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId?: Types.ObjectId;
 
   @Prop({ default: true })
@@ -53,6 +54,13 @@ export class User {
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
+UserSchema.set('toJSON', {
+  transform(_doc, result) {
+    delete (result as { passwordHash?: string }).passwordHash;
+    return result;
+  },
+});
+
 // Add password hashing middleware
 UserSchema.pre('save', async function () {
   const user = this as UserDocument;
@@ -68,6 +76,7 @@ UserSchema.pre('save', async function () {
 
 // Add method to schema
 UserSchema.methods.comparePassword = async function (
+  this: UserDocument,
   candidatePassword: string,
 ): Promise<boolean> {
   return bcrypt.compare(candidatePassword, this.passwordHash);

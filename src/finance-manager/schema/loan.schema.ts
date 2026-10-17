@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -36,10 +37,10 @@ export class LoanRepayment {
   @Prop({ required: true })
   paymentDate!: Date;
 
-  @Prop({ type: Types.ObjectId, ref: 'CashEntry' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'CashEntry' })
   cashEntryId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   recordedBy?: Types.ObjectId;
 
   @Prop({ maxlength: 500 })
@@ -56,7 +57,7 @@ export class Loan {
   @Prop({ required: true, enum: LoanDirection })
   direction!: LoanDirection;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId!: Types.ObjectId;
 
   @Prop({ required: true, maxlength: 200 })
@@ -107,13 +108,13 @@ export class Loan {
   @Prop({ maxlength: 200 })
   collateral?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   coSignedBy?: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User' })
   createdBy!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   approvedBy?: Types.ObjectId;
 
   @Prop()

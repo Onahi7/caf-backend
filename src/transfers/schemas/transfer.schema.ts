@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -34,13 +35,13 @@ export enum TransferType {
  */
 @Schema({ timestamps: true })
 export class Transfer {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   sourceBranchId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   destinationBranchId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Product', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product', index: true })
   productId!: Types.ObjectId;
 
   @Prop({ required: true, min: 1 })
@@ -65,10 +66,10 @@ export class Transfer {
   })
   transferType!: TransferType;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User' })
   requestedBy!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   approvedBy?: Types.ObjectId;
 
   @Prop()

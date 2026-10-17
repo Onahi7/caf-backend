@@ -5,11 +5,11 @@ import {
   IsDate,
   IsNumber,
   IsMongoId,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   PaymentMethod,
-  PaymentStatus,
   SaleStatus,
   SaleType,
 } from '../schemas/sale.schema.js';
@@ -54,9 +54,13 @@ export class SaleFilterDto {
   @IsOptional()
   saleType?: SaleType;
 
-  @IsEnum(PaymentStatus)
+  @IsString()
   @IsOptional()
-  paymentStatus?: PaymentStatus;
+  @Matches(/^(unpaid|partial|paid|overdue)(,(unpaid|partial|paid|overdue))*$/, {
+    message:
+      'paymentStatus must be one of unpaid, partial, paid, overdue (comma-separated values allowed)',
+  })
+  paymentStatus?: string;
 
   @IsDate()
   @Type(() => Date)

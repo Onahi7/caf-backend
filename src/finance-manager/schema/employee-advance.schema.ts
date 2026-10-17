@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -29,19 +30,19 @@ export class AdvanceRepayment {
   @Prop({ required: true, enum: RepaymentType })
   type!: RepaymentType;
 
-  @Prop({ type: Types.ObjectId, ref: 'Salary' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Salary' })
   salaryId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'CashEntry' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'CashEntry' })
   cashEntryId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Sale' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Sale' })
   returnSaleId?: Types.ObjectId;
 
   @Prop({ required: true })
   repaymentDate!: Date;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   recordedBy!: Types.ObjectId;
 
   @Prop({ maxlength: 500 })
@@ -52,13 +53,13 @@ export const AdvanceRepaymentSchema = SchemaFactory.createForClass(AdvanceRepaym
 
 @Schema({ _id: false })
 export class AdvanceItem {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Product' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product' })
   productId!: Types.ObjectId;
 
   @Prop({ maxlength: 200 })
   productName?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'Batch' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Batch' })
   batchId?: Types.ObjectId;
 
   @Prop({ required: true, min: 0 })
@@ -81,10 +82,10 @@ export class EmployeeAdvance {
   @Prop({ required: true, maxlength: 100 })
   referenceNumber!: string;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User', index: true })
   employeeId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId!: Types.ObjectId;
 
   @Prop({ required: true, enum: AdvanceType })
@@ -105,7 +106,7 @@ export class EmployeeAdvance {
   @Prop({ type: [AdvanceItemSchema], default: [] })
   items!: AdvanceItem[];
 
-  @Prop({ type: Types.ObjectId, ref: 'Sale' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Sale' })
   sourceSaleId?: Types.ObjectId;
 
   @Prop({ type: [AdvanceRepaymentSchema], default: [] })
@@ -117,10 +118,10 @@ export class EmployeeAdvance {
   @Prop({ maxlength: 1000 })
   notes?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   coSignedBy?: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User' })
   createdBy!: Types.ObjectId;
 
   @Prop()

@@ -38,7 +38,12 @@ export class UsersRepository {
 
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
-      this.userModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      this.userModel
+        .find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
       this.userModel.countDocuments(query).exec(),
     ]);
 
@@ -75,7 +80,11 @@ export class UsersRepository {
     const roleQuery = { $in: roles };
     if (branchId) {
       return this.userModel
-        .find({ branchId: new Types.ObjectId(branchId), role: roleQuery, isActive: { $ne: false } })
+        .find({
+          branchId: new Types.ObjectId(branchId),
+          role: roleQuery,
+          isActive: { $ne: false },
+        })
         .exec();
     }
     return this.userModel
@@ -113,11 +122,18 @@ export class UsersRepository {
 
     const updateData: Record<string, unknown> = { ...updateUserDto };
 
+    if (updateUserDto.branchId === null) {
+      delete updateData.branchId;
+      updateData.$unset = { branchId: 1 };
+    }
+
     if (updateUserDto.branchId) {
       updateData.branchId = new Types.ObjectId(updateUserDto.branchId);
     }
 
-    return this.userModel.findByIdAndUpdate(id, updateData, { new: true }).exec();
+    return this.userModel
+      .findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
+      .exec();
   }
 
   async delete(id: string): Promise<UserDocument | null> {

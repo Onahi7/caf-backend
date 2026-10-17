@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -19,13 +20,13 @@ export type ExpenseDocument = Expense & Document;
  */
 @Schema({ timestamps: true })
 export class Expense {
-  @Prop({ type: Types.ObjectId, ref: 'Branch', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', required: true })
   branchId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Shift', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Shift', required: true })
   shiftId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   recordedBy!: Types.ObjectId;
 
   @Prop({ required: true, min: 0 })
@@ -46,7 +47,7 @@ export class Expense {
   @Prop({ default: false })
   isDeleted!: boolean;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   deletedBy?: Types.ObjectId;
 
   @Prop()

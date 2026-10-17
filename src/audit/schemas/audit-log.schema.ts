@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -40,7 +41,7 @@ export enum AuditResource {
 
 @Schema({ timestamps: true, collection: 'audit_logs' })
 export class AuditLog {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   userId!: Types.ObjectId;
 
   @Prop({ required: true })
@@ -52,10 +53,10 @@ export class AuditLog {
   @Prop({ required: true, enum: AuditResource })
   resource!: AuditResource;
 
-  @Prop({ type: Types.ObjectId })
+  @Prop({ type: MongooseSchema.Types.ObjectId })
   resourceId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Branch' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch' })
   branchId?: Types.ObjectId;
 
   @Prop()

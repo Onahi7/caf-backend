@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -5,10 +6,10 @@ export type BatchDocument = Batch & Document;
 
 @Schema({ timestamps: true })
 export class Batch {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Product', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product', index: true })
   productId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId!: Types.ObjectId;
 
   @Prop({ required: true, index: true })
@@ -36,7 +37,7 @@ export class Batch {
   @Prop({ required: true })
   sellingPrice!: number;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Supplier' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Supplier' })
   supplierId!: Types.ObjectId;
 
   @Prop({ default: false })

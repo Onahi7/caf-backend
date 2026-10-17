@@ -1,5 +1,5 @@
+import { ReportCacheInterceptor } from './report-cache.interceptor.js';
 import { Module } from '@nestjs/common';
-import { CacheModule } from '@nestjs/cache-manager';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ReportsService } from './reports.service.js';
 import { ValuationService } from './valuation.service.js';
@@ -26,10 +26,6 @@ import { Expense, ExpenseSchema } from '../expenses/schemas/expense.schema.js';
 
 @Module({
   imports: [
-    CacheModule.register({
-      ttl: 60000,
-      max: 100,
-    }),
     MongooseModule.forFeature([
       { name: Sale.name, schema: SaleSchema },
       { name: Batch.name, schema: BatchSchema },
@@ -43,7 +39,7 @@ import { Expense, ExpenseSchema } from '../expenses/schemas/expense.schema.js';
     ]),
   ],
   controllers: [ReportsController],
-  providers: [ReportsService, ValuationService, ExportService],
+  providers: [ReportsService, ValuationService, ExportService, ReportCacheInterceptor],
   exports: [ReportsService, ValuationService, ExportService],
 })
 export class ReportsModule {}

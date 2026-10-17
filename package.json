@@ -26,7 +26,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:api:local": "pnpm build && node test/local-api-validation.cjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -39,6 +40,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@keyv/redis": "^5.1.6",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/cache-manager": "^3.0.1",
@@ -72,6 +74,7 @@
     "fuse.js": "^7.3.0",
     "helmet": "^8.1.0",
     "ioredis": "^5.8.2",
+    "keyv": "^5.6.0",
     "mammoth": "^1.12.0",
     "mongoose": "^9.0.0",
     "nodemailer": "^7.0.11",

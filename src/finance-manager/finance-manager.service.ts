@@ -1,3 +1,4 @@
+import { referenceId } from '../common/utils/reference-id.js';
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
@@ -215,7 +216,7 @@ export class FinanceManagerService {
     const actorId = userId ?? salary.approvedBy?.toString() ?? salary.createdBy.toString();
 
     const deduction = await this.advanceService.recordSalaryDeduction(
-      salary.employeeId.toString(),
+      referenceId(salary.employeeId),
       salary.branchId.toString(),
       salary.period,
       id,
@@ -242,7 +243,7 @@ export class FinanceManagerService {
       const saved = await salary.save({ session });
 
       await this.advanceService.applySalaryDeduction(
-        salary.employeeId.toString(),
+        referenceId(salary.employeeId),
         salary.branchId.toString(),
         deduction,
         id,
@@ -289,7 +290,7 @@ export class FinanceManagerService {
       },
     ]).exec();
 
-    return stats[0] || { totalEmployees: 0, totalBase: 0, totalAllowances: 0, totalDeductions: 0, totalNet: 0, pendingCount: 0, paidCount: 0 };
+    return stats || { totalEmployees: 0, totalBase: 0, totalAllowances: 0, totalDeductions: 0, totalNet: 0, pendingCount: 0, paidCount: 0 };
   }
 
   async previewSalaryPayroll(id: string): Promise<{
@@ -312,7 +313,7 @@ export class FinanceManagerService {
   }> {
     const salary = await this.findSalaryById(id);
     const deduction = await this.advanceService.recordSalaryDeduction(
-      salary.employeeId.toString(),
+      referenceId(salary.employeeId),
       salary.branchId.toString(),
       salary.period,
       id,
@@ -324,7 +325,7 @@ export class FinanceManagerService {
 
     return {
       salaryId: salary._id.toString(),
-      employeeId: salary.employeeId.toString(),
+      employeeId: referenceId(salary.employeeId),
       branchId: salary.branchId.toString(),
       period: salary.period,
       baseSalary: salary.baseSalary,
@@ -441,7 +442,7 @@ export class FinanceManagerService {
       { $sort: { total: -1 } },
     ]).exec();
 
-    const s = summary[0] || { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalAdvance: 0, totalSalary: 0 };
+    const s = summary || { totalIncome: 0, totalExpense: 0, totalTransfer: 0, totalLoan: 0, totalAdvance: 0, totalSalary: 0 };
     return {
       ...s,
       netCash: s.signedCash ?? 0,

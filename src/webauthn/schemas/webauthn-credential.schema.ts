@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -5,7 +6,7 @@ export type WebAuthnCredentialDocument = WebAuthnCredential & Document;
 
 @Schema({ timestamps: true, collection: 'webauthn_credentials' })
 export class WebAuthnCredential {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true, index: true })
   userId!: Types.ObjectId;
 
   // Base64URL-encoded credential ID (max 1023 bytes per spec)

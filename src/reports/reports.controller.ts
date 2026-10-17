@@ -1,3 +1,4 @@
+import { ReportCacheInterceptor } from './report-cache.interceptor.js';
 import {
   Controller,
   Get,
@@ -9,7 +10,7 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
+import { CacheTTL } from '@nestjs/cache-manager';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -47,7 +48,8 @@ import {
 @ApiTags('Reports')
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@UseInterceptors(CacheInterceptor)
+@UseInterceptors(ReportCacheInterceptor)
+@CacheTTL(60000)
 export class ReportsController {
   private readonly logger = new Logger(ReportsController.name);
 

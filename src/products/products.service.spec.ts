@@ -1,3 +1,6 @@
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
+import { AuditService } from '../audit/audit.service.js';
+import { UsersService } from '../users/users.service.js';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ProductsService } from './products.service';
@@ -10,6 +13,11 @@ describe('ProductsService', () => {
 
   const mockProduct = {
     _id: '507f1f77bcf86cd799439011',
+    branchId: '507f1f77bcf86cd799439012',
+    quantityAvailable: 0,
+    basePrice: 0,
+    suggestedRetailPrice: 0,
+    toObject() { const { toObject, ...plain } = this; return plain; },
     name: 'Paracetamol 500mg',
     sku: 'PARA-500',
     barcode: '1234567890123',
@@ -30,6 +38,8 @@ describe('ProductsService', () => {
     findActive: jest.fn(),
     findById: jest.fn(),
     findBySku: jest.fn(),
+    findBySkuAndBranch: jest.fn(),
+    findByBarcodeAndBranch: jest.fn(),
     findByBarcode: jest.fn(),
     findByName: jest.fn(),
     search: jest.fn(),
@@ -44,6 +54,11 @@ describe('ProductsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductsService,
+        { provide: AuditService, useValue: { logCreate: jest.fn() } },
+        { provide: UsersService, useValue: {} },
+        { provide: getConnectionToken(), useValue: {} },
+        { provide: getModelToken('Batch'), useValue: {} },
+        { provide: getModelToken('StockMovement'), useValue: {} },
         {
           provide: ProductsRepository,
           useValue: mockRepository,
@@ -70,18 +85,18 @@ describe('ProductsService', () => {
         reorderLevel: 100,
       };
 
-      mockRepository.findBySku.mockResolvedValue(null);
-      mockRepository.findByBarcode.mockResolvedValue(null);
+      mockRepository.findBySkuAndBranch.mockResolvedValue(null);
+      mockRepository.findByBarcodeAndBranch.mockResolvedValue(null);
       mockRepository.create.mockResolvedValue(mockProduct);
 
       const result = await service.create(createDto);
 
       expect(result).toEqual(mockProduct);
-      expect(mockRepository.findBySku).toHaveBeenCalledWith(createDto.sku);
-      expect(mockRepository.findByBarcode).toHaveBeenCalledWith(
-        createDto.barcode,
+      expect(mockRepository.findBySkuAndBranch).toHaveBeenCalledWith(createDto.sku, createDto.branchId);
+      expect(mockRepository.findByBarcodeAndBranch).toHaveBeenCalledWith(
+        createDto.barcode, createDto.branchId,
       );
-      expect(mockRepository.create).toHaveBeenCalledWith(createDto);
+      expect(mockRepository.create).toHaveBeenCalledWith(expect.objectContaining({ name: createDto.name, sku: createDto.sku, barcode: createDto.barcode, quantityAvailable: 0, quantityInitial: 0 }));
     });
 
     it('should throw ConflictException if SKU already exists', async () => {
@@ -95,12 +110,12 @@ describe('ProductsService', () => {
         reorderLevel: 100,
       };
 
-      mockRepository.findBySku.mockResolvedValue(mockProduct);
+      mockRepository.findBySkuAndBranch.mockResolvedValue(mockProduct);
 
       await expect(service.create(createDto)).rejects.toThrow(
         ConflictException,
       );
-      expect(mockRepository.findBySku).toHaveBeenCalledWith(createDto.sku);
+      expect(mockRepository.findBySkuAndBranch).toHaveBeenCalledWith(createDto.sku, createDto.branchId);
       expect(mockRepository.create).not.toHaveBeenCalled();
     });
 
@@ -115,14 +130,14 @@ describe('ProductsService', () => {
         reorderLevel: 100,
       };
 
-      mockRepository.findBySku.mockResolvedValue(null);
-      mockRepository.findByBarcode.mockResolvedValue(mockProduct);
+      mockRepository.findBySkuAndBranch.mockResolvedValue(null);
+      mockRepository.findByBarcodeAndBranch.mockResolvedValue(mockProduct);
 
       await expect(service.create(createDto)).rejects.toThrow(
         ConflictException,
       );
-      expect(mockRepository.findByBarcode).toHaveBeenCalledWith(
-        createDto.barcode,
+      expect(mockRepository.findByBarcodeAndBranch).toHaveBeenCalledWith(
+        createDto.barcode, createDto.branchId,
       );
       expect(mockRepository.create).not.toHaveBeenCalled();
     });
@@ -152,29 +167,30 @@ describe('ProductsService', () => {
   describe('search', () => {
     it('should search products by query', async () => {
       const searchDto = { query: 'Paracetamol' };
-      mockRepository.search.mockResolvedValue([mockProduct]);
+      mockRepository.search.mockResolvedValue({ data: [mockProduct], total: 1 });
 
       const result = await service.search(searchDto);
 
-      expect(result).toEqual([mockProduct]);
+      expect(result).toMatchObject({ data: [expect.objectContaining({ name: mockProduct.name, stockAvailable: 0, sellingPrice: 0 })], total: 1 });
       expect(mockRepository.search).toHaveBeenCalledWith(
         searchDto.query,
         undefined,
-        undefined,
+        undefined, undefined, 1, 20, undefined, 'asc',
       );
     });
 
     it('should search products with category filter', async () => {
       const searchDto = { query: 'Paracetamol', category: 'Pain Relief' };
-      mockRepository.search.mockResolvedValue([mockProduct]);
+      mockRepository.search.mockResolvedValue({ data: [mockProduct], total: 1 });
 
       const result = await service.search(searchDto);
 
-      expect(result).toEqual([mockProduct]);
+      expect(result).toMatchObject({ data: [expect.objectContaining({ name: mockProduct.name, stockAvailable: 0, sellingPrice: 0 })], total: 1 });
       expect(mockRepository.search).toHaveBeenCalledWith(
         searchDto.query,
-        searchDto.category,
         undefined,
+        searchDto.category,
+        undefined, 1, 20, undefined, 'asc',
       );
     });
   });
@@ -184,6 +200,7 @@ describe('ProductsService', () => {
       const updateDto: UpdateProductDto = { name: 'Updated Name' };
       const updatedProduct = { ...mockProduct, name: 'Updated Name' };
 
+      mockRepository.findById.mockResolvedValue(mockProduct);
       mockRepository.update.mockResolvedValue(updatedProduct);
 
       const result = await service.update(
@@ -200,6 +217,7 @@ describe('ProductsService', () => {
 
     it('should throw NotFoundException if product not found', async () => {
       const updateDto: UpdateProductDto = { name: 'Updated Name' };
+      mockRepository.findById.mockResolvedValue(null);
       mockRepository.update.mockResolvedValue(null);
 
       await expect(

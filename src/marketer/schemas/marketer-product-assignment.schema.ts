@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -11,7 +12,7 @@ export enum MarketerAssignmentStatus {
 
 @Schema({ _id: false })
 export class MarketerBatchAllocation {
-  @Prop({ type: Types.ObjectId, ref: 'Batch', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Batch', required: true })
   batchId!: Types.ObjectId;
 
   @Prop({ required: true, min: 0 })
@@ -25,13 +26,13 @@ const MarketerBatchAllocationSchema = SchemaFactory.createForClass(MarketerBatch
 
 @Schema({ timestamps: true })
 export class MarketerProductAssignment {
-  @Prop({ type: Types.ObjectId, ref: 'Branch', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', required: true, index: true })
   branchId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true, index: true })
   marketerId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Product', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Product', required: true, index: true })
   productId!: Types.ObjectId;
 
   @Prop({ required: true, min: 1 })
@@ -60,13 +61,13 @@ export class MarketerProductAssignment {
   @Prop({ type: Date })
   reviewedAt?: Date;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   reviewedBy?: Types.ObjectId;
 
   @Prop()
   notes?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   assignedBy!: Types.ObjectId;
 
   @Prop()

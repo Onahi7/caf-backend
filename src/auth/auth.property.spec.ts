@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import * as fc from 'fast-check';
 import { AuthService } from './auth.service.js';
 import { UsersService } from '../users/users.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { RedisService } from '../redis/redis.service.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 
@@ -24,9 +25,7 @@ describe('Auth Token Lifecycle Property Tests', () => {
 
   // Mock user generator
   const userArb = fc.record({
-    _id: fc
-      .string({ minLength: 24, maxLength: 24 })
-      .filter((s) => /^[0-9a-f]{24}$/.test(s)),
+    _id: fc.array(fc.constantFrom(...'0123456789abcdef'), { minLength: 24, maxLength: 24 }).map(chars => chars.join('')),
     username: fc.string({ minLength: 3, maxLength: 20 }),
     password: fc.constant('ValidPass123!'),
     email: fc.emailAddress(),
@@ -40,6 +39,7 @@ describe('Auth Token Lifecycle Property Tests', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        { provide: AuditService, useValue: { logLogin: jest.fn(), logLogout: jest.fn() } },
         {
           provide: UsersService,
           useValue: {
@@ -214,7 +214,7 @@ describe('Auth Token Lifecycle Property Tests', () => {
           jest.spyOn(redisService, 'get').mockResolvedValue(null);
 
           await expect(authService.refresh(refreshToken)).rejects.toThrow(
-            'Invalid refresh token',
+            'Invalid or expired refresh token',
           );
         }),
         { numRuns: 100 },
@@ -228,7 +228,7 @@ describe('Auth Token Lifecycle Property Tests', () => {
         fc.asyncProperty(userArb, async (user) => {
           jest.spyOn(redisService, 'del').mockResolvedValue(undefined);
 
-          await authService.logout(user._id);
+          await authService.logout(user._id, user.username);
 
           // Property: Refresh token should be removed from Redis
           expect(redisService.del).toHaveBeenCalledWith(
@@ -246,7 +246,7 @@ describe('Auth Token Lifecycle Property Tests', () => {
 
           // Simulate logout
           jest.spyOn(redisService, 'del').mockResolvedValue(undefined);
-          await authService.logout(user._id);
+          await authService.logout(user._id, user.username);
 
           // Try to refresh after logout
           jest.spyOn(jwtService, 'verify').mockReturnValue({
@@ -259,7 +259,7 @@ describe('Auth Token Lifecycle Property Tests', () => {
           jest.spyOn(redisService, 'get').mockResolvedValue(null);
 
           await expect(authService.refresh(refreshToken)).rejects.toThrow(
-            'Invalid refresh token',
+            'Invalid or expired refresh token',
           );
         }),
         { numRuns: 100 },

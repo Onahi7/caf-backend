@@ -126,7 +126,7 @@ export class ExportService {
         // Table rows
         report.breakdown.forEach((item) => {
           const y = doc.y;
-          doc.text(item._id.substring(0, 8), col1X, y);
+          doc.text(String(item._id).substring(0, 8), col1X, y);
           doc.text(item.name || 'N/A', col2X, y);
           doc.text(
             CurrencyUtil.format(item.totalAmount, currencyCode),
@@ -147,7 +147,7 @@ export class ExportService {
 
         report.topProducts.forEach((product, index) => {
           doc.text(
-            `${index + 1}. Product ${product.productId.substring(0, 8)} - Qty: ${product.quantitySold}, Amount: ${CurrencyUtil.format(product.totalAmount, currencyCode)}`,
+            `${index + 1}. Product ${String(product.productId).substring(0, 8)} - Qty: ${product.quantitySold}, Amount: ${CurrencyUtil.format(product.totalAmount, currencyCode)}`,
           );
           doc.moveDown(0.5);
         });
@@ -611,7 +611,7 @@ export class ExportService {
 
       report.transfers.forEach((transfer) => {
         doc.fontSize(10);
-        doc.text(`Transfer ID: ${transfer.transferId.substring(0, 8)}`);
+        doc.text(`Transfer ID: ${String(transfer.transferId).substring(0, 8)}`);
         doc.text(
           `  From: ${transfer.sourceBranchName} -> To: ${transfer.destinationBranchName}`,
         );

@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -36,13 +37,13 @@ export class Promotion extends Document {
   @Prop()
   maximumDiscount?: number;
 
-  @Prop({ type: [Types.ObjectId], ref: 'Product' })
+  @Prop({ type: [MongooseSchema.Types.ObjectId], ref: 'Product' })
   applicableProducts?: Types.ObjectId[];
 
   @Prop({ type: [String] })
   applicableCategories?: string[];
 
-  @Prop({ type: Types.ObjectId, ref: 'Branch' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch' })
   branchId?: Types.ObjectId; // null means all branches
 
   @Prop({ required: true })
@@ -66,7 +67,7 @@ export class Promotion extends Document {
   @Prop({ default: 0 })
   getQuantity!: number;
 
-  @Prop({ type: Types.ObjectId, ref: 'Product' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Product' })
   getProductId?: Types.ObjectId;
 
   @Prop()
@@ -75,7 +76,7 @@ export class Promotion extends Document {
   @Prop({ default: false })
   requiresCode!: boolean;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   createdBy!: Types.ObjectId;
 }
 

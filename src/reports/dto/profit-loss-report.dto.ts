@@ -1,6 +1,7 @@
+import { ExportQueryDto } from './export-query.dto.js';
 import { IsOptional, IsString, IsDateString } from 'class-validator';
 
-export class ProfitLossReportDto {
+export class ProfitLossReportDto extends ExportQueryDto {
   @IsOptional()
   @IsString()
   branchId?: string;

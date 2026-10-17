@@ -100,7 +100,10 @@ export class CycleCountService {
       const counted = countedMap.get(line.batchId.toString());
       const countedQty = counted !== undefined ? counted : line.countedQuantity;
       return {
-        ...line,
+        productId: line.productId,
+        batchId: line.batchId,
+        lotNumber: line.lotNumber,
+        systemQuantity: line.systemQuantity,
         countedQuantity: countedQty,
         variance:
           countedQty !== null ? countedQty - line.systemQuantity : null,

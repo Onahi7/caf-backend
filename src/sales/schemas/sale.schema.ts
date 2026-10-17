@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -74,10 +75,10 @@ export class SaleItem {
   @Prop({ required: true, default: () => new Types.ObjectId().toString() })
   saleItemId!: string;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Product' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product' })
   productId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Batch' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Batch' })
   batchId?: Types.ObjectId;
 
   @Prop({ required: true })
@@ -119,7 +120,7 @@ export class SalePaymentEntry {
   @Prop()
   paymentReference?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   receivedBy?: Types.ObjectId;
 
   @Prop({ default: Date.now })
@@ -146,7 +147,7 @@ export class SaleRefundEntry {
   @Prop({ required: true, enum: PaymentMethod, type: String })
   paymentMethod!: PaymentMethod;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   processedBy!: Types.ObjectId;
 
   @Prop({ default: Date.now })
@@ -177,19 +178,19 @@ export enum PrescriptionStatus {
  */
 @Schema({ timestamps: true })
 export class Sale {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId!: Types.ObjectId;
 
   /**
    * Property 30: Sales-shift association
    */
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Shift', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Shift', index: true })
   shiftId!: Types.ObjectId;
 
   @Prop({ required: true })
   terminalId!: string;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User', index: true })
   cashierId!: Types.ObjectId;
 
   /**
@@ -208,13 +209,13 @@ export class Sale {
   @Prop({ default: 0 })
   manualDiscount!: number;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   manualDiscountBy?: Types.ObjectId;
 
   @Prop()
   manualDiscountAt?: Date;
 
-  @Prop({ type: Types.ObjectId, ref: 'Promotion' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Promotion' })
   promotionId?: Types.ObjectId;
 
   @Prop({ default: 0 })
@@ -287,7 +288,7 @@ export class Sale {
   @Prop({ enum: PrescriptionStatus, type: String })
   prescriptionStatus?: PrescriptionStatus;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   prescriptionVerifiedBy?: Types.ObjectId;
 
   @Prop()
@@ -325,7 +326,7 @@ export class Sale {
   @Prop()
   customerPhone?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'Customer', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Customer', index: true })
   customerId?: Types.ObjectId;
 
   /**

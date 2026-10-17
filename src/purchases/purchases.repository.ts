@@ -188,6 +188,7 @@ export class PurchasesRepository {
     productId: string,
     receivedQuantity: number,
     session?: ClientSession,
+    previousQuantity?: number,
   ): Promise<PurchaseOrderDocument | null> {
     const options: { new: boolean; session?: ClientSession } = { new: true };
     if (session) {
@@ -196,7 +197,7 @@ export class PurchasesRepository {
 
     return this.purchaseOrderModel
       .findOneAndUpdate(
-        { _id: id, 'items.productId': new Types.ObjectId(productId) },
+          { _id: id, status: { $in: [PurchaseOrderStatus.PENDING, PurchaseOrderStatus.PARTIALLY_RECEIVED] }, items: { $elemMatch: { productId: new Types.ObjectId(productId), ...(previousQuantity !== undefined ? { receivedQuantity: previousQuantity } : {}) } } },
         { $set: { 'items.$.receivedQuantity': receivedQuantity } },
         options,
       )

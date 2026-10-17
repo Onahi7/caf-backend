@@ -35,12 +35,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || !user.isActive) {
       throw new UnauthorizedException('User not found or inactive');
     }
+    try {
+      await this.usersService.assertActiveAssignment(user);
+    } catch {
+      throw new UnauthorizedException(
+        'User branch assignment is missing or inactive',
+      );
+    }
 
     return {
       userId: payload.sub,
-      username: payload.username,
-      role: payload.role,
-      branchId: payload.branchId || user.branchId?.toString(),
+      username: user.username,
+      role: user.role,
+      branchId: user.branchId?.toString(),
     };
   }
 }

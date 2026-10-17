@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -12,7 +13,7 @@ export enum FinanceTransactionType {
 
 @Schema({ timestamps: true })
 export class FinanceTransaction {
-  @Prop({ type: Types.ObjectId, ref: 'Branch', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', required: true, index: true })
   branchId!: Types.ObjectId;
 
   @Prop({
@@ -35,10 +36,10 @@ export class FinanceTransaction {
   @Prop({ trim: true, maxlength: 120 })
   reference?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true, index: true })
   recordedBy!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', index: true })
   marketerId?: Types.ObjectId;
 
   @Prop({ type: Date, required: true, default: () => new Date(), index: true })
@@ -47,7 +48,7 @@ export class FinanceTransaction {
   @Prop({ default: false })
   isDeleted!: boolean;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
   deletedBy?: Types.ObjectId;
 
   @Prop()

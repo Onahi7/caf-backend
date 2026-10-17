@@ -1,3 +1,4 @@
+import { ExportQueryDto } from './export-query.dto.js';
 import { IsOptional, IsString, IsBoolean, IsEnum } from 'class-validator';
 
 export enum ValuationMethod {
@@ -11,7 +12,7 @@ export enum ValuationMethod {
  * Requirements: 13.1, 13.2, 14.2
  * Property 57: Inventory report completeness
  */
-export class InventoryReportDto {
+export class InventoryReportDto extends ExportQueryDto {
   @IsOptional()
   @IsString()
   branchId?: string;

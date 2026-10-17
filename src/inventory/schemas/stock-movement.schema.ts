@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -25,13 +26,13 @@ export enum MovementType {
  */
 @Schema({ timestamps: true })
 export class StockMovement {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Product', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product', index: true })
   productId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Batch', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Batch', index: true })
   batchId?: Types.ObjectId;
 
   /**
@@ -50,13 +51,13 @@ export class StockMovement {
   @Prop({ required: true })
   reason!: string;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User', index: true })
   userId!: Types.ObjectId;
 
   /**
    * Reference to related entity (sale, transfer, or purchase order ID)
    */
-  @Prop({ type: Types.ObjectId })
+  @Prop({ type: MongooseSchema.Types.ObjectId })
   referenceId?: Types.ObjectId;
 
   /**

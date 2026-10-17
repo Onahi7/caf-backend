@@ -1,6 +1,7 @@
+import { ExportQueryDto } from './export-query.dto.js';
 import { IsOptional, IsString, IsNumber, Min } from 'class-validator';
 
-export class DeadStockReportDto {
+export class DeadStockReportDto extends ExportQueryDto {
   @IsOptional()
   @IsString()
   branchId?: string;

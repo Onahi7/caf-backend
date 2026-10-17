@@ -55,10 +55,17 @@ export class UsersController {
     @Query('role') role?: UserRole,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '20',
+    @Query('branchId') branchId?: string,
   ) {
     const p = parseInt(page, 10);
     const l = parseInt(limit, 10);
-    const { data, total } = await this.usersService.findAll(user, role, p, l);
+    const { data, total } = await this.usersService.findAll(
+      user,
+      role,
+      p,
+      l,
+      branchId,
+    );
     return {
       success: true,
       data,
@@ -79,15 +86,12 @@ export class UsersController {
    * GET /users/branch/:branchId
    */
   @Get('branch/:branchId')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.BRANCH_MANAGER,
-    UserRole.AUDITOR,
-  )
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
   async findByBranch(
     @Param('branchId') branchId: string,
+    @CurrentUser() user: CurrentUserData,
   ): Promise<UserDocument[]> {
-    return this.usersService.findByBranch(branchId);
+    return this.usersService.findByBranch(branchId, user);
   }
 
   /**
@@ -95,13 +99,12 @@ export class UsersController {
    * GET /users/:id
    */
   @Get(':id')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.BRANCH_MANAGER,
-    UserRole.AUDITOR,
-  )
-  async findById(@Param('id') id: string): Promise<UserDocument> {
-    return this.usersService.findById(id);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.AUDITOR)
+  async findById(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<UserDocument> {
+    return this.usersService.findVisibleById(id, user);
   }
 
   /**
@@ -126,8 +129,11 @@ export class UsersController {
    */
   @Patch(':id/deactivate')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
-  async deactivate(@Param('id') id: string): Promise<UserDocument> {
-    return this.usersService.deactivate(id);
+  async deactivate(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<UserDocument> {
+    return this.usersService.deactivate(id, user);
   }
 
   /**

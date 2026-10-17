@@ -14,6 +14,9 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import { PrintersService } from './printers.service.js';
+import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
+import { resolveBranchId } from '../common/utils/branch-scope.util.js';
 import {
   CreatePrinterConfigDto,
   UpdatePrinterConfigDto,
@@ -104,7 +107,8 @@ export class PrintersController {
       port: number;
       data: number[];
     },
+    @CurrentUser() user: CurrentUserData,
   ) {
-    return this.printersService.networkPrint(payload);
+    return this.printersService.networkPrint(payload, resolveBranchId(user));
   }
 }

@@ -27,6 +27,7 @@ import type {
 import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { PAYMENT_METHOD_LABELS } from '../common/constants/payment-methods.constant.js';
 import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
+import { UsersService } from '../users/users.service.js';
 
 /**
  * WebSocket Gateway for real-time inventory updates
@@ -51,6 +52,7 @@ export class WebSocketGateway
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
     @InjectModel(Branch.name) private readonly branchModel: Model<BranchDocument>,
+    private readonly usersService: UsersService,
   ) {}
 
   private async getCachedBranch(branchId: string): Promise<{ name: string; currencyCode: string }> {
@@ -226,31 +228,36 @@ export class WebSocketGateway
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
+      const user = await this.usersService.findById(payload.sub);
+      if (!user.isActive) throw new Error('User is inactive');
+      await this.usersService.assertActiveAssignment(user);
+      const current = { sub: user._id.toString(), role: user.role, branchId: user.branchId?.toString() };
+
       // Store user info in socket data
-      client.data.userId = payload.sub;
-      client.data.role = payload.role;
-      client.data.branchId = payload.branchId;
+      client.data.userId = current.sub;
+      client.data.role = current.role;
+      client.data.branchId = current.branchId;
 
       // Join user-specific room (for notifications)
-      await client.join(`user:${payload.sub}`);
-      this.logger.log(`Client ${client.id} joined user room: ${payload.sub}`);
+      await client.join(`user:${current.sub}`);
+      this.logger.log(`Client ${client.id} joined user room: ${current.sub}`);
 
       // Join branch-specific room if user has a branch
-      if (payload.branchId) {
-        await client.join(`branch:${payload.branchId}`);
+      if (current.branchId) {
+        await client.join(`branch:${current.branchId}`);
         this.logger.log(
-          `Client ${client.id} joined branch room: ${payload.branchId}`,
+          `Client ${client.id} joined branch room: ${current.branchId}`,
         );
       }
 
       // Super admins join all branches room
-      if (payload.role === 'super_admin') {
+      if (current.role === 'super_admin') {
         await client.join('branch:all');
         this.logger.log(`Client ${client.id} joined all branches room`);
       }
 
       this.logger.log(
-        `Client connected: ${client.id} (User: ${payload.sub}, Role: ${payload.role})`,
+        `Client connected: ${client.id} (User: ${current.sub}, Role: ${current.role})`,
       );
     } catch (error) {
       this.logger.error(
@@ -266,6 +273,17 @@ export class WebSocketGateway
    */
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+  }
+
+  @OnEvent('user.access.changed')
+  handleUserAccessChanged(event: { userId: string }) {
+    this.server?.in(`user:${event.userId}`).disconnectSockets(true);
+  }
+
+  @OnEvent('branch.access.changed')
+  handleBranchAccessChanged(event: { branchId: string }) {
+    this.branchCache.delete(event.branchId);
+    this.server?.in(`branch:${event.branchId}`).disconnectSockets(true);
   }
 
   /**

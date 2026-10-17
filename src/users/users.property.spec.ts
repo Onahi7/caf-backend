@@ -109,35 +109,9 @@ describe('User Password Property Tests', () => {
       )
       .map(([upper, lower, digit]) => [...upper, ...lower, ...digit].join(''));
 
-    // Generator for valid passwords
-    const validPasswordArb = fc
-      .tuple(
-        fc.array(fc.constantFrom('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'), {
-          minLength: 1,
-          maxLength: 5,
-        }),
-        fc.array(fc.constantFrom('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'), {
-          minLength: 1,
-          maxLength: 5,
-        }),
-        fc.array(
-          fc.constantFrom('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'),
-          { minLength: 1, maxLength: 5 },
-        ),
-        fc.array(fc.constantFrom('@', '$', '!', '%', '*', '?', '&'), {
-          minLength: 1,
-          maxLength: 5,
-        }),
-      )
-      .map(([upper, lower, digit, special]) => {
-        // Shuffle the characters to create a valid password
-        const chars = [...upper, ...lower, ...digit, ...special];
-        for (let i = chars.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [chars[i], chars[j]] = [chars[j], chars[i]];
-        }
-        return chars.join('');
-      });
+    // Every generated value satisfies the minimum length and required categories.
+    const validPasswordArb = fc.array(fc.constantFrom(...'aAbB0123@$!%'), { minLength: 4, maxLength: 20 })
+      .map(chars => `Aa1!${chars.join('')}`);
 
     it('should reject passwords that are too short (< 8 characters)', async () => {
       await fc.assert(

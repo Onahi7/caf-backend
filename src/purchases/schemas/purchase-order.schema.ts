@@ -1,3 +1,4 @@
+import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -12,7 +13,7 @@ export enum PurchaseOrderStatus {
 
 @Schema()
 export class PurchaseOrderItem {
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Product' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Product' })
   productId!: Types.ObjectId;
 
   @Prop({ required: true })
@@ -33,10 +34,10 @@ export class PurchaseOrder {
   @Prop({ required: true, unique: true, index: true })
   orderNumber!: string;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Supplier', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Supplier', index: true })
   supplierId!: Types.ObjectId;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'Branch', index: true })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId!: Types.ObjectId;
 
   @Prop({ required: true, type: [PurchaseOrderItemSchema] })
@@ -59,7 +60,7 @@ export class PurchaseOrder {
   @Prop()
   receivedAt?: Date;
 
-  @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
+  @Prop({ required: true, type: MongooseSchema.Types.ObjectId, ref: 'User' })
   createdBy!: Types.ObjectId;
 
   @Prop()
