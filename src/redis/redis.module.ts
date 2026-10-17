@@ -3,6 +3,9 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import KeyvRedis from '@keyv/redis';
 import { createSessionCache } from './keyv-cache.js';
+import { getConnectionToken } from '@nestjs/mongoose';
+import type { Connection } from 'mongoose';
+import { MongoCacheStore } from './mongo-cache.store.js';
 import { RedisService } from './redis.service.js';
 
 @Global()
@@ -10,8 +13,16 @@ import { RedisService } from './redis.service.js';
   imports: [
     CacheModule.registerAsync({
       imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => {
+      inject: [ConfigService, getConnectionToken()],
+      useFactory: async (configService: ConfigService, connection: Connection) => {
+        const backend = configService.get<string>('CACHE_BACKEND', 'redis');
+        if (!['redis', 'mongodb'].includes(backend)) throw new Error('CACHE_BACKEND must be redis or mongodb');
+        if (backend === 'mongodb') {
+          await connection.asPromise();
+          const store = new MongoCacheStore(connection);
+          await store.initialize();
+          return { stores: [createSessionCache(store)], isGlobal: true };
+        }
         const redisEnabled =
           configService.get<string>('ENABLE_REDIS', 'true') === 'true';
         const logger = new Logger('RedisModule');

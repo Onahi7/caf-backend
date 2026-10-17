@@ -26,3 +26,11 @@ The runner stops its API process and deletes its own Redis container on completi
 Build first. Set `REFERENCE_MIGRATION_URI` explicitly to the intended database, then run `node scripts/normalize-objectid-references.cjs` for a dry run. Add `--apply` to convert schema-declared 24-character string references to BSON IDs. The script does not load environment files, skips non-reference text and uses compare-before-write guards. Repeating the dry run after conversion should report zero affected documents. Stop application writes during a deployment migration to avoid conflicts. Historical stock discrepancies require a separate inventory reconciliation.
 
 Configure `WEBAUTHN_RP_ID` and the comma-separated `WEBAUTHN_ORIGINS` for deployed browser/native clients; origins must exactly match signed client data. Localhost development defaults include ports 5173 and 3000. Configured Redis is required to be reachable; `ENABLE_REDIS=false` explicitly selects process-local development caching.
+
+## Redis quota recovery
+
+For a Redis-free deployment, set `CACHE_BACKEND=mongodb` and `ENABLE_REDIS=false`. Cache/session state is stored in the existing database's `application_cache` collection with a unique key index and TTL expiry index. Expired entries are rejected immediately, independently of MongoDB TTL cleanup. Backend restarts and multiple API processes share the same refresh-session state. Database failures propagate; authentication never switches silently to process memory.
+
+`ENABLE_REDIS=false` pauses Redis/Bull background alerts and cross-process WebSocket broadcasting; WebSocket delivery within a single API instance remains available. Restore Redis and set `CACHE_BACKEND=redis`, `ENABLE_REDIS=true` when background workers are needed again.
+
+To exercise this configuration locally: set `API_VALIDATION_CACHE_BACKEND=mongodb` and run `pnpm test:api:local`. The runner additionally restarts the backend and verifies that refresh sessions survive. The default Redis mode still runs a real background-worker check. Do not run the two modes simultaneously because both use local API port 3109.

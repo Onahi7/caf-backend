@@ -8,6 +8,8 @@ const { JwtService } = require('@nestjs/jwt');
 require('reflect-metadata');
 
 const root = path.resolve(__dirname, '..');
+const cacheBackend = process.env.API_VALIDATION_CACHE_BACKEND || 'redis';
+if (!['redis', 'mongodb'].includes(cacheBackend)) throw new Error('Invalid test cache backend');
 const runId = process.env.API_VALIDATION_RUN_ID || String(Date.now());
 const database = `caf_api_validation_${runId}`;
 if (!/^caf_api_validation_\d+$/.test(database)) throw new Error('Unsafe test database name');
@@ -36,7 +38,7 @@ for (const file of ['.env', '.env.production']) {
 }
 Object.assign(env, {
   NODE_ENV: 'test', PORT: String(port), MONGODB_URI: mongoUri,
-  REDIS_URL: 'redis://127.0.0.1:6389', KV_URL: '', ENABLE_REDIS: 'true',
+  REDIS_URL: 'redis://127.0.0.1:6389', KV_URL: '', ENABLE_REDIS: cacheBackend === 'mongodb' ? 'false' : 'true', CACHE_BACKEND: cacheBackend,
   JWT_SECRET: secret, JWT_REFRESH_SECRET: crypto.randomBytes(32).toString('hex'),
   JWT_EXPIRATION: '1h', JWT_ADMIN_EXPIRATION: '1h', JWT_REFRESH_EXPIRATION: '30d',
   CORS_ORIGIN: 'http://localhost:5173', EMAIL_PROVIDER: 'smtp', SMTP_HOST: '127.0.0.1',
@@ -164,11 +166,30 @@ async function foundation() {
   tokens.admin = login.body.accessToken;
   fixtures.refreshToken = login.body.refreshToken;
   await call('refresh token through Redis', 'POST', '/api/auth/refresh', { refreshToken: fixtures.refreshToken }, 'none', [200]);
-  const redis = new (require('ioredis'))(env.REDIS_URL);
-  try {
-    const sessionKeys = await redis.keys(`*refresh_token:${fixtures.admin}*`);
-    record('refresh session persisted in configured Redis', 'REDIS', 'session-store', 0, sessionKeys.length > 0 ? 'pass' : 'fail', { matchingKeys: sessionKeys.length }, 'diagnostic');
-  } finally { redis.disconnect(); }
+  if (cacheBackend === 'mongodb') {
+    const stored = await mongoose.connection.collection('application_cache').findOne({ key: `keyv:refresh_token:${fixtures.admin}` });
+    record('refresh session persisted in shared MongoDB cache', 'MONGO', 'session-store', 0, stored?.value && stored.expiresAt > new Date() ? 'pass' : 'fail', { exists: !!stored }, 'diagnostic');
+    const previous = server;
+    await new Promise(resolve => { previous.once('exit', resolve); previous.kill(); });
+    const restartLog = fs.openSync(path.join(output, 'local-api-server.log'), 'a');
+    server = spawn(process.execPath, ['dist/main.js'], { cwd: root, env, windowsHide: true, stdio: ['ignore', restartLog, restartLog] });
+    fs.closeSync(restartLog);
+    let restarted = false;
+    for (let attempt = 0; attempt < 90; attempt++) {
+      if (server.exitCode !== null) throw new Error('Restarted API exited unexpectedly');
+      try { restarted = (await fetch(base + '/health', { signal: AbortSignal.timeout(1000) })).ok; } catch {}
+      if (restarted) break;
+      await wait(500);
+    }
+    assert(restarted, 'Restarted API failed readiness');
+    await call('refresh survives backend restart with MongoDB sessions', 'POST', '/api/auth/refresh', { refreshToken: fixtures.refreshToken }, 'none', [200]);
+  } else {
+    const redis = new (require('ioredis'))(env.REDIS_URL);
+    try {
+      const sessionKeys = await redis.keys(`*refresh_token:${fixtures.admin}*`);
+      record('refresh session persisted in configured Redis', 'REDIS', 'session-store', 0, sessionKeys.length > 0 ? 'pass' : 'fail', { matchingKeys: sessionKeys.length }, 'diagnostic');
+    } finally { redis.disconnect(); }
+  }
   await call('reject wrong password', 'POST', '/api/auth/login', { username: 'api_admin', password: 'Incorrect123!' }, 'none', [401]);
   await call('reject branch manager creation', 'POST', '/api/branches', {}, 'manager', [403]);
   await call('reject cross-branch staff read', 'GET', `/api/users/branch/${fixtures.other}`, undefined, 'manager', [403]);
@@ -444,6 +465,10 @@ async function extendedWorkflows() {
 
 async function finalChecks() {
   await scenario('real Redis background worker execution', async () => {
+    if (cacheBackend === 'mongodb') {
+      await call('job status remains available with Redis disabled', 'GET', '/api/jobs/stats');
+      return;
+    }
     const Queue = require('bull');
     const queue = new Queue('low-stock-alerts', env.REDIS_URL);
     try {
@@ -573,7 +598,7 @@ function report() {
       writeBoundaryChecked: checks.some(r => r.phase === 'write-boundary'),
       failures: checks.filter(r => r.outcome === 'fail').length };
   });
-  const result = { timestamp: new Date().toISOString(), database, base, redisHostPort: redisPort, routes: matrix, summary: { documentedOperations: routes.length, authenticationChecks: covered.size, roleDenialChecks: records.filter(r => r.phase === 'authorization').length, authenticatedSuccessOperations: matrix.filter(r => r.authenticatedSuccess).length, checks: records.length, passed: count('pass'), failed: count('fail'), needsFixture: count('needs-fixture'), externalBlocked: count('blocked') }, records };
+  const result = { timestamp: new Date().toISOString(), database, base, cacheBackend, redisHostPort: redisPort, routes: matrix, summary: { documentedOperations: routes.length, authenticationChecks: covered.size, roleDenialChecks: records.filter(r => r.phase === 'authorization').length, authenticatedSuccessOperations: matrix.filter(r => r.authenticatedSuccess).length, checks: records.length, passed: count('pass'), failed: count('fail'), needsFixture: count('needs-fixture'), externalBlocked: count('blocked') }, records };
   fs.writeFileSync(path.join(output, 'local-api-validation.json'), JSON.stringify(result, null, 2));
   const lines = ['# Local API validation', '', `Generated: ${result.timestamp}`, `Database: ${database} (local Docker MongoDB)`, `Redis: dedicated disposable instance on 127.0.0.1:${redisPort}`, '', '## Summary', '', ...Object.entries(result.summary).map(([key, val]) => `- ${key}: ${val}`), '', 'Authentication/read probes establish route reachability, not complete business-operation correctness.', 'Workflow checks use real HTTP, guards, validation, MongoDB and Redis. External delivery and hardware are not proven by this run.', '', '## Failures / incomplete read fixtures', '', '| Phase | Check | Status | Detail |', '| --- | --- | --- | --- |', ...records.filter((r) => r.outcome !== 'pass').map((r) => `| ${r.phase} | ${r.name} | ${r.status} | ${JSON.stringify(r.detail).replace(/\|/g, '/').slice(0, 600)} |`), '', '## Operation matrix', '', '| Method | Route | Authentication checked | Authenticated success | Write boundary checked | Failing checks |', '| --- | --- | --- | --- | --- | --- |', ...matrix.map(r => `| ${r.method} | ${r.path} | ${r.authenticationChecked} | ${r.authenticatedSuccess} | ${r.writeBoundaryChecked} | ${r.failures} |`), ''];
   fs.writeFileSync(path.join(output, 'local-api-validation.md'), lines.join('\n'));
