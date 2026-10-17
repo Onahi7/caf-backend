@@ -80,6 +80,27 @@ export class SaleItemDto {
 }
 
 /**
+ * DTO for split tender / multiple payment lines in a sale
+ */
+export class SalePaymentInputDto {
+  @IsEnum(PaymentMethod)
+  paymentMethod!: PaymentMethod;
+
+  @IsNumber()
+  @Min(0.01)
+  amount!: number;
+
+  @IsString()
+  @IsOptional()
+  paymentReference?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  notes?: string;
+}
+
+/**
  * DTO for creating a new sale (checkout)
  * Requirements: 6.3, 6.4, 6.5, 2.7, 5.5, 6.1, 6.3
  * Property 7: Payment method validation
@@ -123,6 +144,16 @@ export class CreateSaleDto {
    */
   @IsEnum(PaymentMethod)
   paymentMethod!: PaymentMethod;
+
+  /**
+   * Optional split tender payment breakdown.
+   * If provided, payments must sum to the amount paid.
+   */
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => SalePaymentInputDto)
+  payments?: SalePaymentInputDto[];
 
   @IsEnum(SaleType)
   @IsOptional()

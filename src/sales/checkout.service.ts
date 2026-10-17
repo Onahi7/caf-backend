@@ -258,7 +258,7 @@ let session;
           taxBreakdown,
           total,
           saleType,
-          paymentMethod: dto.paymentMethod, // Property 6: Validated and persisted
+          paymentMethod: (dto.payments && dto.payments.length > 1) ? PaymentMethod.SPLIT : dto.paymentMethod, // Property 6: Validated and persisted
           paymentStatus,
           amountPaid,
           balanceDue,
@@ -648,6 +648,23 @@ let session;
       throw new BadRequestException('Amount paid must be between 0 and total');
     }
 
+    if (dto.payments && dto.payments.length > 0) {
+      const sumPayments = dto.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      if (Math.abs(sumPayments - amountPaid) > 0.01) {
+        throw new BadRequestException(
+          'Sum of split payments (' + sumPayments + ') does not match amount paid (' + amountPaid + ')',
+        );
+      }
+      for (const p of dto.payments) {
+        if (!p.amount || p.amount <= 0) {
+          throw new BadRequestException('Split payment amounts must be greater than zero');
+        }
+        if (p.paymentMethod === PaymentMethod.CREDIT) {
+          throw new BadRequestException('Split payment lines cannot use credit');
+        }
+      }
+    }
+
     if (saleType === SaleType.CREDIT) {
       if (dto.paymentMethod !== PaymentMethod.CREDIT) {
         throw new BadRequestException(
@@ -702,6 +719,26 @@ let session;
   ): SalePaymentEntry[] {
     if (amountPaid <= 0) {
       return [];
+    }
+
+    if (dto.payments && dto.payments.length > 0) {
+      const splitList = dto.payments;
+      let cumulativePaid = 0;
+      return splitList.map((p, index) => {
+        cumulativePaid += p.amount;
+        const remaining = Math.max(0, balanceDue + (amountPaid - cumulativePaid));
+        return {
+          paymentReceiptNumber: `${receiptNumber}-PAY-0${index + 1}`,
+          amount: p.amount,
+          paymentMethod: p.paymentMethod,
+          paymentReference: p.paymentReference || dto.paymentReference,
+          receivedBy: new Types.ObjectId(cashierId),
+          receivedAt: new Date(),
+          notes: p.notes || (splitList.length > 1 ? `Split payment #${index + 1}` : (saleType === SaleType.CREDIT ? 'Initial credit-sale payment' : 'Checkout payment')),
+          isInitialPayment: true,
+          balanceAfterPayment: remaining,
+        };
+      });
     }
 
     const paymentMethod =
