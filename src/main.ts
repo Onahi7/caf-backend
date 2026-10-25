@@ -91,6 +91,7 @@ async function bootstrap() {
   const corsOrigin = configService.get<string>(
     'CORS_ORIGIN',
     'http://localhost:5173',
+    'http://localhost:5175',
   );
   const allowedOrigins = corsOrigin.split(',').map((origin) => origin.trim());
 
@@ -103,6 +104,7 @@ async function bootstrap() {
     'capacitor://localhost',
     'https://caf-frontend.dicksonhardy7.workers.dev',
     'https://caf-three-green.vercel.app',
+    'https://field.carefam.xyz',
   ];
   const allAllowedOrigins = [...new Set([...allowedOrigins, ...hardcodedOrigins])];
 
