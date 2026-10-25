@@ -33,6 +33,20 @@ export class FieldVisitProductLine {
 
 export const FieldVisitProductLineSchema = SchemaFactory.createForClass(FieldVisitProductLine);
 
+@Schema({ _id: false })
+export class FieldVisitLocation {
+  @Prop()
+  latitude?: number;
+
+  @Prop()
+  longitude?: number;
+
+  @Prop()
+  accuracyMeters?: number;
+}
+
+export const FieldVisitLocationSchema = SchemaFactory.createForClass(FieldVisitLocation);
+
 @Schema({ timestamps: true })
 export class FieldVisit {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Facility', required: true, index: true })
@@ -85,6 +99,9 @@ export class FieldVisit {
 
   @Prop()
   notes?: string;
+
+  @Prop({ type: FieldVisitLocationSchema })
+  location?: FieldVisitLocation;
 
   @Prop({ default: 'submitted', enum: ['draft', 'submitted', 'reviewed', 'rejected'], index: true })
   status!: 'draft' | 'submitted' | 'reviewed' | 'rejected';

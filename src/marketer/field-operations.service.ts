@@ -9,11 +9,13 @@ import { Model, Types } from 'mongoose';
 import type { CurrentUserData } from '../auth/decorators/current-user.decorator.js';
 import { User, UserRole } from '../users/schemas/user.schema.js';
 import {
+  AcknowledgeCashDto,
   CreateFacilityDto,
   CreateFieldVisitDto,
   DailyFieldReportQueryDto,
   FacilityQueryDto,
   FieldVisitQueryDto,
+  UpdateFacilityDto,
   UpsertDailyFieldReportDto,
 } from './dto/field-operations.dto.js';
 import {
@@ -132,6 +134,31 @@ export class FieldOperationsService {
     return created;
   }
 
+  async updateFacility(id: string, dto: UpdateFacilityDto, actor: CurrentUserData) {
+    if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid facility ID');
+    const scope = await this.resolveScope(actor);
+    const facility = await this.facilityModel.findById(id).lean().exec();
+    if (!facility) throw new NotFoundException('Facility not found');
+    if (facility.branchId.toString() !== scope.branchId) throw new ForbiddenException('Facility is outside your branch scope');
+    if (actor.role === UserRole.MARKETER && facility.zoneCode !== scope.zoneCode) {
+      throw new ForbiddenException('Facility is outside your assigned zone');
+    }
+
+    const updates: Record<string, unknown> = {
+      ...dto,
+      updatedBy: new Types.ObjectId(actor.userId),
+    };
+    if (dto.assignedMarketerId) {
+      updates.assignedMarketerId = new Types.ObjectId(dto.assignedMarketerId);
+    }
+    const updated = await this.facilityModel.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true }
+    ).populate('assignedMarketerId', 'firstName lastName username').exec();
+    return updated;
+  }
+
   async listVisits(query: FieldVisitQueryDto, actor: CurrentUserData) {
     const scope = await this.resolveScope(actor);
     const filter: Record<string, unknown> = { branchId: scope.branchId };
@@ -172,19 +199,48 @@ export class FieldOperationsService {
       visitedAt,
       nextActionDate: dto.nextActionDate ? new Date(dto.nextActionDate) : undefined,
       products: dto.products?.map((line) => ({ ...line, productId: line.productId ? new Types.ObjectId(line.productId) : undefined })) || [],
+      location: dto.location,
     });
+
+    const facilityUpdates: Record<string, unknown> = {
+      lastVisitAt: visitedAt,
+      nextVisitAt: dto.nextActionDate ? new Date(dto.nextActionDate) : undefined,
+      status: dto.visitType === FieldVisitCode.DEAD ? FacilityStatus.DORMANT : FacilityStatus.ACTIVE,
+      updatedBy: new Types.ObjectId(actor.userId),
+    };
+
+    if (dto.location?.latitude && dto.location?.longitude && (!facility.location?.latitude || !facility.location?.longitude)) {
+      facilityUpdates['location.latitude'] = dto.location.latitude;
+      facilityUpdates['location.longitude'] = dto.location.longitude;
+    }
+
     await this.facilityModel.updateOne(
       { _id: facility._id },
-      {
-        $set: {
-          lastVisitAt: visitedAt,
-          nextVisitAt: dto.nextActionDate ? new Date(dto.nextActionDate) : undefined,
-          status: dto.visitType === FieldVisitCode.DEAD ? FacilityStatus.DORMANT : FacilityStatus.ACTIVE,
-          updatedBy: new Types.ObjectId(actor.userId),
-        },
-      },
+      { $set: facilityUpdates },
     ).exec();
     return visit;
+  }
+
+  async listCashRecipients(actor: CurrentUserData) {
+    const scope = await this.resolveScope(actor);
+    const users = await this.userModel
+      .find({
+        branchId: new Types.ObjectId(scope.branchId),
+        role: {
+          $in: [
+            UserRole.SUPER_ADMIN,
+            UserRole.BRANCH_MANAGER,
+            UserRole.FINANCE_MANAGER,
+            UserRole.CASHIER,
+          ],
+        },
+        isActive: true,
+      })
+      .select('_id firstName lastName username role')
+      .sort({ role: 1, firstName: 1 })
+      .lean()
+      .exec();
+    return users;
   }
 
   async listDailyReports(query: DailyFieldReportQueryDto, actor: CurrentUserData) {
@@ -201,7 +257,16 @@ export class FieldOperationsService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const [data, total] = await Promise.all([
-      this.reportModel.find(filter).sort({ reportDate: -1 }).skip((page - 1) * limit).limit(limit).lean().exec(),
+      this.reportModel
+        .find(filter)
+        .populate('cashRecipientId', 'firstName lastName username role')
+        .populate('cashAcknowledgedBy', 'firstName lastName username role')
+        .populate('marketerId', 'firstName lastName username')
+        .sort({ reportDate: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean()
+        .exec(),
       this.reportModel.countDocuments(filter).exec(),
     ]);
     return { data, total, page, limit };
@@ -220,6 +285,9 @@ export class FieldOperationsService {
           reportDate,
           zoneCode: scope.zoneCode,
           branchId: new Types.ObjectId(scope.branchId),
+          cashRecipientId: dto.cashRecipientId ? new Types.ObjectId(dto.cashRecipientId) : undefined,
+          cashHandoverAt: dto.cashHandoverAmount ? new Date() : undefined,
+          cashAcknowledgementStatus: dto.cashHandoverAmount ? 'pending' : undefined,
           stops: dto.stops?.map((stop) => ({ ...stop, cash: stop.cash ?? 0, balance: stop.balance ?? 0, nextDate: stop.nextDate ? new Date(stop.nextDate) : undefined })) || [],
         },
         $setOnInsert: { marketerId: new Types.ObjectId(actor.userId), status: 'draft' },
@@ -232,9 +300,51 @@ export class FieldOperationsService {
     if (!Types.ObjectId.isValid(id)) throw new BadRequestException('Invalid daily report ID');
     const filter: Record<string, unknown> = { _id: new Types.ObjectId(id) };
     if (actor.role === UserRole.MARKETER) filter.marketerId = new Types.ObjectId(actor.userId);
-    const report = await this.reportModel.findOneAndUpdate(filter, { $set: { status: 'submitted', submittedAt: new Date() } }, { new: true }).exec();
+    const report = await this.reportModel.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          status: 'submitted',
+          submittedAt: new Date(),
+          cashHandoverAt: new Date(),
+          cashAcknowledgementStatus: 'pending',
+        },
+      },
+      { new: true }
+    ).exec();
     if (!report) throw new NotFoundException('Daily report not found');
     return report;
+  }
+
+  async acknowledgeCash(reportId: string, dto: AcknowledgeCashDto, actor: CurrentUserData) {
+    if (!Types.ObjectId.isValid(reportId)) throw new BadRequestException('Invalid daily report ID');
+    const scope = await this.resolveScope(actor);
+    const report = await this.reportModel.findById(reportId).exec();
+    if (!report) throw new NotFoundException('Daily report not found');
+    if (report.branchId.toString() !== scope.branchId && actor.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Report is outside your branch scope');
+    }
+
+    const expectedAmount = report.cashHandoverAmount ?? report.cashAtClose ?? 0;
+    const diff = dto.acknowledgedAmount - expectedAmount;
+    const defaultStatus = Math.abs(diff) < 0.01 ? 'acknowledged' : 'discrepancy';
+    const status = dto.status || defaultStatus;
+
+    report.cashAcknowledgementStatus = status;
+    report.cashAcknowledgedBy = new Types.ObjectId(actor.userId);
+    report.cashAcknowledgedAt = new Date();
+    report.cashAcknowledgedAmount = dto.acknowledgedAmount;
+    report.cashAcknowledgementNotes = dto.notes;
+    report.reviewedBy = new Types.ObjectId(actor.userId);
+    report.reviewedAt = new Date();
+    report.status = status === 'rejected' ? 'rejected' : 'reviewed';
+
+    await report.save();
+    return report.populate([
+      { path: 'cashRecipientId', select: 'firstName lastName username role' },
+      { path: 'cashAcknowledgedBy', select: 'firstName lastName username role' },
+      { path: 'marketerId', select: 'firstName lastName username' },
+    ]);
   }
 
   private dateOnly(value: string) {

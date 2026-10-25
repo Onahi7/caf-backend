@@ -1,3 +1,4 @@
+import { PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -40,6 +41,24 @@ export class FacilityLocationDto {
   @IsString()
   @MaxLength(160)
   landmark?: string;
+}
+
+export class FieldVisitLocationDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  accuracyMeters?: number;
 }
 
 export class CreateFacilityDto {
@@ -127,6 +146,8 @@ export class CreateFacilityDto {
   @MaxLength(500)
   notes?: string;
 }
+
+export class UpdateFacilityDto extends PartialType(CreateFacilityDto) {}
 
 export class FacilityQueryDto {
   @IsOptional()
@@ -252,6 +273,11 @@ export class CreateFieldVisitDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FieldVisitLocationDto)
+  location?: FieldVisitLocationDto;
 }
 
 export class FieldVisitQueryDto {
@@ -361,6 +387,30 @@ export class UpsertDailyFieldReportDto {
   cashAtClose?: number;
 
   @IsOptional()
+  @IsMongoId()
+  cashRecipientId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  cashRecipientName?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  cashHandoverAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  cashHandoverMethod?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  cashHandoverReference?: string;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
   @ValidateNested({ each: true })
@@ -418,4 +468,19 @@ export class DailyFieldReportQueryDto {
   @Min(1)
   @Max(500)
   limit?: number;
+}
+
+export class AcknowledgeCashDto {
+  @IsNumber()
+  @Min(0)
+  acknowledgedAmount!: number;
+
+  @IsOptional()
+  @IsEnum(['acknowledged', 'discrepancy', 'rejected'])
+  status?: 'acknowledged' | 'discrepancy' | 'rejected';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
 }

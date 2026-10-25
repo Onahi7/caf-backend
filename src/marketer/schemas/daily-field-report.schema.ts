@@ -64,6 +64,41 @@ export class DailyFieldReport {
   @Prop({ min: 0, default: 0 })
   cashAtClose!: number;
 
+  // Cash Handover Tracking
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
+  cashRecipientId?: Types.ObjectId;
+
+  @Prop()
+  cashRecipientName?: string;
+
+  @Prop({ min: 0 })
+  cashHandoverAmount?: number;
+
+  @Prop({ default: 'cash', enum: ['cash', 'orange_money', 'afrimoney', 'bank_deposit', 'other'] })
+  cashHandoverMethod?: string;
+
+  @Prop()
+  cashHandoverReference?: string;
+
+  @Prop({ type: Date })
+  cashHandoverAt?: Date;
+
+  // Cash Acknowledgement by Admin / Cashier
+  @Prop({ default: 'pending', enum: ['pending', 'acknowledged', 'discrepancy', 'rejected'], index: true })
+  cashAcknowledgementStatus?: 'pending' | 'acknowledged' | 'discrepancy' | 'rejected';
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
+  cashAcknowledgedBy?: Types.ObjectId;
+
+  @Prop({ type: Date })
+  cashAcknowledgedAt?: Date;
+
+  @Prop({ min: 0 })
+  cashAcknowledgedAmount?: number;
+
+  @Prop()
+  cashAcknowledgementNotes?: string;
+
   @Prop({ type: [DailyFieldReportStopSchema], default: [] })
   stops!: DailyFieldReportStop[];
 

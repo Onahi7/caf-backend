@@ -7,11 +7,13 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { UserRole } from '../users/schemas/user.schema.js';
 import {
+  AcknowledgeCashDto,
   CreateFacilityDto,
   CreateFieldVisitDto,
   DailyFieldReportQueryDto,
   FacilityQueryDto,
   FieldVisitQueryDto,
+  UpdateFacilityDto,
   UpsertDailyFieldReportDto,
 } from './dto/field-operations.dto.js';
 import { FieldOperationsService } from './field-operations.service.js';
@@ -47,6 +49,12 @@ export class FieldOperationsController {
     return { success: true, data: await this.fieldOperationsService.createFacility(dto, actor) };
   }
 
+  @Patch('facilities/:id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.MARKETER)
+  async updateFacility(@Param('id') id: string, @Body() dto: UpdateFacilityDto, @CurrentUser() actor: CurrentUserData) {
+    return { success: true, data: await this.fieldOperationsService.updateFacility(id, dto, actor) };
+  }
+
   @Get('visits')
   @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.MARKETER)
   async listVisits(@Query() query: FieldVisitQueryDto, @CurrentUser() actor: CurrentUserData) {
@@ -73,9 +81,25 @@ export class FieldOperationsController {
     return { success: true, data: await this.fieldOperationsService.upsertDailyReport(dto, actor) };
   }
 
+  @Get('cash-recipients')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.MARKETER, UserRole.CASHIER, UserRole.FINANCE_MANAGER)
+  async listCashRecipients(@CurrentUser() actor: CurrentUserData) {
+    return { success: true, data: await this.fieldOperationsService.listCashRecipients(actor) };
+  }
+
   @Patch('daily-reports/:id/submit')
   @Roles(UserRole.MARKETER, UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
   async submitDailyReport(@Param('id') id: string, @CurrentUser() actor: CurrentUserData) {
     return { success: true, data: await this.fieldOperationsService.submitDailyReport(id, actor) };
+  }
+
+  @Patch('daily-reports/:id/acknowledge-cash')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.FINANCE_MANAGER, UserRole.CASHIER)
+  async acknowledgeCash(
+    @Param('id') id: string,
+    @Body() dto: AcknowledgeCashDto,
+    @CurrentUser() actor: CurrentUserData,
+  ) {
+    return { success: true, data: await this.fieldOperationsService.acknowledgeCash(id, dto, actor) };
   }
 }
