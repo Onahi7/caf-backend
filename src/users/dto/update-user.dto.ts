@@ -9,6 +9,7 @@ import {
   IsMongoId,
 } from 'class-validator';
 import { UserRole } from '../schemas/user.schema.js';
+import { FieldZoneCode } from '../../marketer/schemas/field-zone.schema.js';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -30,6 +31,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsMongoId()
   branchId?: string | null;
+
+  @IsOptional()
+  @IsEnum(FieldZoneCode)
+  fieldZoneCode?: FieldZoneCode | null;
 
   @IsOptional()
   @IsBoolean()

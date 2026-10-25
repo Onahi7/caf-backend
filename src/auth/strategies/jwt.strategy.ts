@@ -9,6 +9,7 @@ export interface JwtPayload {
   username: string;
   role: string;
   branchId?: string;
+  fieldZoneCode?: string;
 }
 
 @Injectable()
@@ -48,6 +49,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       username: user.username,
       role: user.role,
       branchId: user.branchId?.toString(),
+      fieldZoneCode: user.fieldZoneCode,
     };
   }
 }

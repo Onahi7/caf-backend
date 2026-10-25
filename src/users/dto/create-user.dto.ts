@@ -9,6 +9,7 @@ import {
   IsMongoId,
 } from 'class-validator';
 import { UserRole } from '../schemas/user.schema.js';
+import { FieldZoneCode } from '../../marketer/schemas/field-zone.schema.js';
 
 export class CreateUserDto {
   @IsString()
@@ -41,4 +42,8 @@ export class CreateUserDto {
   @IsOptional()
   @IsMongoId()
   branchId?: string;
+
+  @IsOptional()
+  @IsEnum(FieldZoneCode)
+  fieldZoneCode?: FieldZoneCode;
 }

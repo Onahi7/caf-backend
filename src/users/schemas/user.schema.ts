@@ -2,6 +2,7 @@ import { Schema as MongooseSchema } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
+import { FieldZoneCode } from '../../marketer/schemas/field-zone.schema.js';
 
 export type UserDocument = User & Document;
 
@@ -36,6 +37,9 @@ export class User {
 
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Branch', index: true })
   branchId?: Types.ObjectId;
+
+  @Prop({ enum: Object.values(FieldZoneCode), type: String, index: true })
+  fieldZoneCode?: FieldZoneCode;
 
   @Prop({ default: true })
   isActive!: boolean;

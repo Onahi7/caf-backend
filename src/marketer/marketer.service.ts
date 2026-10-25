@@ -46,7 +46,7 @@ export class MarketerService {
     this.ensureAdminOrManager(actor);
 
     if (actor.role === UserRole.BRANCH_MANAGER && actor.branchId !== dto.branchId) {
-      throw new ForbiddenException('Branch managers can only assign products in their own branch');
+      throw new ForbiddenException('Branch managers can only issue stock from their own branch');
     }
 
     const items = this.normalizeAssignmentItems(dto);
@@ -62,8 +62,8 @@ export class MarketerService {
       throw new NotFoundException('Marketer user not found');
     }
 
-    if (!marketer.branchId || marketer.branchId.toString() !== dto.branchId) {
-      throw new BadRequestException('Marketer is not assigned to the selected branch');
+    if (!marketer.branchId) {
+      throw new BadRequestException('Marketer is not assigned to a home branch');
     }
 
     const session = await this.connection.startSession();
@@ -177,10 +177,6 @@ export class MarketerService {
 
     if (actor.role === UserRole.MARKETER) {
       query.marketerId = actor.userId;
-      if (!actor.branchId) {
-        throw new ForbiddenException('Marketer is not assigned to a branch');
-      }
-      query.branchId = actor.branchId;
     } else if (actor.role === UserRole.BRANCH_MANAGER) {
       if (!actor.branchId) {
         throw new ForbiddenException('Branch manager is not assigned to a branch');
@@ -397,9 +393,6 @@ export class MarketerService {
       if (assignment.marketerId.toString() !== actor.userId) {
         throw new ForbiddenException('You can only sell your assigned products');
       }
-      if (!actor.branchId || assignment.branchId.toString() !== actor.branchId) {
-        throw new ForbiddenException('Assignment does not belong to your branch');
-      }
     }
 
     if (dto.quantity > assignment.remainingQuantity) {
@@ -443,10 +436,6 @@ export class MarketerService {
 
     if (actor.role === UserRole.MARKETER) {
       query.marketerId = actor.userId;
-      if (!actor.branchId) {
-        throw new ForbiddenException('Marketer is not assigned to a branch');
-      }
-      query.branchId = actor.branchId;
     } else if (actor.role === UserRole.BRANCH_MANAGER) {
       if (!actor.branchId) {
         throw new ForbiddenException('Branch manager is not assigned to a branch');
@@ -580,10 +569,6 @@ export class MarketerService {
 
     if (actor.role === UserRole.MARKETER) {
       query.marketerId = new Types.ObjectId(actor.userId);
-      if (!actor.branchId) {
-        throw new ForbiddenException('Marketer is not assigned to a branch');
-      }
-      query.branchId = new Types.ObjectId(actor.branchId);
       return query;
     }
 

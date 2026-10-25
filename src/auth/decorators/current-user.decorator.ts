@@ -5,6 +5,7 @@ export interface CurrentUserData {
   username: string;
   role: string;
   branchId?: string;
+  fieldZoneCode?: string;
 }
 
 export const CurrentUser = createParamDecorator(

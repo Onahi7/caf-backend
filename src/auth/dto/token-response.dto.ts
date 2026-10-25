@@ -7,6 +7,7 @@ export class TokenResponseDto {
     lastName: string;
     role: string;
     branchId?: string;
+    fieldZoneCode?: string;
   };
   accessToken!: string;
   refreshToken!: string;

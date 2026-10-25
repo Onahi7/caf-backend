@@ -107,12 +107,13 @@ export class AuthService {
    * Issue a fresh access+refresh token pair for an already-validated user.
    * Used by both password login and WebAuthn login flows.
    */
-  async issueTokensForUser(user: { _id: { toString(): string }; username: string; email: string; firstName: string; lastName: string; role: string; branchId?: { toString(): string } }): Promise<TokenResponseDto> {
+  async issueTokensForUser(user: { _id: { toString(): string }; username: string; email: string; firstName: string; lastName: string; role: string; branchId?: { toString(): string }; fieldZoneCode?: string }): Promise<TokenResponseDto> {
     const payload: JwtPayload = {
       sub: user._id.toString(),
       username: user.username,
       role: user.role as JwtPayload['role'],
       branchId: user.branchId?.toString(),
+      fieldZoneCode: user.fieldZoneCode,
     };
 
     const tokenExp = this.getAccessTokenExpiration(user.role);
@@ -151,6 +152,7 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role as JwtPayload['role'],
         branchId: user.branchId?.toString(),
+        fieldZoneCode: user.fieldZoneCode,
       },
       accessToken,
       refreshToken,
@@ -192,6 +194,7 @@ export class AuthService {
         username: user.username,
         role: user.role,
         branchId: user.branchId?.toString(),
+        fieldZoneCode: user.fieldZoneCode,
       };
 
       const tokenExp = this.getAccessTokenExpiration(user.role);
@@ -211,6 +214,7 @@ export class AuthService {
           lastName: user.lastName,
           role: user.role,
           branchId: user.branchId?.toString(),
+          fieldZoneCode: user.fieldZoneCode,
         },
         accessToken,
         refreshToken, // Return the same refresh token
@@ -320,6 +324,7 @@ export class AuthService {
       username: user.username,
       role: user.role,
       branchId: user.branchId?.toString(),
+      fieldZoneCode: user.fieldZoneCode,
     };
 
     const tokenExp = this.getAccessTokenExpiration(user.role);
@@ -352,6 +357,7 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
         branchId: user.branchId?.toString(),
+        fieldZoneCode: user.fieldZoneCode,
       },
       accessToken,
       refreshToken,

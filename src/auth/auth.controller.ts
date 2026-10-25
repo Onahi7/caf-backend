@@ -63,6 +63,7 @@ export class AuthController {
       lastName: user.lastName,
       role: user.role,
       branchId: user.branchId?.toString(),
+      fieldZoneCode: user.fieldZoneCode,
       isActive: user.isActive,
     };
   }
