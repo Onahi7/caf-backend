@@ -117,7 +117,7 @@ async function bootstrap() {
       if (!origin) return callback(null, true);
 
       // Check if origin is in allowed list
-      if (allAllowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      if (allAllowedOrigins.includes(origin) || allowedOrigins.includes('*') || origin.endsWith('.workers.dev') || origin.endsWith('.pages.dev') || origin.endsWith('.carefam.xyz')) {
         callback(null, true);
       } else {
         logger.warn(`CORS blocked origin: ${origin}`);
