@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { getAllowedOrigins, isOriginAllowed } from './common/utils/cors.util';
 
 // Resolve MongoDB SRV records and cloud endpoints reliably across local routers
 try {
@@ -87,25 +88,9 @@ async function bootstrap() {
     }),
   );
 
-  // Get CORS origins from environment
-  const corsOrigin = configService.get<string>('CORS_ORIGIN') ??
-    'http://localhost:5173,http://localhost:5175';
-  const allowedOrigins = corsOrigin.split(',').map((origin) => origin.trim());
-
-  // Always-allowed frontend origins (hardcoded fallback)
-  const hardcodedOrigins = [
-    'http://localhost:5173',
-    'http://localhost:5175',
-    'http://localhost:4202',
-    'http://localhost:3000',
-    'http://localhost',
-    'https://localhost',
-    'capacitor://localhost',
-    'https://caf-frontend.dicksonhardy7.workers.dev',
-    'https://caf-three-green.vercel.app',
-    'https://field.carefam.xyz',
-  ];
-  const allAllowedOrigins = [...new Set([...allowedOrigins, ...hardcodedOrigins])];
+  const allAllowedOrigins = getAllowedOrigins(
+    configService.get<string>('CORS_ORIGIN'),
+  );
 
   // Enable CORS
   app.enableCors({
@@ -114,10 +99,7 @@ async function bootstrap() {
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
       // Allow requests with no origin (like mobile apps or Postman)
-      if (!origin) return callback(null, true);
-
-      // Check if origin is in allowed list
-      if (allAllowedOrigins.includes(origin) || allowedOrigins.includes('*') || origin.endsWith('.workers.dev') || origin.endsWith('.pages.dev') || origin.endsWith('.carefam.xyz')) {
+      if (isOriginAllowed(origin, allAllowedOrigins)) {
         callback(null, true);
       } else {
         logger.warn(`CORS blocked origin: ${origin}`);

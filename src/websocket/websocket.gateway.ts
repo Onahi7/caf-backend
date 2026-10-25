@@ -28,6 +28,7 @@ import { CurrencyUtil } from '../common/utils/currency.util.js';
 import { PAYMENT_METHOD_LABELS } from '../common/constants/payment-methods.constant.js';
 import { Branch, BranchDocument } from '../branches/schemas/branch.schema.js';
 import { UsersService } from '../users/users.service.js';
+import { getAllowedOrigins, isOriginAllowed } from '../common/utils/cors.util.js';
 
 /**
  * WebSocket Gateway for real-time inventory updates
@@ -75,31 +76,10 @@ export class WebSocketGateway
   }
 
   private isOriginAllowed(origin: string | undefined): boolean {
-    if (!origin) {
-      return true;
-    }
-
-    const corsOrigin = this.configService.get<string>(
-      'CORS_ORIGIN',
-      'http://localhost:5173',
+    return isOriginAllowed(
+      origin,
+      getAllowedOrigins(this.configService.get<string>('CORS_ORIGIN')),
     );
-    const allowedOrigins = corsOrigin.split(',').map((value) => value.trim());
-    const mobileOrigins = [
-      'http://localhost',
-      'https://localhost',
-      'capacitor://localhost',
-    ];
-    const frontendOrigins = [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'https://caf-frontend.dicksonhardy7.workers.dev',
-      'https://caf-three-green.vercel.app',
-    ];
-    const allAllowedOrigins = [
-      ...new Set([...allowedOrigins, ...mobileOrigins, ...frontendOrigins]),
-    ];
-
-    return allowedOrigins.includes('*') || allAllowedOrigins.includes(origin);
   }
 
   /**
