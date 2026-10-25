@@ -88,16 +88,15 @@ async function bootstrap() {
   );
 
   // Get CORS origins from environment
-  const corsOrigin = configService.get<string>(
-    'CORS_ORIGIN',
-    'http://localhost:5173',
-    'http://localhost:5175',
-  );
+  const corsOrigin = configService.get<string>('CORS_ORIGIN') ??
+    'http://localhost:5173,http://localhost:5175';
   const allowedOrigins = corsOrigin.split(',').map((origin) => origin.trim());
 
   // Always-allowed frontend origins (hardcoded fallback)
   const hardcodedOrigins = [
     'http://localhost:5173',
+    'http://localhost:5175',
+    'http://localhost:4202',
     'http://localhost:3000',
     'http://localhost',
     'https://localhost',
