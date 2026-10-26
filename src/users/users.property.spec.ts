@@ -78,6 +78,20 @@ describe('User Password Property Tests', () => {
       );
     });
 
+    it('should accept CreateUserDto when email is omitted during onboarding', async () => {
+      const dto = new CreateUserDto();
+      dto.username = 'marketer01';
+      dto.password = 'pass123';
+      dto.firstName = 'Amadu';
+      dto.lastName = 'Kamara';
+      dto.role = 'marketer' as UserRole;
+
+      const errors = await validate(dto);
+      const emailErrors = errors.filter((e) => e.property === 'email');
+      expect(emailErrors.length).toBe(0);
+      expect(errors.length).toBe(0);
+    });
+
     it('should enforce password length on UpdateUserDto as well', async () => {
       await fc.assert(
         fc.asyncProperty(shortPasswordArb, async (password) => {

@@ -197,15 +197,22 @@ export class UsersService {
       throw new ConflictException('Username already exists');
     }
 
+    // Resolve email: if not provided or empty, fallback to username@carefam.local
+    let email = scopedDto.email?.trim();
+    if (!email) {
+      email = `${scopedDto.username.toLowerCase()}@carefam.local`;
+    }
+
     // Check if email already exists
-    const existingEmail = await this.usersRepository.findByEmail(
-      scopedDto.email,
-    );
+    const existingEmail = await this.usersRepository.findByEmail(email);
     if (existingEmail) {
       throw new ConflictException('Email already exists');
     }
 
-    return this.usersRepository.create(scopedDto);
+    return this.usersRepository.create({
+      ...scopedDto,
+      email,
+    });
   }
 
   async findAll(
