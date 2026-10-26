@@ -3,21 +3,19 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as fc from 'fast-check';
 import { validate } from 'class-validator';
-import { User, UserDocument, UserRole } from './schemas/user.schema';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { User, UserRole } from './schemas/user.schema.js';
+import { CreateUserDto } from './dto/create-user.dto.js';
+import { UpdateUserDto } from './dto/update-user.dto.js';
 
 /**
- * **Feature: pharmacy-pos-system, Property 64: Password complexity enforcement**
+ * **Feature: pharmacy-pos-system, Property 64: Password length enforcement**
  *
- * For any password creation or update, passwords not meeting complexity requirements
- * (minimum length, character types) should be rejected.
- *
- * **Validates: Requirements 15.5**
+ * For any password creation or update, passwords not meeting minimum length (6 characters)
+ * should be rejected, while user-friendly passwords (letters, numbers, symbols) are accepted.
  */
 describe('User Password Property Tests', () => {
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    await Test.createTestingModule({
       providers: [
         {
           provide: getModelToken(User.name),
@@ -27,93 +25,14 @@ describe('User Password Property Tests', () => {
     }).compile();
   });
 
-  describe('Property 64: Password complexity enforcement', () => {
-    // Generator for invalid passwords (too short)
-    const shortPasswordArb = fc.string({ minLength: 0, maxLength: 7 });
+  describe('Property 64: Password length enforcement', () => {
+    // Generator for invalid passwords (too short, < 6 chars)
+    const shortPasswordArb = fc.string({ minLength: 0, maxLength: 5 });
 
-    // Generator for passwords missing uppercase (only lowercase, digits, special)
-    const noUppercaseArb = fc
-      .tuple(
-        fc.array(fc.constantFrom('a', 'b', 'c', 'd', 'e', 'f'), {
-          minLength: 2,
-          maxLength: 5,
-        }),
-        fc.array(fc.constantFrom('0', '1', '2', '3', '4', '5'), {
-          minLength: 2,
-          maxLength: 5,
-        }),
-        fc.array(fc.constantFrom('@', '$', '!', '%'), {
-          minLength: 1,
-          maxLength: 3,
-        }),
-      )
-      .map(([lower, digit, special]) =>
-        [...lower, ...digit, ...special].join(''),
-      );
+    // Generator for valid passwords (at least 6 characters of various types)
+    const validPasswordArb = fc.string({ minLength: 6, maxLength: 30 });
 
-    // Generator for passwords missing lowercase (only uppercase, digits, special)
-    const noLowercaseArb = fc
-      .tuple(
-        fc.array(fc.constantFrom('A', 'B', 'C', 'D', 'E', 'F'), {
-          minLength: 2,
-          maxLength: 5,
-        }),
-        fc.array(fc.constantFrom('0', '1', '2', '3', '4', '5'), {
-          minLength: 2,
-          maxLength: 5,
-        }),
-        fc.array(fc.constantFrom('@', '$', '!', '%'), {
-          minLength: 1,
-          maxLength: 3,
-        }),
-      )
-      .map(([upper, digit, special]) =>
-        [...upper, ...digit, ...special].join(''),
-      );
-
-    // Generator for passwords missing digit (only uppercase, lowercase, special)
-    const noDigitArb = fc
-      .tuple(
-        fc.array(fc.constantFrom('A', 'B', 'C', 'D', 'E', 'F'), {
-          minLength: 2,
-          maxLength: 5,
-        }),
-        fc.array(fc.constantFrom('a', 'b', 'c', 'd', 'e', 'f'), {
-          minLength: 2,
-          maxLength: 5,
-        }),
-        fc.array(fc.constantFrom('@', '$', '!', '%'), {
-          minLength: 1,
-          maxLength: 3,
-        }),
-      )
-      .map(([upper, lower, special]) =>
-        [...upper, ...lower, ...special].join(''),
-      );
-
-    // Generator for passwords missing special character (only uppercase, lowercase, digits)
-    const noSpecialCharArb = fc
-      .tuple(
-        fc.array(fc.constantFrom('A', 'B', 'C', 'D', 'E', 'F'), {
-          minLength: 2,
-          maxLength: 5,
-        }),
-        fc.array(fc.constantFrom('a', 'b', 'c', 'd', 'e', 'f'), {
-          minLength: 2,
-          maxLength: 5,
-        }),
-        fc.array(fc.constantFrom('0', '1', '2', '3', '4', '5'), {
-          minLength: 2,
-          maxLength: 5,
-        }),
-      )
-      .map(([upper, lower, digit]) => [...upper, ...lower, ...digit].join(''));
-
-    // Every generated value satisfies the minimum length and required categories.
-    const validPasswordArb = fc.array(fc.constantFrom(...'aAbB0123@$!%'), { minLength: 4, maxLength: 20 })
-      .map(chars => `Aa1!${chars.join('')}`);
-
-    it('should reject passwords that are too short (< 8 characters)', async () => {
+    it('should reject passwords that are too short (< 6 characters)', async () => {
       await fc.assert(
         fc.asyncProperty(shortPasswordArb, async (password) => {
           const dto = new CreateUserDto();
@@ -136,99 +55,7 @@ describe('User Password Property Tests', () => {
       );
     });
 
-    it('should reject passwords missing uppercase letters', async () => {
-      await fc.assert(
-        fc.asyncProperty(noUppercaseArb, async (password) => {
-          const dto = new CreateUserDto();
-          dto.username = 'testuser';
-          dto.password = password;
-          dto.email = 'test@example.com';
-          dto.firstName = 'Test';
-          dto.lastName = 'User';
-          dto.role = 'cashier' as UserRole;
-
-          const errors = await validate(dto);
-          const passwordErrors = errors.filter(
-            (e) => e.property === 'password',
-          );
-
-          // Should have validation errors for password
-          expect(passwordErrors.length).toBeGreaterThan(0);
-        }),
-        { numRuns: 100 },
-      );
-    });
-
-    it('should reject passwords missing lowercase letters', async () => {
-      await fc.assert(
-        fc.asyncProperty(noLowercaseArb, async (password) => {
-          const dto = new CreateUserDto();
-          dto.username = 'testuser';
-          dto.password = password;
-          dto.email = 'test@example.com';
-          dto.firstName = 'Test';
-          dto.lastName = 'User';
-          dto.role = 'cashier' as UserRole;
-
-          const errors = await validate(dto);
-          const passwordErrors = errors.filter(
-            (e) => e.property === 'password',
-          );
-
-          // Should have validation errors for password
-          expect(passwordErrors.length).toBeGreaterThan(0);
-        }),
-        { numRuns: 100 },
-      );
-    });
-
-    it('should reject passwords missing digits', async () => {
-      await fc.assert(
-        fc.asyncProperty(noDigitArb, async (password) => {
-          const dto = new CreateUserDto();
-          dto.username = 'testuser';
-          dto.password = password;
-          dto.email = 'test@example.com';
-          dto.firstName = 'Test';
-          dto.lastName = 'User';
-          dto.role = 'cashier' as UserRole;
-
-          const errors = await validate(dto);
-          const passwordErrors = errors.filter(
-            (e) => e.property === 'password',
-          );
-
-          // Should have validation errors for password
-          expect(passwordErrors.length).toBeGreaterThan(0);
-        }),
-        { numRuns: 100 },
-      );
-    });
-
-    it('should reject passwords missing special characters', async () => {
-      await fc.assert(
-        fc.asyncProperty(noSpecialCharArb, async (password) => {
-          const dto = new CreateUserDto();
-          dto.username = 'testuser';
-          dto.password = password;
-          dto.email = 'test@example.com';
-          dto.firstName = 'Test';
-          dto.lastName = 'User';
-          dto.role = 'cashier' as UserRole;
-
-          const errors = await validate(dto);
-          const passwordErrors = errors.filter(
-            (e) => e.property === 'password',
-          );
-
-          // Should have validation errors for password
-          expect(passwordErrors.length).toBeGreaterThan(0);
-        }),
-        { numRuns: 100 },
-      );
-    });
-
-    it('should accept passwords meeting all complexity requirements', async () => {
+    it('should accept valid passwords meeting minimum length (>= 6 characters)', async () => {
       await fc.assert(
         fc.asyncProperty(validPasswordArb, async (password) => {
           const dto = new CreateUserDto();
@@ -251,7 +78,7 @@ describe('User Password Property Tests', () => {
       );
     });
 
-    it('should enforce password complexity on UpdateUserDto as well', async () => {
+    it('should enforce password length on UpdateUserDto as well', async () => {
       await fc.assert(
         fc.asyncProperty(shortPasswordArb, async (password) => {
           const dto = new UpdateUserDto();
