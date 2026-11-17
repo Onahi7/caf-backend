@@ -474,14 +474,22 @@ let session;
             quantityPerPack: matchedPack.quantityPerPack,
             barcode: matchedPack.barcode,
           };
-          normalized.unitPrice = matchedPack.sellingPrice;
+          const defaultPackPrice = matchedPack.sellingPrice;
+          normalized.unitPrice =
+            typeof item.unitPrice === 'number' && Number.isFinite(item.unitPrice) && item.unitPrice > 0
+              ? item.unitPrice
+              : defaultPackPrice;
           normalized.quantityInBaseUnits =
             normalized.quantity * matchedPack.quantityPerPack;
         } else {
-          normalized.unitPrice =
+          const defaultRetailPrice =
             product.suggestedRetailPrice > 0
               ? product.suggestedRetailPrice
               : product.basePrice;
+          normalized.unitPrice =
+            typeof item.unitPrice === 'number' && Number.isFinite(item.unitPrice) && item.unitPrice > 0
+              ? item.unitPrice
+              : defaultRetailPrice;
           normalized.quantityInBaseUnits = normalized.quantity;
         }
 

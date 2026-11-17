@@ -374,6 +374,9 @@ export class ProductsController {
       if (updateProductDto.unit !== undefined) {
         cashierSafeUpdate.unit = updateProductDto.unit;
       }
+      if (updateProductDto.wholesalePrice !== undefined) {
+        cashierSafeUpdate.wholesalePrice = updateProductDto.wholesalePrice;
+      }
       return this.productsService.update(id, cashierSafeUpdate, user.userId);
     }
     return this.productsService.update(id, updateProductDto, user.userId);

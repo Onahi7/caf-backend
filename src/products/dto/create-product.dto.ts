@@ -73,6 +73,11 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
+  wholesalePrice?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
   markupPercentage?: number;
 
   @IsBoolean()

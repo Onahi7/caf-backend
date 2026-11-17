@@ -98,6 +98,9 @@ export class Product {
   suggestedRetailPrice!: number;
 
   @Prop({ default: 0 })
+  wholesalePrice?: number;
+
+  @Prop({ default: 0 })
   markupPercentage!: number;
 
   @Prop({ default: false })
