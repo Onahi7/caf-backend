@@ -354,12 +354,28 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.BRANCH_MANAGER, UserRole.CASHIER)
   async update(
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
     @CurrentUser() user: CurrentUserData,
   ): Promise<ProductDocument> {
+    if (String(user.role) === String(UserRole.CASHIER)) {
+      const cashierSafeUpdate: UpdateProductDto = {};
+      if (updateProductDto.name !== undefined) {
+        cashierSafeUpdate.name = updateProductDto.name;
+      }
+      if (updateProductDto.brand !== undefined) {
+        cashierSafeUpdate.brand = updateProductDto.brand;
+      }
+      if (updateProductDto.category !== undefined) {
+        cashierSafeUpdate.category = updateProductDto.category;
+      }
+      if (updateProductDto.unit !== undefined) {
+        cashierSafeUpdate.unit = updateProductDto.unit;
+      }
+      return this.productsService.update(id, cashierSafeUpdate, user.userId);
+    }
     return this.productsService.update(id, updateProductDto, user.userId);
   }
 
